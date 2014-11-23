@@ -10,6 +10,14 @@ module Diplomacy.Province (
 
   , Territory
   , territory
+  , allTerritories
+  , province
+  , isSupplyCentre
+  , isCoastal
+  , isInland
+  , isWater
+
+  , supplyCentre
 
   -- Verification
   , reflexivityCheck
@@ -283,13 +291,73 @@ antisymmetryCheck :: [Province]
 antisymmetryCheck = filter adjacencyIsSymmetric allProvinces
 
 adjacencyIsSymmetric :: Province -> Bool
-adjacencyIsSymmetric province = province `elem` adjacent province
+adjacencyIsSymmetric p = p `elem` adjacent p
+
+type SupplyCentre = Bool
+
+supplyCentre :: Province -> SupplyCentre
+supplyCentre Norway = True
+supplyCentre Sweden = True
+supplyCentre Denmark = True
+supplyCentre StPetersburg = True
+supplyCentre Moscow = True
+supplyCentre Sevastopol = True
+supplyCentre Ankara = True
+supplyCentre Smyrna = True
+supplyCentre Constantinople = True
+supplyCentre Rumania = True
+supplyCentre Bulgaria = True
+supplyCentre Greece = True
+supplyCentre Serbia = True
+supplyCentre Warsaw = True
+supplyCentre Budapest = True
+supplyCentre Vienna = True
+supplyCentre Trieste = True
+supplyCentre Berlin = True
+supplyCentre Kiel = True
+supplyCentre Munich = True
+supplyCentre Venice = True
+supplyCentre Rome = True
+supplyCentre Naples = True
+supplyCentre Tunis = True
+supplyCentre Spain = True
+supplyCentre Portugal = True
+supplyCentre Marseilles = True
+supplyCentre Paris = True
+supplyCentre Brest = True
+supplyCentre Belgium = True
+supplyCentre Holland = True
+supplyCentre London = True
+supplyCentre Liverpool = True
+supplyCentre Edinburgh = True
+supplyCentre _ = False
 
 -- | Description of a place on the board.
 --   The only values of this type shall correspond to the Province enumeration
-data Territory = Territory Province ProvinceType
+data Territory = Territory Province ProvinceType SupplyCentre
   deriving (Eq, Ord, Show)
 
 -- | Injection into Territory; just pairs with the province type.
 territory :: Province -> Territory
-territory province = Territory province (provinceType province)
+territory p = Territory p (provinceType p) (supplyCentre p)
+
+allTerritories :: [Territory]
+allTerritories = map territory allProvinces
+
+isSupplyCentre :: Territory -> Bool
+isSupplyCentre (Territory _ _ x) = x
+
+isCoastal :: Territory -> Bool
+isCoastal (Territory _ Coastal _) = True
+isCoastal _ = False
+
+isInland :: Territory -> Bool
+isInland (Territory _ Inland _) = True
+isInland _ = False
+
+isWater :: Territory -> Bool
+isWater (Territory _ Water _) = True
+isWater _ = False
+
+province :: Territory -> Province
+province (Territory x _ _) = x
