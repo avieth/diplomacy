@@ -17,13 +17,17 @@ module Diplomacy.Province (
   , isInland
   , isWater
 
+  , country
+
   , supplyCentre
 
   -- Verification
-  , reflexivityCheck
-  , antisymmetryCheck
+  , symmetryCheck
+  , antireflexivityCheck
 
   ) where
+
+import Diplomacy.Country
 
 -- | Exhaustive enumeration of the places on the diplomacy board.
 --   Refernce: https://www.wizards.com/avalonhill/rules/diplomacy.pdf
@@ -271,27 +275,27 @@ adjacent WesternMediterranean = [NorthAfrica, MidAtlanticOcean, GulfOfLyon, Spai
 allProvinces :: [Province]
 allProvinces = [minBound .. maxBound]
 
--- | A list of all pairs for which adjacent is not reflexive.
-reflexivityCheck :: [(Province, Province)]
-reflexivityCheck = filter (not . adjacencyIsReflexive) (pairs allProvinces)
+-- | A list of all pairs for which adjacent is symmetric
+symmetryCheck :: [(Province, Province)]
+symmetryCheck = filter (not . adjacencyIsSymmetric) (pairs allProvinces)
 
 pairs :: [a] -> [(a, a)]
 pairs [] = []
 pairs l@(x:xs) = (map ((,) x) l) ++ (pairs xs)
 
-adjacencyIsReflexive :: (Province, Province) -> Bool
-adjacencyIsReflexive (p1, p2) =
+adjacencyIsSymmetric :: (Province, Province) -> Bool
+adjacencyIsSymmetric (p1, p2) =
   if p1 `elem` adjacent p2
   then p2 `elem` adjacent p1
   else not $ p2 `elem` adjacent p1
 
--- | A list of all pairs for which adjacent is symmetric (we want it to be
---   antisymmetric).
-antisymmetryCheck :: [Province]
-antisymmetryCheck = filter adjacencyIsSymmetric allProvinces
+-- | A list of all pairs for which adjacent is reflexive (we want it to be
+--   antireflexive).
+antireflexivityCheck :: [Province]
+antireflexivityCheck = filter (not . adjacencyIsAntireflexive) allProvinces
 
-adjacencyIsSymmetric :: Province -> Bool
-adjacencyIsSymmetric p = p `elem` adjacent p
+adjacencyIsAntireflexive :: Province -> Bool
+adjacencyIsAntireflexive p = not (p `elem` adjacent p)
 
 type SupplyCentre = Bool
 
@@ -331,6 +335,86 @@ supplyCentre London = True
 supplyCentre Liverpool = True
 supplyCentre Edinburgh = True
 supplyCentre _ = False
+
+-- | Some provinces belong to a country.
+--   This is useful in conjunction with supplyCentre to determine which
+--   provinces can be used by a given country to build a unit.
+country :: Province -> Maybe Country
+country Bohemia = Just Austria
+country Budapest = Just Austria
+country Galacia = Just Austria
+country Trieste = Just Austria
+country Tyrolia = Just Austria
+country Vienna = Just Austria
+country Clyde = Just UnitedKingdom
+country Edinburgh = Just UnitedKingdom
+country Liverpool = Just UnitedKingdom
+country London = Just UnitedKingdom
+country Wales = Just UnitedKingdom
+country Yorkshire = Just UnitedKingdom
+country Brest = Just France
+country Burgundy = Just France
+country Gascony = Just France
+country Marseilles = Just France
+country Paris = Just France
+country Picardy = Just Germany
+country Berlin = Just Germany
+country Kiel = Just Germany
+country Munich = Just Germany
+country Prussia = Just Germany
+country Ruhr = Just Germany
+country Silesia = Just Germany
+country Apulia = Just Italy
+country Naples = Just Italy
+country Piedmont = Just Italy
+country Rome = Just Italy
+country Tuscany = Just Italy
+country Venice = Just Italy
+country Livonia = Just Russia
+country Moscow = Just Russia
+country Sevastopol = Just Russia
+country StPetersburg = Just Russia
+country Ukraine = Just Russia
+country Warsaw = Just Russia
+country Ankara = Just Ottoman
+country Armenia = Just Ottoman
+country Constantinople = Just Ottoman
+country Smyrna = Just Ottoman
+country Syria = Just Ottoman
+country Albania = Nothing
+country Belgium = Nothing
+country Bulgaria = Nothing
+country Finland = Nothing
+country Greece = Nothing
+country Holland = Nothing
+country Norway = Nothing
+country NorthAfrica = Nothing
+country Portugal = Nothing
+country Rumania = Nothing
+country Serbia = Nothing
+country Spain = Nothing
+country Sweden = Nothing
+country Tunis = Nothing
+country Denmark = Nothing
+country AdriaticSea = Nothing
+country AegeanSea = Nothing
+country BalticSea = Nothing
+country BarentsSea = Nothing
+country BlackSea = Nothing
+country EasternMediterranean = Nothing
+country EnglishChannel = Nothing
+country GulfOfBothnia = Nothing
+country GulfOfLyon = Nothing
+country HelgolandBright = Nothing
+country IonianSea = Nothing
+country IrishSea = Nothing
+country MidAtlanticOcean = Nothing
+country NorthAtlanticOcean = Nothing
+country NorthSea = Nothing
+country NorwegianSea = Nothing
+country Skagerrak = Nothing
+country TyrrhenianSea = Nothing
+country WesternMediterranean = Nothing
 
 -- | Description of a place on the board.
 --   The only values of this type shall correspond to the Province enumeration
