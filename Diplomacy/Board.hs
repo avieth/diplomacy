@@ -47,13 +47,13 @@ emptyBoard = Board occupyMap controlMap
   where occupyMap = M.fromList $ (map (\x -> (x, unoccupied))) allProvinceTargets
         controlMap = M.fromList $ (map (\x -> (x, uncontrolled))) allProvinces
 
-type Occupy = Maybe Unit
+type Occupy = Maybe AlignedUnit
 type Control = Maybe Country
 
 unoccupied = Nothing
 uncontrolled = Nothing
 
-occupy :: Board -> ProvinceTarget -> Maybe Unit -> Board
+occupy :: Board -> ProvinceTarget -> Maybe AlignedUnit -> Board
 occupy board pt maybeUnit = Board {
     _occupy = M.insert pt maybeUnit (_occupy (clearTarget board pt))
   , _control = _control board
@@ -73,7 +73,7 @@ control board prv maybeCountry = Board {
   , _occupy = _occupy board
   }
 
-unitAt :: Board -> ProvinceTarget -> Maybe Unit
+unitAt :: Board -> ProvinceTarget -> Maybe AlignedUnit
 unitAt board pt = maybe Nothing id (M.lookup pt (_occupy board))
 -- Note that M.lookup will never be Nothing, since we never clear any keys and
 -- the only injection into Board is via emptyBoard, which defines a key for all
@@ -82,10 +82,10 @@ unitAt board pt = maybe Nothing id (M.lookup pt (_occupy board))
 controllerOf :: Board -> Province -> Maybe Country
 controllerOf board prv = maybe Nothing id (M.lookup prv (_control board))
 
-occupiesProvince :: Board -> Unit -> Province -> Bool
+occupiesProvince :: Board -> AlignedUnit -> Province -> Bool
 occupiesProvince b u prv = any (occupies b u) (provinceTargets prv)
 
-occupies :: Board -> Unit -> ProvinceTarget -> Bool
+occupies :: Board -> AlignedUnit -> ProvinceTarget -> Bool
 occupies b u pt = maybe False ((==) u) (unitAt b pt)
 
 controls :: Board -> Country -> Province -> Bool
