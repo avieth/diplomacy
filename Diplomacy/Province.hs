@@ -3,10 +3,11 @@ module Diplomacy.Province (
     Province(..)
   , allProvinces
 
-  , adjacent
+  , adjacency
 
   , ProvinceType(..)
   , provinceType
+  , supplyCentre
 
   , Territory
   , territory
@@ -18,8 +19,6 @@ module Diplomacy.Province (
   , isWater
 
   , country
-
-  , supplyCentre
 
   -- Verification
   , symmetryCheck
@@ -194,88 +193,91 @@ provinceType WesternMediterranean = Water
 -- | This function describes adjacency between provinces.
 --   TODO verify; I'm confused about the adjacency surrounding
 --   Denmark.
-adjacent :: Province -> [Province]
-adjacent Bohemia = [Munich, Tyrolia, Vienna, Silesia, Galacia]
-adjacent Budapest = [Vienna, Galacia, Rumania, Serbia, Trieste]
-adjacent Galacia = [Warsaw, Silesia, Ukraine, Rumania, Budapest, Vienna, Bohemia]
-adjacent Trieste = [AdriaticSea, Venice, Tyrolia, Vienna, Budapest, Serbia, Albania]
-adjacent Tyrolia = [Piedmont, Munich, Bohemia, Vienna, Trieste, Venice]
-adjacent Vienna = [Trieste, Tyrolia, Bohemia, Galacia, Budapest]
-adjacent Clyde = [NorthAtlanticOcean, NorwegianSea, Edinburgh, Liverpool]
-adjacent Edinburgh = [Clyde, NorwegianSea, NorthSea, Yorkshire, Liverpool]
-adjacent Liverpool = [NorthAtlanticOcean, IrishSea, Clyde, Edinburgh, Yorkshire, Wales]
-adjacent London = [NorthSea, EnglishChannel, Wales, Yorkshire]
-adjacent Wales = [IrishSea, EnglishChannel, London, Yorkshire, Liverpool]
-adjacent Yorkshire = [Liverpool, Edinburgh, London, Wales, NorthSea]
-adjacent Brest = [EnglishChannel, MidAtlanticOcean, Picardy, Paris, Gascony]
-adjacent Burgundy = [Paris, Picardy, Belgium, Ruhr, Munich, Marseilles, Gascony]
-adjacent Gascony = [MidAtlanticOcean, Spain, Brest, Paris, Burgundy, Marseilles]
-adjacent Marseilles = [GulfOfLyon, Spain, Gascony, Burgundy, Piedmont]
-adjacent Paris = [Brest, Picardy, Burgundy, Gascony]
-adjacent Picardy = [EnglishChannel, Belgium, Burgundy, Paris, Brest]
-adjacent Berlin = [BalticSea, Prussia, Silesia, Munich, Kiel]
+adjacency :: Province -> [Province]
+adjacency Bohemia = [Munich, Tyrolia, Vienna, Silesia, Galacia]
+adjacency Budapest = [Vienna, Galacia, Rumania, Serbia, Trieste]
+adjacency Galacia = [Warsaw, Silesia, Ukraine, Rumania, Budapest, Vienna, Bohemia]
+adjacency Trieste = [AdriaticSea, Venice, Tyrolia, Vienna, Budapest, Serbia, Albania]
+adjacency Tyrolia = [Piedmont, Munich, Bohemia, Vienna, Trieste, Venice]
+adjacency Vienna = [Trieste, Tyrolia, Bohemia, Galacia, Budapest]
+adjacency Clyde = [NorthAtlanticOcean, NorwegianSea, Edinburgh, Liverpool]
+adjacency Edinburgh = [Clyde, NorwegianSea, NorthSea, Yorkshire, Liverpool]
+adjacency Liverpool = [NorthAtlanticOcean, IrishSea, Clyde, Edinburgh, Yorkshire, Wales]
+adjacency London = [NorthSea, EnglishChannel, Wales, Yorkshire]
+adjacency Wales = [IrishSea, EnglishChannel, London, Yorkshire, Liverpool]
+adjacency Yorkshire = [Liverpool, Edinburgh, London, Wales, NorthSea]
+adjacency Brest = [EnglishChannel, MidAtlanticOcean, Picardy, Paris, Gascony]
+adjacency Burgundy = [Paris, Picardy, Belgium, Ruhr, Munich, Marseilles, Gascony]
+adjacency Gascony = [MidAtlanticOcean, Spain, Brest, Paris, Burgundy, Marseilles]
+adjacency Marseilles = [GulfOfLyon, Spain, Gascony, Burgundy, Piedmont]
+adjacency Paris = [Brest, Picardy, Burgundy, Gascony]
+adjacency Picardy = [EnglishChannel, Belgium, Burgundy, Paris, Brest]
+adjacency Berlin = [BalticSea, Prussia, Silesia, Munich, Kiel]
 -- TODO verify this one!
-adjacent Kiel = [HelgolandBright, Berlin, Munich, Ruhr, Holland, Denmark, BalticSea]
-adjacent Munich = [Ruhr, Kiel, Berlin, Silesia, Bohemia, Tyrolia, Burgundy]
-adjacent Prussia = [BalticSea, Livonia, Warsaw, Silesia, Berlin]
-adjacent Ruhr = [Belgium, Holland, Kiel, Munich, Burgundy]
-adjacent Silesia = [Munich, Berlin, Prussia, Warsaw, Galacia, Bohemia]
-adjacent Apulia = [AdriaticSea, IonianSea, Naples, Rome, Venice]
-adjacent Naples = [IonianSea, TyrrhenianSea, Apulia, Rome]
-adjacent Piedmont = [Marseilles, Tyrolia, GulfOfLyon, Venice, Tuscany]
-adjacent Rome = [TyrrhenianSea, Naples, Tuscany, Venice, Apulia]
-adjacent Tuscany = [GulfOfLyon, Piedmont, Venice, Rome, TyrrhenianSea]
-adjacent Venice = [Piedmont, Tyrolia, Trieste, AdriaticSea, Apulia, Tuscany, Rome]
-adjacent Livonia = [BalticSea, GulfOfBothnia, StPetersburg, Moscow, Warsaw, Prussia]
-adjacent Moscow = [StPetersburg, Sevastopol, Ukraine, Warsaw, Livonia]
-adjacent Sevastopol = [Armenia, BlackSea, Rumania, Ukraine, Moscow]
-adjacent StPetersburg = [BarentsSea, Moscow, Livonia, GulfOfBothnia, Finland]
-adjacent Ukraine = [Moscow, Sevastopol, Rumania, Galacia, Warsaw]
-adjacent Warsaw = [Prussia, Livonia, Moscow, Ukraine, Galacia, Silesia]
-adjacent Ankara = [BlackSea, Armenia, Smyrna, Constantinople]
-adjacent Armenia = [BlackSea, Sevastopol, Syria, Ankara, Smyrna]
-adjacent Constantinople = [BlackSea, Ankara, Smyrna, Bulgaria, AegeanSea]
-adjacent Smyrna = [EasternMediterranean, AegeanSea, Constantinople, Ankara, Armenia, Syria]
-adjacent Syria = [Armenia, Smyrna, EasternMediterranean]
-adjacent Albania = [AdriaticSea, Trieste, Serbia, Greece, IonianSea]
-adjacent Belgium = [Holland, Ruhr, Burgundy, Picardy, EnglishChannel, NorthSea]
-adjacent Bulgaria = [Rumania, BlackSea, Constantinople, AegeanSea, Greece, Serbia]
-adjacent Finland = [StPetersburg, Sweden, Norway, GulfOfBothnia]
-adjacent Greece = [IonianSea, AegeanSea, Albania, Serbia, Bulgaria]
-adjacent Holland = [Belgium, NorthSea, Kiel, Ruhr, HelgolandBright]
-adjacent Norway = [NorwegianSea, NorthSea, Sweden, Finland, Skagerrak, BarentsSea]
-adjacent NorthAfrica = [MidAtlanticOcean, WesternMediterranean, Tunis]
-adjacent Portugal = [MidAtlanticOcean, Spain]
-adjacent Rumania = [BlackSea, Bulgaria, Serbia, Budapest, Galacia, Ukraine, Sevastopol]
-adjacent Serbia = [Trieste, Budapest, Rumania, Bulgaria, Greece, Albania]
-adjacent Spain = [Portugal, MidAtlanticOcean, Gascony, GulfOfLyon, WesternMediterranean, Marseilles]
-adjacent Sweden = [GulfOfBothnia, Finland, Norway, BalticSea, Skagerrak, Denmark]
-adjacent Tunis = [NorthAfrica, WesternMediterranean, IonianSea, TyrrhenianSea]
-adjacent Denmark = [BalticSea, Skagerrak, HelgolandBright, Kiel, NorthSea, Sweden]
-adjacent AdriaticSea = [Trieste, Venice, Apulia, Albania, IonianSea]
-adjacent AegeanSea = [Greece, Bulgaria, Constantinople, Smyrna, EasternMediterranean, IonianSea]
-adjacent BalticSea = [Sweden, GulfOfBothnia, Livonia, Prussia, Berlin, Kiel, Denmark]
-adjacent BarentsSea = [StPetersburg, Norway, NorwegianSea]
-adjacent BlackSea = [Sevastopol, Armenia, Ankara, Constantinople, Bulgaria, Rumania]
-adjacent EasternMediterranean = [Syria, IonianSea, AegeanSea, Smyrna]
-adjacent EnglishChannel = [London, Belgium, Picardy, Brest, MidAtlanticOcean, IrishSea, Wales, NorthSea]
-adjacent GulfOfBothnia = [Sweden, Finland, Livonia, StPetersburg, BalticSea]
-adjacent GulfOfLyon = [Marseilles, Piedmont, Tuscany, TyrrhenianSea, WesternMediterranean, Spain]
-adjacent HelgolandBright = [Denmark, Kiel, Holland, NorthSea]
-adjacent IonianSea = [Tunis, TyrrhenianSea, Naples, Apulia, AdriaticSea, Greece, Albania, AegeanSea, EasternMediterranean]
-adjacent IrishSea = [NorthAtlanticOcean, EnglishChannel, MidAtlanticOcean, Liverpool, Wales]
-adjacent MidAtlanticOcean = [NorthAtlanticOcean, IrishSea, EnglishChannel, Brest, Gascony, Spain, Portugal, WesternMediterranean, NorthAfrica]
-adjacent NorthAtlanticOcean = [NorwegianSea, Clyde, Liverpool, IrishSea, MidAtlanticOcean]
-adjacent NorthSea = [NorwegianSea, Skagerrak, Denmark, HelgolandBright, Holland, Belgium, EnglishChannel, London, Yorkshire, Edinburgh, Norway]
-adjacent NorwegianSea = [NorthAtlanticOcean, Norway, BarentsSea, NorthSea, Clyde, Edinburgh]
-adjacent Skagerrak = [Norway, Sweden, Denmark, NorthSea]
-adjacent TyrrhenianSea = [GulfOfLyon, WesternMediterranean, Tunis, Tuscany, Rome, Naples, IonianSea]
-adjacent WesternMediterranean = [NorthAfrica, MidAtlanticOcean, GulfOfLyon, Spain, Tunis, TyrrhenianSea]
+adjacency Kiel = [HelgolandBright, Berlin, Munich, Ruhr, Holland, Denmark, BalticSea]
+adjacency Munich = [Ruhr, Kiel, Berlin, Silesia, Bohemia, Tyrolia, Burgundy]
+adjacency Prussia = [BalticSea, Livonia, Warsaw, Silesia, Berlin]
+adjacency Ruhr = [Belgium, Holland, Kiel, Munich, Burgundy]
+adjacency Silesia = [Munich, Berlin, Prussia, Warsaw, Galacia, Bohemia]
+adjacency Apulia = [AdriaticSea, IonianSea, Naples, Rome, Venice]
+adjacency Naples = [IonianSea, TyrrhenianSea, Apulia, Rome]
+adjacency Piedmont = [Marseilles, Tyrolia, GulfOfLyon, Venice, Tuscany]
+adjacency Rome = [TyrrhenianSea, Naples, Tuscany, Venice, Apulia]
+adjacency Tuscany = [GulfOfLyon, Piedmont, Venice, Rome, TyrrhenianSea]
+adjacency Venice = [Piedmont, Tyrolia, Trieste, AdriaticSea, Apulia, Tuscany, Rome]
+adjacency Livonia = [BalticSea, GulfOfBothnia, StPetersburg, Moscow, Warsaw, Prussia]
+adjacency Moscow = [StPetersburg, Sevastopol, Ukraine, Warsaw, Livonia]
+adjacency Sevastopol = [Armenia, BlackSea, Rumania, Ukraine, Moscow]
+adjacency StPetersburg = [BarentsSea, Moscow, Livonia, GulfOfBothnia, Finland]
+adjacency Ukraine = [Moscow, Sevastopol, Rumania, Galacia, Warsaw]
+adjacency Warsaw = [Prussia, Livonia, Moscow, Ukraine, Galacia, Silesia]
+adjacency Ankara = [BlackSea, Armenia, Smyrna, Constantinople]
+adjacency Armenia = [BlackSea, Sevastopol, Syria, Ankara, Smyrna]
+adjacency Constantinople = [BlackSea, Ankara, Smyrna, Bulgaria, AegeanSea]
+adjacency Smyrna = [EasternMediterranean, AegeanSea, Constantinople, Ankara, Armenia, Syria]
+adjacency Syria = [Armenia, Smyrna, EasternMediterranean]
+adjacency Albania = [AdriaticSea, Trieste, Serbia, Greece, IonianSea]
+adjacency Belgium = [Holland, Ruhr, Burgundy, Picardy, EnglishChannel, NorthSea]
+adjacency Bulgaria = [Rumania, BlackSea, Constantinople, AegeanSea, Greece, Serbia]
+adjacency Finland = [StPetersburg, Sweden, Norway, GulfOfBothnia]
+adjacency Greece = [IonianSea, AegeanSea, Albania, Serbia, Bulgaria]
+adjacency Holland = [Belgium, NorthSea, Kiel, Ruhr, HelgolandBright]
+adjacency Norway = [NorwegianSea, NorthSea, Sweden, Finland, Skagerrak, BarentsSea]
+adjacency NorthAfrica = [MidAtlanticOcean, WesternMediterranean, Tunis]
+adjacency Portugal = [MidAtlanticOcean, Spain]
+adjacency Rumania = [BlackSea, Bulgaria, Serbia, Budapest, Galacia, Ukraine, Sevastopol]
+adjacency Serbia = [Trieste, Budapest, Rumania, Bulgaria, Greece, Albania]
+adjacency Spain = [Portugal, MidAtlanticOcean, Gascony, GulfOfLyon, WesternMediterranean, Marseilles]
+adjacency Sweden = [GulfOfBothnia, Finland, Norway, BalticSea, Skagerrak, Denmark]
+adjacency Tunis = [NorthAfrica, WesternMediterranean, IonianSea, TyrrhenianSea]
+adjacency Denmark = [BalticSea, Skagerrak, HelgolandBright, Kiel, NorthSea, Sweden]
+adjacency AdriaticSea = [Trieste, Venice, Apulia, Albania, IonianSea]
+adjacency AegeanSea = [Greece, Bulgaria, Constantinople, Smyrna, EasternMediterranean, IonianSea]
+adjacency BalticSea = [Sweden, GulfOfBothnia, Livonia, Prussia, Berlin, Kiel, Denmark]
+adjacency BarentsSea = [StPetersburg, Norway, NorwegianSea]
+adjacency BlackSea = [Sevastopol, Armenia, Ankara, Constantinople, Bulgaria, Rumania]
+adjacency EasternMediterranean = [Syria, IonianSea, AegeanSea, Smyrna]
+adjacency EnglishChannel = [London, Belgium, Picardy, Brest, MidAtlanticOcean, IrishSea, Wales, NorthSea]
+adjacency GulfOfBothnia = [Sweden, Finland, Livonia, StPetersburg, BalticSea]
+adjacency GulfOfLyon = [Marseilles, Piedmont, Tuscany, TyrrhenianSea, WesternMediterranean, Spain]
+adjacency HelgolandBright = [Denmark, Kiel, Holland, NorthSea]
+adjacency IonianSea = [Tunis, TyrrhenianSea, Naples, Apulia, AdriaticSea, Greece, Albania, AegeanSea, EasternMediterranean]
+adjacency IrishSea = [NorthAtlanticOcean, EnglishChannel, MidAtlanticOcean, Liverpool, Wales]
+adjacency MidAtlanticOcean = [NorthAtlanticOcean, IrishSea, EnglishChannel, Brest, Gascony, Spain, Portugal, WesternMediterranean, NorthAfrica]
+adjacency NorthAtlanticOcean = [NorwegianSea, Clyde, Liverpool, IrishSea, MidAtlanticOcean]
+adjacency NorthSea = [NorwegianSea, Skagerrak, Denmark, HelgolandBright, Holland, Belgium, EnglishChannel, London, Yorkshire, Edinburgh, Norway]
+adjacency NorwegianSea = [NorthAtlanticOcean, Norway, BarentsSea, NorthSea, Clyde, Edinburgh]
+adjacency Skagerrak = [Norway, Sweden, Denmark, NorthSea]
+adjacency TyrrhenianSea = [GulfOfLyon, WesternMediterranean, Tunis, Tuscany, Rome, Naples, IonianSea]
+adjacency WesternMediterranean = [NorthAfrica, MidAtlanticOcean, GulfOfLyon, Spain, Tunis, TyrrhenianSea]
+
+adjacent :: Province -> Province -> Bool
+adjacent prv0 prv1 = prv0 `elem` (adjacency prv1)
 
 allProvinces :: [Province]
 allProvinces = [minBound .. maxBound]
 
--- | A list of all pairs for which adjacent is symmetric
+-- | A list of all pairs for which adjacency is symmetric
 symmetryCheck :: [(Province, Province)]
 symmetryCheck = filter (not . adjacencyIsSymmetric) (pairs allProvinces)
 
@@ -285,17 +287,17 @@ pairs l@(x:xs) = (map ((,) x) l) ++ (pairs xs)
 
 adjacencyIsSymmetric :: (Province, Province) -> Bool
 adjacencyIsSymmetric (p1, p2) =
-  if p1 `elem` adjacent p2
-  then p2 `elem` adjacent p1
-  else not $ p2 `elem` adjacent p1
+  if adjacent p1 p2
+  then adjacent p2 p1
+  else not $ adjacent p2 p1
 
--- | A list of all pairs for which adjacent is reflexive (we want it to be
+-- | A list of all pairs for which adjacency is reflexive (we want it to be
 --   antireflexive).
 antireflexivityCheck :: [Province]
 antireflexivityCheck = filter (not . adjacencyIsAntireflexive) allProvinces
 
 adjacencyIsAntireflexive :: Province -> Bool
-adjacencyIsAntireflexive p = not (p `elem` adjacent p)
+adjacencyIsAntireflexive p = not $ p `adjacent` p
 
 type SupplyCentre = Bool
 
@@ -418,6 +420,7 @@ country WesternMediterranean = Nothing
 
 -- | Description of a place on the board.
 --   The only values of this type shall correspond to the Province enumeration
+--   TBD get rid of this? Probably don't need it.
 data Territory = Territory Province ProvinceType SupplyCentre
   deriving (Eq, Ord, Show)
 
