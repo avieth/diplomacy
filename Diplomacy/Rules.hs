@@ -52,7 +52,7 @@ canOccupyProvince unit province = case provinceType province of
 canOccupy :: Unit -> ProvinceTarget -> Bool
 canOccupy unit pt = canOccupyProvince unit (ptProvince pt)
 
--- | Valid moves do not correspond exactly to adjacent provinces.
+-- | Valid moves do not correspond exactly to adjacent (incl. convoy) provinces.
 --   We account here for the special cases involving coastlines.
 --   See https://www.wizards.com/avalonhill/rules/diplomacy.pdf page 5
 --   The Kiel/Constantinople and Sweden/Denmark clarifications are already
@@ -63,13 +63,32 @@ canMoveFromTo :: ProvinceTarget -> ProvinceTarget -> Bool
 -- can never move to another special coastline (this is the whole point of
 -- the special case!) :)
 canMoveFromTo (Special _) (Special _) = False
+-- NB we do not use convoyAdjacent in this case because one can NEVER convoy
+-- to a special ProvinceTarget; only fleets can move there, and fleets cannot
+-- move as part of a convoy.
 canMoveFromTo pt0 (Special pc) = let prv0 = ptProvince pt0
   in (not (blacklist prv0 pc)) && (not (isInland prv0)) && ((pcProvince pc) `adjacent` prv0)
 -- This one is definitely correct; canMoveFromTo is absolutely, certainly
 -- symmetric!
 canMoveFromTo (Special pc) pt0 = canMoveFromTo pt0 (Special pc)
 -- The fall-through case: just use the Province adjacency definition.
-canMoveFromTo pt0 pt1 = (ptProvince pt0) `adjacent` (ptProvince pt1)
+canMoveFromTo pt0 pt1 =
+  (canMoveFromToNoConvoy pt0 pt1) || (ptProvince pt0) `convoyAdjacent` (ptProvince pt1)
+
+canMoveFromToNoConvoy :: ProvinceTarget -> ProvinceTarget -> Bool
+canMoveFromToNoConvoy (Normal prv0) (Normal prv1) = prv0 `adjacent` prv1
+canMoveFromToNoConvoy x y = canMoveFromTo x y
+
+-- | Adjacent via convoy iff there is a nontrivial path over water provinces
+--   from first province to second.
+convoyAdjacent :: Province -> Province -> Bool
+convoyAdjacent = convoyAdjacent' []
+
+-- Must use the 'used' name to track provinces already visited, so that we don't
+-- get caught in loops in our adjacency function.
+convoyAdjacent' used prv0 prv1 =
+  let waterNeighbours = filter (\x -> isWater x && (not (elem x used))) (adjacency prv0)
+  in any (\x -> (x `adjacent` prv1) || (convoyAdjacent' (x : used) x prv1)) waterNeighbours
 
 -- | True iff the given province should not be considered left-adjacent to the
 --   given province coast.
@@ -87,6 +106,10 @@ orderValid :: Board -> Order -> Bool
 orderValid board (Hold unit pt0) = occupies board unit pt0
 orderValid board (Move unit pt0 pt1) =
   (canOccupy unit pt1) && (occupies board unit pt0) && (canMoveFromTo pt0 pt1)
+orderValid board (Support unit0 pt0 unit1 pt1 pt2) =
+  (occupies board unit0 pt0) && (occupies board unit1 pt1) && (canMoveFromToNoConvoy pt1 pt2)
+orderValid board (Convoy unit0 pt0 unit1 pt1 pt2) =
+  (occupies board unit0 pt0) && (occupies board unit1 pt1) && (canMoveFromTo pt1 pt2)
 
 {-
 TODO
