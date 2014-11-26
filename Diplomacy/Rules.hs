@@ -3,7 +3,7 @@ module Diplomacy.Rules (
     isHomeSupplyCentre
   , canBuildHere
 
-  , canMoveFromTo
+  , unitCanMoveFromTo
 
   ) where
 
@@ -20,37 +20,20 @@ isHomeSupplyCentre c p = (supplyCentre p) && (isHome c p)
 canBuildHere :: Board -> Country -> Province -> Bool
 canBuildHere b c p = (isHomeSupplyCentre c p) && (controls b c p)
 
--- Let's dive in with the most straightforward program for resolving ordres:
+-- Let's dive in with the most straightforward program for resolving orders:
 -- the very definition of resolving orders!
 -- 
 -- We prefer to characterize unsuccessful orders, because the user is typically
 -- interested in why an order failed, not why it succeeded.
 
-type OrderSet = [Order]
-
--- | TODO sum of all possible reasons
-type Reason = String
-
-data OrderOutcome
-  = Unsuccessful Reason
-  | Successful
-    deriving (Show)
-
-type OrderOutcomeFunction = Order -> Board -> OrderSet -> OrderOutcome
-
-or :: OrderOutcomeFunction -> OrderOutcomeFunction -> OrderOutcomeFunction
-or f g order board orderSet = case f order board orderSet of
-  Successful -> g order board orderSet
-  unsuccessful -> unsuccessful
-
-canOccupyProvince :: Unit -> Province -> Bool
-canOccupyProvince unit province = case provinceType province of
+unitCanOccupyProvince :: Unit -> Province -> Bool
+unitCanOccupyProvince unit province = case provinceType province of
   Inland -> isArmy unit
   Water -> isFleet unit
   Coastal -> True
 
-canOccupy :: Unit -> ProvinceTarget -> Bool
-canOccupy unit pt = canOccupyProvince unit (ptProvince pt)
+unitCanOccupy :: Unit -> ProvinceTarget -> Bool
+unitCanOccupy unit pt = unitCanOccupyProvince unit (ptProvince pt)
 
 -- | Valid moves do not correspond exactly to adjacent (incl. convoy) provinces.
 --   We account here for the special cases involving coastlines.
@@ -58,26 +41,34 @@ canOccupy unit pt = canOccupyProvince unit (ptProvince pt)
 --   The Kiel/Constantinople and Sweden/Denmark clarifications are already
 --   defined in the Province adjacency; we need only look after the split
 --   coastlines in StPetersburg, Bulgaria, and Spain.
-canMoveFromTo :: ProvinceTarget -> ProvinceTarget -> Bool
+unitCanMoveFromTo :: Unit -> ProvinceTarget -> ProvinceTarget -> Bool
 -- Easiest case first: convince yourself that a fleet on a special coastline
 -- can never move to another special coastline (this is the whole point of
 -- the special case!) :)
-canMoveFromTo (Special _) (Special _) = False
+-- Of course, this is also false if the unit is an army; it does not make sense
+-- to put an army on one of these special places, they just go on the province
+-- represented by it.
+unitCanMoveFromTo _ (Special _) (Special _) = False
 -- NB we do not use convoyAdjacent in this case because one can NEVER convoy
 -- to a special ProvinceTarget; only fleets can move there, and fleets cannot
 -- move as part of a convoy.
-canMoveFromTo pt0 (Special pc) = let prv0 = ptProvince pt0
+unitCanMoveFromTo unit pt0 (Special pc) = let prv0 = ptProvince pt0
   in (not (blacklist prv0 pc)) && (not (isInland prv0)) && ((pcProvince pc) `adjacent` prv0)
--- This one is definitely correct; canMoveFromTo is absolutely, certainly
+-- This one is definitely correct; unitCanMoveFromTo is absolutely, certainly
 -- symmetric!
-canMoveFromTo (Special pc) pt0 = canMoveFromTo pt0 (Special pc)
--- The fall-through case: just use the Province adjacency definition.
-canMoveFromTo pt0 pt1 =
-  (canMoveFromToNoConvoy pt0 pt1) || (ptProvince pt0) `convoyAdjacent` (ptProvince pt1)
+unitCanMoveFromTo unit (Special pc) pt0 = unitCanMoveFromTo unit pt0 (Special pc)
+-- The fall-through case: just use the Province adjacency definition, eliminating
+-- a convoy-adjacent move for fleets.
+unitCanMoveFromTo unit pt0 pt1 =
+  if isArmy unit
+  then (unitCanMoveFromToNoConvoy unit pt0 pt1) || (ptProvince pt0) `convoyAdjacent` (ptProvince pt1)
+  else (unitCanMoveFromToNoConvoy unit pt0 pt1)
 
-canMoveFromToNoConvoy :: ProvinceTarget -> ProvinceTarget -> Bool
-canMoveFromToNoConvoy (Normal prv0) (Normal prv1) = prv0 `adjacent` prv1
-canMoveFromToNoConvoy x y = canMoveFromTo x y
+unitCanMoveFromToNoConvoy :: Unit -> ProvinceTarget -> ProvinceTarget -> Bool
+unitCanMoveFromToNoConvoy _ (Normal prv0) (Normal prv1) = prv0 `adjacent` prv1
+-- unitCanMoveFromTo will not appeal to unitCanMoveFromToNoConvoy in the
+-- Special cases, so we're safe to refer to it here.
+unitCanMoveFromToNoConvoy unit x y = unitCanMoveFromTo unit x y
 
 -- | Adjacent via convoy iff there is a nontrivial path over water provinces
 --   from first province to second.
@@ -103,13 +94,16 @@ blacklist AegeanSea BulgariaEast = True
 blacklist _ _ = False
 
 orderValid :: Board -> Order -> Bool
-orderValid board (Hold unit pt0) = occupies board unit pt0
+orderValid = undefined
+{-
+orderValid board (Hold) = occupies board unit pt0
 orderValid board (Move unit pt0 pt1) =
-  (canOccupy unit pt1) && (occupies board unit pt0) && (canMoveFromTo pt0 pt1)
+  (canOccupy unit pt1) && (occupies board unit pt0) && (unitCanMoveFromTo pt0 pt1)
 orderValid board (Support unit0 pt0 unit1 pt1 pt2) =
-  (occupies board unit0 pt0) && (occupies board unit1 pt1) && (canMoveFromToNoConvoy pt1 pt2)
+  (occupies board unit0 pt0) && (occupies board unit1 pt1) && (unitCanMoveFromToNoConvoy pt1 pt2)
 orderValid board (Convoy unit0 pt0 unit1 pt1 pt2) =
-  (occupies board unit0 pt0) && (occupies board unit1 pt1) && (canMoveFromTo pt1 pt2)
+  (occupies board unit0 pt0) && (occupies board unit1 pt1) && (unitCanMoveFromTo pt1 pt2)
+-}
 
 {-
 TODO
