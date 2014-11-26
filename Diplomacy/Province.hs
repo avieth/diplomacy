@@ -4,16 +4,12 @@ module Diplomacy.Province (
   , allProvinces
 
   , adjacency
+  , adjacent
 
   , ProvinceType(..)
   , provinceType
   , supplyCentre
 
-  , Territory
-  , territory
-  , allTerritories
-  , province
-  , isSupplyCentre
   , isCoastal
   , isInland
   , isWater
@@ -23,6 +19,12 @@ module Diplomacy.Province (
   -- Verification
   , symmetryCheck
   , antireflexivityCheck
+
+  , ProvinceTarget(..)
+  , ProvinceCoast(..)
+
+  , pcProvince 
+  , ptProvince
 
   ) where
 
@@ -418,33 +420,45 @@ country Skagerrak = Nothing
 country TyrrhenianSea = Nothing
 country WesternMediterranean = Nothing
 
--- | Description of a place on the board.
---   The only values of this type shall correspond to the Province enumeration
---   TBD get rid of this? Probably don't need it.
-data Territory = Territory Province ProvinceType SupplyCentre
-  deriving (Eq, Ord, Show)
+-- | Province does not express all move order targets, like the north coast
+--   of StPetersburg.
+data ProvinceTarget
+  = Normal Province
+  | Special ProvinceCoast
+    deriving (Eq, Ord)
 
--- | Injection into Territory; just pairs with the province type.
-territory :: Province -> Territory
-territory p = Territory p (provinceType p) (supplyCentre p)
+data ProvinceCoast
+  = StPetersburgNorth
+  | StPetersburgWest
+  | SpainNorth
+  | SpainSouth
+  | BulgariaEast
+  | BulgariaSouth
+    deriving (Eq, Ord)
 
-allTerritories :: [Territory]
-allTerritories = map territory allProvinces
+pcProvince :: ProvinceCoast -> Province
+pcProvince StPetersburgNorth = StPetersburg
+pcProvince StPetersburgWest = StPetersburg
+pcProvince SpainNorth = Spain
+pcProvince SpainSouth = Spain
+pcProvince BulgariaEast = Bulgaria
+pcProvince BulgariaSouth = Bulgaria
 
-isSupplyCentre :: Territory -> Bool
-isSupplyCentre (Territory _ _ x) = x
+ptProvince :: ProvinceTarget -> Province
+ptProvince (Normal p) = p
+ptProvince (Special c) = pcProvince c
 
-isCoastal :: Territory -> Bool
-isCoastal (Territory _ Coastal _) = True
-isCoastal _ = False
+isCoastal :: Province -> Bool
+isCoastal prv = case provinceType prv of
+  Coastal -> True
+  _ -> False
 
-isInland :: Territory -> Bool
-isInland (Territory _ Inland _) = True
-isInland _ = False
+isInland :: Province -> Bool
+isInland prv = case provinceType prv of
+  Inland -> True
+  _ -> False
 
-isWater :: Territory -> Bool
-isWater (Territory _ Water _) = True
-isWater _ = False
-
-province :: Territory -> Province
-province (Territory x _ _) = x
+isWater :: Province -> Bool
+isWater prv = case provinceType prv of
+  Water -> True
+  _ -> False
