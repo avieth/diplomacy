@@ -15,6 +15,7 @@ module Diplomacy.Province (
   , isWater
 
   , country
+  , isHome
 
   -- Verification
   , symmetryCheck
@@ -424,6 +425,9 @@ country NorwegianSea = Nothing
 country Skagerrak = Nothing
 country TyrrhenianSea = Nothing
 country WesternMediterranean = Nothing
+
+isHome :: Country -> Province -> Bool
+isHome c p = maybe False ((==) c) (country p)
 
 -- | Province does not express all move order targets, like the north coast
 --   of StPetersburg.

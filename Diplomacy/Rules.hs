@@ -15,7 +15,7 @@ import Diplomacy.Unit
 
 -- | TODO should move this one to Province module maybe?
 isHomeSupplyCentre :: Country -> Province -> Bool
-isHomeSupplyCentre c p = (supplyCentre p) && (maybe False ((==) c) (country p))
+isHomeSupplyCentre c p = (supplyCentre p) && (isHome c p)
 
 canBuildHere :: Board -> Country -> Province -> Bool
 canBuildHere b c p = (isHomeSupplyCentre c p) && (controls b c p)
