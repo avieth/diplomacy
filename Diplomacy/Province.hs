@@ -434,7 +434,7 @@ isHome c p = maybe False ((==) c) (country p)
 data ProvinceTarget
   = Normal Province
   | Special ProvinceCoast
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, Show)
 
 allProvinceTargets = map Normal allProvinces ++ map Special (allProvinces >>= provinceCoasts)
 
@@ -452,7 +452,7 @@ data ProvinceCoast
   | SpainSouth
   | BulgariaEast
   | BulgariaSouth
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, Show)
 
 pcProvince :: ProvinceCoast -> Province
 pcProvince StPetersburgNorth = StPetersburg
