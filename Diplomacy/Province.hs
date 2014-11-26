@@ -24,7 +24,12 @@ module Diplomacy.Province (
   , ProvinceCoast(..)
 
   , pcProvince 
+  , provinceCoasts
   , ptProvince
+
+  , provinceTargets
+  , provinceTargetCluster
+  , allProvinceTargets
 
   ) where
 
@@ -427,6 +432,15 @@ data ProvinceTarget
   | Special ProvinceCoast
     deriving (Eq, Ord)
 
+allProvinceTargets = map Normal allProvinces ++ map Special (allProvinces >>= provinceCoasts)
+
+provinceTargets :: Province -> [ProvinceTarget]
+provinceTargets x = Normal x : (map Special (provinceCoasts x))
+
+provinceTargetCluster :: ProvinceTarget -> [ProvinceTarget]
+provinceTargetCluster (Normal x) = provinceTargets x
+provinceTargetCluster (Special c) = (Normal $ pcProvince c) : (map Special (provinceCoasts (pcProvince c)))
+
 data ProvinceCoast
   = StPetersburgNorth
   | StPetersburgWest
@@ -443,6 +457,12 @@ pcProvince SpainNorth = Spain
 pcProvince SpainSouth = Spain
 pcProvince BulgariaEast = Bulgaria
 pcProvince BulgariaSouth = Bulgaria
+
+provinceCoasts :: Province -> [ProvinceCoast]
+provinceCoasts StPetersburg = [StPetersburgNorth, StPetersburgWest]
+provinceCoasts Spain = [SpainNorth, SpainSouth]
+provinceCoasts Bulgaria = [BulgariaEast, BulgariaSouth]
+provinceCoasts _ = []
 
 ptProvince :: ProvinceTarget -> Province
 ptProvince (Normal p) = p
