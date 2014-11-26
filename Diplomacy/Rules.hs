@@ -18,7 +18,7 @@ isHomeSupplyCentre :: Country -> Province -> Bool
 isHomeSupplyCentre c p = (supplyCentre p) && (maybe False ((==) c) (country p))
 
 canBuildHere :: Board -> Country -> Province -> Bool
-canBuildHere b c p = (isHomeSupplyCentre c p) && (maybe False ((==) c) (controllerOf b p))
+canBuildHere b c p = (isHomeSupplyCentre c p) && (controls b c p)
 
 -- Let's dive in with the most straightforward program for resolving ordres:
 -- the very definition of resolving orders!
