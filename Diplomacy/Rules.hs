@@ -7,6 +7,8 @@ module Diplomacy.Rules (
 
   ) where
 
+import Control.Applicative
+
 import Diplomacy.Board
 import Diplomacy.Province
 import Diplomacy.Country
@@ -97,29 +99,75 @@ blacklist BlackSea BulgariaSouth = True
 blacklist AegeanSea BulgariaEast = True
 blacklist _ _ = False
 
-orderValid :: Board -> Country -> Order -> Bool
+-- ORDER VALIDITY --
+
+-- | All of the reasons why an order can be invalid.
+--   TBD maybe we want to give more detailed reasons?
+data InvalidReason
+  = SubjectDoesNotOccupy Country Unit ProvinceTarget
+  | ObjectDoesNotOccupy Country Unit ProvinceTarget
+  | CannotMove Unit ProvinceTarget ProvinceTarget
+  | CannotSupport Unit ProvinceTarget (Maybe ProvinceTarget)
+  | ArmyCannotConvoy ProvinceTarget
+    deriving (Show)
+
+type OrderValidity = Maybe InvalidReason
+
+invalidIfFalse :: InvalidReason -> Bool -> OrderValidity
+invalidIfFalse _ True = valid 
+invalidIfFalse r False = invalid r
+
+invalidIfTrue :: InvalidReason -> Bool -> OrderValidity
+invalidIfTrue r b = invalidIfFalse r (not b)
+
+isValid :: OrderValidity -> Bool
+isValid Nothing = True
+isValid _ = False
+
+isInvalid :: OrderValidity -> Bool
+isInvalid = not . isValid
+
+valid :: OrderValidity
+valid = Nothing
+
+invalid :: InvalidReason -> OrderValidity
+invalid = Just
+
+orderValid :: Board -> Country -> Order -> OrderValidity
 orderValid board country order =
   let subject = orderSubject order
       object = orderObject order
-  in (orderSubjectValid board country subject) && (orderObjectValid board country subject object)
+  in    (orderSubjectValid board country subject) 
+    <|> (orderObjectValid board country subject object)
 
-orderSubjectValid :: Board -> Country -> OrderSubject -> Bool
-orderSubjectValid board country (OrderSubject unit pt) = occupies board (align unit country) pt
+orderSubjectValid :: Board -> Country -> OrderSubject -> OrderValidity
+orderSubjectValid board country (OrderSubject unit pt) =
+  invalidIfFalse (SubjectDoesNotOccupy country unit pt) (occupies board (align unit country) pt)
+
 -- We assume the OrderSubject is valid in this one.
 -- We cannot verify an OrderObject without an OrderSubject!
 -- TODO must use the country to eliminate self-destructive supports.
 -- First, though, we must find the relevant rule in the specification.
-orderObjectValid :: Board -> Country -> OrderSubject -> OrderObject -> Bool
-orderObjectValid board country _ Hold = True
+orderObjectValid :: Board -> Country -> OrderSubject -> OrderObject -> OrderValidity
+orderObjectValid board country _ Hold = valid
 orderObjectValid board country (OrderSubject unit pt0) (Move pt1) =
-  unitCanMoveFromTo unit pt0 pt1
+  invalidIfFalse (CannotMove unit pt0 pt1) (unitCanMoveFromTo unit pt0 pt1)
 orderObjectValid board country (OrderSubject unit0 pt0) (Support unit1 pt1 (Just pt2)) =
   -- Can't support through a convoy, hence the last clause: supporter must be
   -- able to move to the target which it supports, without convoy.
-  -- TBD eliminate support against one's own unit?
-  (occupies board (align unit1 country) pt1) && (unitCanMoveFromTo unit1 pt1 pt2) && (unitCanMoveFromToNoConvoy unit0 pt0 pt2)
+      invalidIfFalse (ObjectDoesNotOccupy country unit1 pt1) (occupies board (align unit1 country) pt1)
+  <|> invalidIfFalse (CannotMove unit1 pt1 pt2) (unitCanMoveFromTo unit1 pt1 pt2)
+  <|> invalidIfFalse (CannotSupport unit0 pt0 (Just pt2)) (unitCanMoveFromToNoConvoy unit0 pt0 pt2)
+  -- Eliminate support against one's own unit.
+  -- TBD where in the rule book is this stated?
+  -- I am not confident that this is an invalid order... I think it needs to
+  -- pass through to resolution.
+  -- <|> invalidIfTrue (CannotSupport unit0 pt1 (Just pt2)) (countryOccupies board country pt2)
 orderObjectValid board country (OrderSubject unit0 pt0) (Support unit1 pt1 Nothing) =
-  (occupies board (align unit1 country) pt1) && (unitCanMoveFromToNoConvoy unit0 pt0 pt1)
+      invalidIfFalse (ObjectDoesNotOccupy country unit1 pt1) (occupies board (align unit1 country) pt1)
+  <|> invalidIfFalse (CannotSupport unit0 pt1 Nothing) (unitCanMoveFromToNoConvoy unit0 pt0 pt1)
 --
 orderObjectValid board country (OrderSubject unit0 pt0) (Convoy unit1 pt1 pt2) =
-  (isFleet unit0) && (occupies board (align unit1 country) pt1) && (unitCanMoveFromToWithConvoy unit1 pt1 pt2)
+      invalidIfFalse (ArmyCannotConvoy pt0) (isFleet unit0)
+  <|> invalidIfFalse (ObjectDoesNotOccupy country unit1 pt1) (occupies board (align unit1 country) pt1)
+  <|> invalidIfFalse (CannotMove unit1 pt1 pt2) (unitCanMoveFromToWithConvoy unit1 pt1 pt2)
