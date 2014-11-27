@@ -70,6 +70,10 @@ unitCanMoveFromToNoConvoy _ (Normal prv0) (Normal prv1) = prv0 `adjacent` prv1
 -- Special cases, so we're safe to refer to it here.
 unitCanMoveFromToNoConvoy unit x y = unitCanMoveFromTo unit x y
 
+unitCanMoveFromToWithConvoy unit (Normal prv0) (Normal prv1) =
+  (isArmy unit) && (prv0 `convoyAdjacent` prv1)
+unitCanMoveFromToWithConvoy _ _ _ = False
+
 -- | Adjacent via convoy iff there is a nontrivial path over water provinces
 --   from first province to second.
 convoyAdjacent :: Province -> Province -> Bool
@@ -93,30 +97,29 @@ blacklist BlackSea BulgariaSouth = True
 blacklist AegeanSea BulgariaEast = True
 blacklist _ _ = False
 
-orderValid :: Board -> Order -> Bool
-orderValid = undefined
-{-
-orderValid board (Hold) = occupies board unit pt0
-orderValid board (Move unit pt0 pt1) =
-  (canOccupy unit pt1) && (occupies board unit pt0) && (unitCanMoveFromTo pt0 pt1)
-orderValid board (Support unit0 pt0 unit1 pt1 pt2) =
-  (occupies board unit0 pt0) && (occupies board unit1 pt1) && (unitCanMoveFromToNoConvoy pt1 pt2)
-orderValid board (Convoy unit0 pt0 unit1 pt1 pt2) =
-  (occupies board unit0 pt0) && (occupies board unit1 pt1) && (unitCanMoveFromTo pt1 pt2)
--}
+orderValid :: Board -> Country -> Order -> Bool
+orderValid board country order =
+  let subject = orderSubject order
+      object = orderObject order
+  in (orderSubjectValid board country subject) && (orderObjectValid board country subject object)
 
-{-
-TODO
-orderOutcome :: Board -> OrderSet -> OrderOutcome
-orderOutcome board orderSet h@(Hold _ _) = holdOutcome board orderSet h
---orderOutcome board orderSet m@(Move _ _ _) = isMoveSuccessful board orderSet m
---orderOutcome board orderSet s@(Support _ _ _ _ _) = isSupportSuccessful board orderSet s
---orderOutcome board orderSet c@(Convoy _ _ _ _ _) = isConvoySuccessful board orderSet c
-
--- Start with hold. By definition, a hold is unsuccessful iff it's either
--- an invalid order or there is some other force moving into its province that
--- has more support.
-holdOutcome = orderInvalid `or` notStrongestForce
-
-moveOutcome = orderInvalid `or` 
--}
+orderSubjectValid :: Board -> Country -> OrderSubject -> Bool
+orderSubjectValid board country (OrderSubject unit pt) = occupies board (align unit country) pt
+-- We assume the OrderSubject is valid in this one.
+-- We cannot verify an OrderObject without an OrderSubject!
+-- TODO must use the country to eliminate self-destructive supports.
+-- First, though, we must find the relevant rule in the specification.
+orderObjectValid :: Board -> Country -> OrderSubject -> OrderObject -> Bool
+orderObjectValid board country _ Hold = True
+orderObjectValid board country (OrderSubject unit pt0) (Move pt1) =
+  unitCanMoveFromTo unit pt0 pt1
+orderObjectValid board country (OrderSubject unit0 pt0) (Support unit1 pt1 (Just pt2)) =
+  -- Can't support through a convoy, hence the last clause: supporter must be
+  -- able to move to the target which it supports, without convoy.
+  -- TBD eliminate support against one's own unit?
+  (occupies board (align unit1 country) pt1) && (unitCanMoveFromTo unit1 pt1 pt2) && (unitCanMoveFromToNoConvoy unit0 pt0 pt2)
+orderObjectValid board country (OrderSubject unit0 pt0) (Support unit1 pt1 Nothing) =
+  (occupies board (align unit1 country) pt1) && (unitCanMoveFromToNoConvoy unit0 pt0 pt1)
+--
+orderObjectValid board country (OrderSubject unit0 pt0) (Convoy unit1 pt1 pt2) =
+  (isFleet unit0) && (occupies board (align unit1 country) pt1) && (unitCanMoveFromToWithConvoy unit1 pt1 pt2)
