@@ -14,6 +14,8 @@ module Diplomacy.Board (
   , occupies
   , controls
 
+  , countryOccupies
+
   ) where
 
 import qualified Data.Map as M
@@ -90,3 +92,6 @@ occupies b u pt = maybe False ((==) u) (unitAt b pt)
 
 controls :: Board -> Country -> Province -> Bool
 controls b c p = maybe False ((==) c) (controllerOf b p)
+
+countryOccupies :: Board -> Country -> ProvinceTarget -> Bool
+countryOccupies b c pt = maybe False (((==) c) . alignedCountry) (unitAt b pt)
