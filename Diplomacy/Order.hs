@@ -27,11 +27,13 @@ data OrderSubject = OrderSubject Unit ProvinceTarget
 --     H
 --     M Paris (written "-Paris")
 --     S F London-NorthSea
+--     S A Munich
 --     C A Spain-Naples
 data OrderObject
   = Hold
   | Move ProvinceTarget
-  | Support Unit ProvinceTarget ProvinceTarget
+  | Support Unit ProvinceTarget (Maybe ProvinceTarget)
+  -- ^ Second one is maybe because we can support a hold.
   | Convoy Unit ProvinceTarget ProvinceTarget
     deriving (Eq, Ord, Show)
 
