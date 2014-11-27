@@ -40,7 +40,7 @@ import           Diplomacy.Unit
 data Board = Board {
     _occupy :: M.Map ProvinceTarget Occupy
   , _control :: M.Map Province Control
-  }
+  } deriving (Show)
 
 emptyBoard :: Board
 emptyBoard = Board occupyMap controlMap
