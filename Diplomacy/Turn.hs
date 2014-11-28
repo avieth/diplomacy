@@ -4,6 +4,7 @@ module Turn (
 
   , firstTurn
   , nextTurn
+  , asYear
 
   ) where
 
