@@ -1,38 +1,114 @@
-module Phase (
+{-# LANGUAGE GADTs, TypeFamilies #-}
 
-    Phase
+module Diplomacy.Phase (
 
-  , firstPhase
-  , nextPhase
+  -- Types
+    Spring
+  , SpringRetreat
+  , Autumn
+  , AutumnRetreat
+  , Winter
+  , Phase
+  , NextPhase
 
+  -- Injections into Phase
+  , springPhase
+  , springRetreatPhase
+  , autumnPhase
+  , autumnRetreatPhase
+  , winterPhase
+
+  -- Indicators on Phase
   , isSpring
+  , isSpringRetreat
   , isAutumn
+  , isAutumnRetreat
   , isWinter
+
+  , nextPhase
 
   ) where
 
-data Phase
-  = Spring
-  | Autumn
-  | Winter
-    deriving (Eq, Ord, Show)
+-- Each turn is divided into 5 phases. We give a type for each of them.
 
-firstPhase :: Phase
-firstPhase = Spring
+data Spring
+data SpringRetreat
+data Autumn
+data AutumnRetreat
+data Winter
 
-nextPhase :: Phase -> Phase
-nextPhase Spring = Autumn
-nextPhase Autumn = Winter
-nextPhase Winter = Spring
+-- It will be useful to have a type-level cyclic order of the above types.
 
-isSpring :: Phase -> Bool
-isSpring (Spring _) = True
+type family NextPhase x where
+  NextPhase Spring = SpringRetreat
+  NextPhase SpringRetreat = Autumn
+  NextPhase Autumn = AutumnRetreat
+  NextPhase AutumnRetreat = Winter
+  NextPhase Winter = Spring
+
+-- | A phase is parameterized by a phase type.
+data Phase a where
+  PSpring :: Phase Spring
+  PSpringRetreat :: Phase SpringRetreat
+  PAutumn :: Phase Autumn
+  PAutumnRetreat :: Phase AutumnRetreat
+  PWinter :: Phase Winter
+
+instance Show (Phase a) where
+  show PSpring = "Spring"
+  show PSpringRetreat = "Spring Retreat"
+  show PAutumn = "Autumn"
+  show PAutumnRetreat = "Autumn Retreat"
+  show PWinter = "Winter"
+
+instance Eq (Phase a) where
+  PSpring == PSpring = True
+  PSpringRetreat == PSpringRetreat = True
+  PAutumn == PAutumn = True
+  PAutumnRetreat == PAutumnRetreat = True
+  PWinter == PWinter = True
+  _ == _ = False
+
+instance Ord (Phase a) where
+  PSpring <= _ = True
+  _ <= PSpring = False
+  PSpringRetreat <= _ = True
+  _ <= PSpringRetreat = False
+  PAutumn <= _ = True
+  _ <= PAutumn = False
+  PAutumnRetreat <= _ = True
+  _ <= PAutumnRetreat = False
+  PWinter <= PWinter = True
+
+-- | A cyclic ordering of phases.
+nextPhase :: Phase a -> Phase (NextPhase a)
+nextPhase PSpring = PSpringRetreat
+nextPhase PSpringRetreat = PAutumn
+nextPhase PAutumn = PAutumnRetreat
+nextPhase PAutumnRetreat = PWinter
+nextPhase PWinter = PSpring
+
+springPhase = PSpring
+
+springRetreatPhase = PSpringRetreat
+
+autumnPhase = PAutumn
+
+autumnRetreatPhase = PAutumnRetreat
+
+winterPhase = PWinter
+
+isSpring PSpring = True
 isSpring _ = False
 
-isAutumn :: Phase -> Bool
-isAutumn (Autumn _) = True
+isSpringRetreat PSpringRetreat = True
+isSpringRetreat _ = False
+
+isAutumn PAutumn = True
 isAutumn _ = False
 
-isWinter :: Phase -> Bool
-isWinter (Winter) = True
+isAutumnRetreat PAutumnRetreat = True
+isAutumnRetreat _ = False
+
+isWinter PWinter = True
 isWinter _ = False

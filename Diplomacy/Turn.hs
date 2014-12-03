@@ -1,4 +1,4 @@
-module Turn (
+module Diplomacy.Turn (
 
     Turn
 
@@ -9,10 +9,7 @@ module Turn (
   ) where
 
 newtype Turn = Turn Int
-  deriving (Eq, Ord)
-
-instance Show Turn where
-  show = show . asYear
+  deriving (Eq, Ord, Show)
 
 firstTurn :: Turn
 firstTurn = Turn 1
@@ -20,5 +17,11 @@ firstTurn = Turn 1
 nextTurn :: Turn -> Turn
 nextTurn (Turn i) = Turn (i+1)
 
-asYear :: Turn -> Int
-asYear (Turn n) = 1900 + n
+-- | Always > base. Proof?
+--   Suffices to show that n > 0
+--   If we lift > to Turn then
+--     firstTurn > 0
+--     nextTurn t > t
+--   Any turn is either firstTurn or nextTurn t
+asYear :: Int -> Turn -> Int
+asYear base (Turn n) = base + n
