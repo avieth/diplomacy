@@ -42,11 +42,11 @@ alignedCountry (AlignedUnit _ c) = c
 alignedUnit :: AlignedUnit -> Unit
 alignedUnit (AlignedUnit u _) = u
 
-army :: Army -> Unit
-army = UArmy
+army :: Unit
+army = UArmy Army
 
-fleet :: Fleet -> Unit
-fleet = UFleet
+fleet :: Unit
+fleet = UFleet Fleet
 
 isArmy :: Unit -> Bool
 isArmy (UArmy _) = True

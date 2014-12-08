@@ -19,10 +19,12 @@ module Diplomacy.Board (
   ) where
 
 import qualified Data.Map as M
+import           Control.Applicative
 
 import           Diplomacy.Country
 import           Diplomacy.Province
 import           Diplomacy.Unit
+import           Diplomacy.PlayerCount
 
 -- | Description of a Diplomacy Board 
 --
@@ -49,28 +51,101 @@ emptyBoard = Board occupyMap controlMap
   where occupyMap = M.fromList $ (map (\x -> (x, unoccupied))) allProvinceTargets
         controlMap = M.fromList $ (map (\x -> (x, uncontrolled))) allProvinces
 
+-- | Specification of the initial board layout.
+--   A direct translation of https://www.wizards.com/avalonhill/rules/diplomacy.pdf
+--   page 2
+initialBoard :: PlayerCount -> Board
+initialBoard Seven =
+
+    occupy (Normal Vienna) austrianArmy
+  . occupy (Normal Budapest) austrianArmy
+  . occupy (Normal Trieste) austrianFleet
+  . control Vienna (Just Austria)
+  . control Budapest (Just Austria)
+  . control Trieste (Just Austria)
+
+  . occupy (Normal London) englishFleet
+  . occupy (Normal Edinburgh) englishFleet
+  . occupy (Normal Liverpool) englishArmy
+  . control London (Just UnitedKingdom)
+  . control Edinburgh (Just UnitedKingdom)
+  . control Liverpool (Just UnitedKingdom)
+
+  . occupy (Normal Paris) frenchArmy
+  . occupy (Normal Marseilles) frenchArmy
+  . occupy (Normal Brest) frenchFleet
+  . control Paris (Just France)
+  . control Marseilles (Just France)
+  . control Brest (Just France)
+
+  . occupy (Normal Berlin) germanArmy
+  . occupy (Normal Munich) germanArmy
+  . occupy (Normal Kiel) germanFleet
+  . control Berlin (Just Germany)
+  . control Munich (Just Germany)
+  . control Kiel (Just Germany)
+
+  . occupy (Normal Rome) italianArmy
+  . occupy (Normal Venice) italianArmy
+  . occupy (Normal Naples) italianFleet
+  . control Rome (Just Italy)
+  . control Venice (Just Italy)
+  . control Naples (Just Italy)
+
+  . occupy (Normal Moscow) russianArmy
+  . occupy (Normal Sevastopol) russianFleet
+  . occupy (Normal Warsaw) russianArmy
+  . occupy (Special StPetersburgWest) russianFleet
+  . control Moscow (Just Russia)
+  . control Sevastopol (Just Russia)
+  . control Warsaw (Just Russia)
+  . control (pcProvince StPetersburgWest) (Just Russia)
+
+  . occupy (Normal Ankara) turkishFleet
+  . occupy (Normal Constantinople) turkishArmy
+  . occupy (Normal Smyrna) turkishArmy
+  . control Ankara (Just Ottoman)
+  . control Constantinople (Just Ottoman)
+  . control Smyrna (Just Ottoman)
+
+  $ emptyBoard
+    where austrianArmy = Just (align army Austria)
+          austrianFleet = Just (align fleet Austria)
+          englishArmy = Just (align army UnitedKingdom)
+          englishFleet = Just (align fleet UnitedKingdom)
+          frenchArmy = Just (align army France)
+          frenchFleet = Just (align fleet France)
+          germanArmy = Just (align army Germany)
+          germanFleet = Just (align fleet Germany)
+          italianArmy = Just (align army Italy)
+          italianFleet = Just (align fleet Italy)
+          russianArmy = Just (align army Russia)
+          russianFleet = Just (align fleet Russia)
+          turkishArmy = Just (align army Ottoman)
+          turkishFleet = Just (align fleet Ottoman)
+
 type Occupy = Maybe AlignedUnit
 type Control = Maybe Country
 
 unoccupied = Nothing
 uncontrolled = Nothing
 
-occupy :: Board -> ProvinceTarget -> Maybe AlignedUnit -> Board
-occupy board pt maybeUnit = Board {
-    _occupy = M.insert pt maybeUnit (_occupy (clearTarget board pt))
+occupy :: ProvinceTarget -> Maybe AlignedUnit -> Board -> Board
+occupy pt maybeUnit board = Board {
+    _occupy = M.insert pt maybeUnit (_occupy (clearTarget pt board))
   , _control = _control board
   }
 
-clearTarget :: Board -> ProvinceTarget -> Board
-clearTarget board pt = Board {
+clearTarget :: ProvinceTarget -> Board -> Board
+clearTarget pt board = Board {
     _occupy = foldr combine (_occupy board) targets
   , _control = _control board
   }
     where targets = provinceTargetCluster pt
           combine next map = M.insert next Nothing map
 
-control :: Board -> Province -> Maybe Country -> Board
-control board prv maybeCountry = Board {
+control :: Province -> Maybe Country -> Board -> Board
+control prv maybeCountry board = Board {
     _control = M.insert prv maybeCountry (_control board)
   , _occupy = _occupy board
   }
