@@ -3,6 +3,7 @@ module Diplomacy.Board (
     Board
 
   , emptyBoard
+  , initialBoard
 
   , occupy
   , control
