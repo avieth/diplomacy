@@ -9,6 +9,7 @@ module Diplomacy.Province (
   , ProvinceType(..)
   , provinceType
   , supplyCentre
+  , supplyCentres
 
   , isCoastal
   , isInland
@@ -29,6 +30,7 @@ module Diplomacy.Province (
   , ptProvince
 
   , provinceTargets
+  , properProvinceTargets
   , provinceTargetCluster
   , allProvinceTargets
 
@@ -346,6 +348,9 @@ supplyCentre Liverpool = True
 supplyCentre Edinburgh = True
 supplyCentre _ = False
 
+supplyCentres :: [Province]
+supplyCentres = filter supplyCentre [minBound..maxBound]
+
 -- | Some provinces belong to a country.
 --   This is useful in conjunction with supplyCentre to determine which
 --   provinces can be used by a given country to build a unit.
@@ -437,6 +442,14 @@ data ProvinceTarget
     deriving (Eq, Ord, Show)
 
 allProvinceTargets = map Normal allProvinces ++ map Special (allProvinces >>= provinceCoasts)
+
+-- | Like allProvinceTargets but those ProvinceTargets which have ProvinceCoasts
+--   associated are eliminated from the list.
+properProvinceTargets :: [ProvinceTarget]
+properProvinceTargets = do
+  Normal p <- map Normal allProvinces
+  let cs = provinceCoasts p
+  if null cs then [Normal p] else map Special cs
 
 provinceTargets :: Province -> [ProvinceTarget]
 provinceTargets x = Normal x : (map Special (provinceCoasts x))
