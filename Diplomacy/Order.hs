@@ -1,8 +1,18 @@
+{-# LANGUAGE GADTs #-}
+
 module Diplomacy.Order (
 
     Order
 
+  , Typical
+  , Retreat
+  , Adjust
+
   , OrderSubject(..)
+
+  , orderSubjectUnit
+  , orderSubjectTarget
+
   , OrderObject(..)
 
   , order
@@ -22,6 +32,16 @@ import Diplomacy.Province
 data OrderSubject = OrderSubject Unit ProvinceTarget
   deriving (Eq, Ord, Show)
 
+orderSubjectUnit :: OrderSubject -> Unit
+orderSubjectUnit (OrderSubject u _) = u
+
+orderSubjectTarget :: OrderSubject -> ProvinceTarget
+orderSubjectTarget (OrderSubject _ pt) = pt
+
+data Typical
+data Retreat
+data Adjust
+
 -- | Object of an order; the action to be carried out by some subject.
 --   We describe it just like it's described in the rules:
 --     H
@@ -29,23 +49,45 @@ data OrderSubject = OrderSubject Unit ProvinceTarget
 --     S F London-NorthSea
 --     S A Munich
 --     C A Spain-Naples
-data OrderObject
-  = Hold
-  | Move ProvinceTarget
-  | Support Unit ProvinceTarget (Maybe ProvinceTarget)
+data OrderObject a where
+
+  Hold :: OrderObject Typical
+  Move :: ProvinceTarget -> OrderObject Typical
+  Support :: Unit -> ProvinceTarget -> (Maybe ProvinceTarget) -> OrderObject Typical
   -- ^ Second one is maybe because we can support a hold.
-  | Convoy Unit ProvinceTarget ProvinceTarget
-    deriving (Eq, Ord, Show)
+  Convoy :: Unit -> ProvinceTarget -> ProvinceTarget -> OrderObject Typical
+
+  Surrender :: OrderObject Retreat
+  -- ^ We call it surrender because disband is taken by the adjustment phase
+  --   order.
+  Retreat :: ProvinceTarget -> OrderObject Retreat
+
+  Disband :: OrderObject Adjust
+  Build :: Unit -> OrderObject Adjust
+
+instance Eq (OrderObject a) where
+  Hold == Hold = True
+  (Move t) == (Move t') = t == t'
+  (Support u pt ptt) == (Support u' pt' ptt') = u == u && pt == pt' && ptt == ptt'
+  (Convoy u pt ptt) == (Convoy u' pt' ptt') = u == u && pt == pt' && ptt == ptt'
+  Surrender == Surrender = True
+  (Retreat pt) == (Retreat pt') = pt == pt'
+  Disband == Disband = True
+  (Build u) == (Build u') = u == u'
+  _ == _ = False
 
 -- | Description of an order; just a subject with an object.
-newtype Order = Order (OrderSubject, OrderObject)
-  deriving (Eq, Ord, Show)
+newtype Order a = Order (OrderSubject, OrderObject a)
+  deriving (Eq)
 
-order :: OrderSubject -> OrderObject -> Order
+instance Ord (Order a) where
+  o <= s = orderSubject o <= orderSubject s
+
+order :: OrderSubject -> OrderObject a -> Order a
 order s o = Order (s, o)
 
-orderSubject :: Order -> OrderSubject
+orderSubject :: Order a -> OrderSubject
 orderSubject (Order (s, _)) = s
 
-orderObject :: Order -> OrderObject
+orderObject :: Order a -> OrderObject a
 orderObject (Order (_, t)) = t

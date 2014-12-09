@@ -10,6 +10,7 @@ module Diplomacy.Phase (
   , Winter
   , Phase
   , NextPhase
+  , ValidOrder
 
   -- Injections into Phase
   , springPhase
@@ -29,6 +30,8 @@ module Diplomacy.Phase (
 
   ) where
 
+import Diplomacy.Order
+
 -- Each turn is divided into 5 phases. We give a type for each of them.
 
 data Spring
@@ -45,6 +48,16 @@ type family NextPhase x where
   NextPhase Autumn = AutumnRetreat
   NextPhase AutumnRetreat = Winter
   NextPhase Winter = Spring
+
+-- | Unfortunate name: this has nothing to do with order as in mathematics, but
+--   only to do with Order as in our datatype for Diplomacy orders.
+--   It indicates which kind of OrderTarget is valid for a given Phase.
+type family ValidOrder x where
+  ValidOrder Spring = Typical
+  ValidOrder SpringRetreat = Retreat
+  ValidOrder Autumn = Typical
+  ValidOrder AutumnRetreat = Retreat
+  ValidOrder Winter = Adjust
 
 -- | A phase is parameterized by a phase type.
 data Phase a where
