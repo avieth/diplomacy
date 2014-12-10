@@ -1,6 +1,12 @@
+{-# LANGUAGE GADTs #-}
+
 module Diplomacy.Board (
 
     Board
+
+  , Typical
+  , Retreat
+  , Adjust
 
   , emptyBoard
   , initialBoard
@@ -26,6 +32,7 @@ import           Diplomacy.Country
 import           Diplomacy.Province
 import           Diplomacy.Unit
 import           Diplomacy.PlayerCount
+import           Diplomacy.Order (Typical, Retreat, Adjust)
 
 -- | Description of a Diplomacy Board 
 --
@@ -42,20 +49,64 @@ import           Diplomacy.PlayerCount
 --       north coast of Spain).
 --   But should we enforce these?
 --
-data Board = Board {
-    _occupy :: M.Map ProvinceTarget Occupy
-  , _control :: M.Map Province Control
-  } deriving (Show)
+--   TODO should parameterize on some type 
+--     Retreat | Typical
+--   so that we can identify board which potentially have 2 units on the same
+--   place, one of which is displaced. We could have:
+--
+--   data Board a where
+--     TypicalBoard :: M.Map ProvinceTarget Occupy -> M.Map Province Control -> Board Typical
+--     RetreatBoard :: M.Map ProvinceTarget Occupy -> M.Map ProvinceTarget Dislodged -> M.Map Province Control -> Board Retreat
+--
+data Board a where
 
-emptyBoard :: Board
-emptyBoard = Board occupyMap controlMap
+  TypicalBoard :: M.Map ProvinceTarget Occupy
+                  -- ^ Occupation of province targets.
+               -> M.Map Province Control
+                  -- ^ Control of provinces.
+               -> Board Typical
+
+  RetreatBoard :: M.Map ProvinceTarget Occupy
+                  -- ^ Occupation of province targets.
+               -> M.Map Province Control
+                  -- ^ Control of provinces.
+               -> M.Map ProvinceTarget Dislodge
+                  -- ^ Dislodged units.
+               -> Board Retreat
+
+  AdjustBoard  :: M.Map ProvinceTarget Occupy
+                  -- ^ Occupation of province targets.
+               -> M.Map Province Control
+                  -- ^ Control of provinces.
+               -> Board Adjust
+
+_occupy :: Board a -> M.Map ProvinceTarget Occupy
+_occupy (TypicalBoard o _) = o
+_occupy (RetreatBoard o _ _) = o
+_occupy (AdjustBoard o _) = o
+
+_control :: Board a -> M.Map Province Control
+_control (TypicalBoard _ c) = c
+_control (RetreatBoard _ c _) = c
+_control (AdjustBoard _ c) = c
+
+_dislodge :: Board Retreat -> M.Map ProvinceTarget Dislodge
+_dislodge (RetreatBoard _ _ d) = d
+
+updateBoard :: M.Map ProvinceTarget Occupy -> M.Map Province Control -> Board a -> Board a
+updateBoard o c (TypicalBoard _ _) = TypicalBoard o c
+updateBoard o c (RetreatBoard _ _ d) = RetreatBoard o c d
+updateBoard o c (AdjustBoard _ _) = AdjustBoard o c
+
+emptyBoard :: Board Typical
+emptyBoard = TypicalBoard occupyMap controlMap
   where occupyMap = M.fromList $ (map (\x -> (x, unoccupied))) allProvinceTargets
         controlMap = M.fromList $ (map (\x -> (x, uncontrolled))) allProvinces
 
 -- | Specification of the initial board layout.
 --   A direct translation of https://www.wizards.com/avalonhill/rules/diplomacy.pdf
 --   page 2
-initialBoard :: PlayerCount -> Board
+initialBoard :: PlayerCount -> Board Typical
 initialBoard Seven =
 
     occupy (Normal Vienna) austrianArmy
@@ -127,47 +178,46 @@ initialBoard Seven =
 
 type Occupy = Maybe AlignedUnit
 type Control = Maybe Country
+type Dislodge = Maybe AlignedUnit
 
 unoccupied = Nothing
 uncontrolled = Nothing
+nodislodge = Nothing
 
-occupy :: ProvinceTarget -> Maybe AlignedUnit -> Board -> Board
-occupy pt maybeUnit board = Board {
-    _occupy = M.insert pt maybeUnit (_occupy (clearTarget pt board))
-  , _control = _control board
-  }
+occupy :: ProvinceTarget -> Maybe AlignedUnit -> Board a -> Board a
+occupy pt maybeUnit board = updateBoard newOccupy newControl board
+  where newOccupy = M.insert pt maybeUnit (_occupy (clearTarget pt board))
+        newControl = _control board
 
-clearTarget :: ProvinceTarget -> Board -> Board
-clearTarget pt board = Board {
-    _occupy = foldr combine (_occupy board) targets
-  , _control = _control board
-  }
-    where targets = provinceTargetCluster pt
-          combine next map = M.insert next Nothing map
+clearTarget :: ProvinceTarget -> Board a -> Board a
+clearTarget pt board = updateBoard newOccupy newControl board
+  where newOccupy = foldr combine (_occupy board) targets
+        newControl =_control board
+        targets = provinceTargetCluster pt
+        combine next map = M.insert next Nothing map
 
-control :: Province -> Maybe Country -> Board -> Board
-control prv maybeCountry board = Board {
-    _control = M.insert prv maybeCountry (_control board)
-  , _occupy = _occupy board
-  }
+control :: Province -> Maybe Country -> Board a -> Board a
+control prv maybeCountry board = updateBoard newOccupy newControl board
+  where newControl = M.insert prv maybeCountry (_control board)
+        newOccupy = _occupy board
 
-unitAt :: Board -> ProvinceTarget -> Maybe AlignedUnit
+unitAt :: Board a -> ProvinceTarget -> Maybe AlignedUnit
 unitAt board pt = maybe Nothing id (M.lookup pt (_occupy board))
 -- Note that M.lookup will never be Nothing, since we never clear any keys and
 -- the only injection into Board is via emptyBoard, which defines a key for all
 -- of Province, ProvinceTarget.
 
-controllerOf :: Board -> Province -> Maybe Country
+controllerOf :: Board a -> Province -> Maybe Country
 controllerOf board prv = maybe Nothing id (M.lookup prv (_control board))
 
-occupiesProvince :: Board -> AlignedUnit -> Province -> Bool
+occupiesProvince :: Board a -> AlignedUnit -> Province -> Bool
 occupiesProvince b u prv = any (occupies b u) (provinceTargets prv)
 
-occupies :: Board -> AlignedUnit -> ProvinceTarget -> Bool
+occupies :: Board a -> AlignedUnit -> ProvinceTarget -> Bool
 occupies b u pt = maybe False ((==) u) (unitAt b pt)
 
-controls :: Board -> Country -> Province -> Bool
+controls :: Board a -> Country -> Province -> Bool
 controls b c p = maybe False ((==) c) (controllerOf b p)
 
-countryOccupies :: Board -> Country -> ProvinceTarget -> Bool
+countryOccupies :: Board a -> Country -> ProvinceTarget -> Bool
 countryOccupies b c pt = maybe False (((==) c) . alignedCountry) (unitAt b pt)
