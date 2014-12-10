@@ -4,10 +4,6 @@ module Diplomacy.Order (
 
     Order
 
-  , Typical
-  , Retreat
-  , Adjust
-
   , OrderSubject(..)
 
   , orderSubjectUnit
@@ -21,6 +17,7 @@ module Diplomacy.Order (
 
   ) where
 
+import Diplomacy.Phase
 import Diplomacy.Unit
 import Diplomacy.Province
 
@@ -37,10 +34,6 @@ orderSubjectUnit (OrderSubject u _) = u
 
 orderSubjectTarget :: OrderSubject -> ProvinceTarget
 orderSubjectTarget (OrderSubject _ pt) = pt
-
-data Typical
-data Retreat
-data Adjust
 
 -- | Object of an order; the action to be carried out by some subject.
 --   We describe it just like it's described in the rules:

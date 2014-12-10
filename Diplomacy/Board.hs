@@ -32,7 +32,7 @@ import           Diplomacy.Country
 import           Diplomacy.Province
 import           Diplomacy.Unit
 import           Diplomacy.PlayerCount
-import           Diplomacy.Order (Typical, Retreat, Adjust)
+import           Diplomacy.Phase (Typical, Retreat, Adjust)
 
 -- | Description of a Diplomacy Board 
 --
