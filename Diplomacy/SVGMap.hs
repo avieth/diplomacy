@@ -17,15 +17,16 @@ import Diplomacy.Board
 import Diplomacy.Country
 import Diplomacy.PlayerCount
 import Diplomacy.Province
+import Diplomacy.Unit
 
 svgMap :: Board a -> String
 svgMap = renderSvg . preamble . svgBoard
 
 svgBoard :: Board a -> S.Svg
-svgBoard board =
-  forM_ (fixOrder properProvinceTargets) (provinceGroup board) >>
+svgBoard board = do
+  forM_ (fixOrder properProvinceTargets) (provinceGroup board)
   forM_ (supplyCentres) (supplyCentreIcon)
--- must be drawn beneath its neighbours.
+  forM_ (occupiedProvinceTargets board) (uncurry unitIcon)
 -- TODO Siwtzerland
 
 -- | We reorder because the drawing method uses a hack: the north sea must
@@ -54,8 +55,61 @@ provinceGroup :: Board a -> ProvinceTarget -> S.Svg
 provinceGroup b p = S.g $ do
   provinceElement p ! A.style (provinceStyle b pr)
   provinceExtras p
-  provinceText pr ! A.style "font-size:8px; font-family:Arial,Helvetica,sans-serif;"
+  -- ^ Some provinces have extra overlays.
+  provinceText pr ! A.style "font-size:7px; font-family:Arial,Helvetica,sans-serif;"
+
     where pr = ptProvince p
+
+unitIcon :: ProvinceTarget -> AlignedUnit -> S.Svg
+unitIcon pt au =
+  if isFleet u
+  then fleetIcon pt (alignedCountry au)
+  else armyIcon pt (alignedCountry au)
+    where u = alignedUnit au
+
+fleetIcon :: ProvinceTarget -> Country -> S.Svg
+fleetIcon pt c = S.text_ "F"  ! A.transform (unitTransform pt) -- ! A.style "fill: #000000; stroke:" ++ (countryColour c) ++ ";"
+
+armyIcon :: ProvinceTarget -> Country -> S.Svg
+armyIcon pt c = S.text_ "A" ! A.transform (unitTransform pt) -- ! A.style "fill: #000000; stroke:" ++ (countryColour c) ++ ";"
+
+unitTransform c = case c of
+  (Normal Ankara) -> S.translate 482 496
+  (Normal Belgium) -> S.translate 186 305
+  (Normal Berlin) -> S.translate 281 298
+  (Normal Brest) -> S.translate 106 322
+  (Normal Budapest) -> S.translate 326 376
+  (Normal Bulgaria) -> S.translate 377 444
+  (Normal Constantinople) -> S.translate 429 460
+  (Normal Denmark) -> S.translate 272 252
+  (Normal Edinburgh) -> S.translate 154 219
+  (Normal Greece) -> S.translate 378 507
+  (Normal Holland) -> S.translate 205 284
+  (Normal Kiel) -> S.translate 254 278
+  (Normal Liverpool) -> S.translate 144 257
+  (Normal London) -> S.translate 162 290
+  (Normal Marseilles) -> S.translate 186 417
+  (Normal Moscow) -> S.translate 481 234
+  (Normal Munich) -> S.translate 258 359
+  (Normal Naples) -> S.translate 278 469
+  (Normal Norway) -> S.translate 270 187
+  (Normal Paris) -> S.translate 173 334
+  (Normal Portugal) -> S.translate 15 434
+  (Normal Rome) -> S.translate 252 443
+  (Normal Rumania) -> S.translate 402 413
+  (Normal Serbia) -> S.translate 343 419
+  (Normal Sevastopol) -> S.translate 483 396
+  (Normal Smyrna) -> S.translate 424 502
+  (Normal Spain) -> S.translate 80 432
+  (Normal StPetersburg) -> S.translate 418 187
+  (Normal Sweden) -> S.translate 323 196
+  (Normal Trieste) -> S.translate 284 396
+  (Normal Tunis) -> S.translate 220 529
+  (Normal Venice) -> S.translate 261 397
+  (Normal Vienna) -> S.translate 301 363
+  (Normal Warsaw) -> S.translate 346 302
+  (Special StPetersburgWest) -> S.translate 418 187
+  x -> error (show x)
 
 supplyCentreIcon :: Province -> S.Svg
 supplyCentreIcon p = S.g ! A.transform t $ do
