@@ -23,6 +23,8 @@ module Diplomacy.Board (
 
   , countryOccupies
 
+  , occupiedProvinceTargets
+
   ) where
 
 import qualified Data.Map as M
@@ -221,3 +223,8 @@ controls b c p = maybe False ((==) c) (controllerOf b p)
 
 countryOccupies :: Board a -> Country -> ProvinceTarget -> Bool
 countryOccupies b c pt = maybe False (((==) c) . alignedCountry) (unitAt b pt)
+
+occupiedProvinceTargets :: Board a -> [(ProvinceTarget, AlignedUnit)]
+occupiedProvinceTargets b = M.foldrWithKey select [] (_occupy b)
+  where select pt Nothing xs = xs
+        select pt (Just u) xs = (pt, u) : xs
