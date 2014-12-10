@@ -18,10 +18,10 @@ import Diplomacy.Country
 import Diplomacy.PlayerCount
 import Diplomacy.Province
 
-svgMap :: Board -> String
+svgMap :: Board a -> String
 svgMap = renderSvg . preamble . svgBoard
 
-svgBoard :: Board -> S.Svg
+svgBoard :: Board a -> S.Svg
 svgBoard board =
   forM_ (fixOrder properProvinceTargets) (provinceGroup board) >>
   forM_ (supplyCentres) (supplyCentreIcon)
@@ -50,7 +50,7 @@ provinceStyle b p =
   else stringValue $ "fill:" ++ colour ++ "; stroke:black;"
     where colour = maybe "#FFFFDD" countryColour (controllerOf b p)
 
-provinceGroup :: Board -> ProvinceTarget -> S.Svg
+provinceGroup :: Board a -> ProvinceTarget -> S.Svg
 provinceGroup b p = S.g $ do
   provinceElement p ! A.style (provinceStyle b pr)
   provinceExtras p
@@ -58,43 +58,45 @@ provinceGroup b p = S.g $ do
     where pr = ptProvince p
 
 supplyCentreIcon :: Province -> S.Svg
-supplyCentreIcon p = S.circle ! A.r "3" ! A.transform t
-  where t = case p of
-              Ankara -> S.translate 482 496
-              Belgium -> S.translate 186 305
-              Berlin -> S.translate 281 298
-              Brest -> S.translate 106 322
-              Budapest -> S.translate 326 376
-              Bulgaria -> S.translate 377 444
-              Constantinople -> S.translate 429 460
-              Denmark -> S.translate 272 252
-              Edinburgh -> S.translate 154 219
-              Greece -> S.translate 378 507
-              Holland -> S.translate 205 284
-              Kiel -> S.translate 254 278
-              Liverpool -> S.translate 144 257
-              London -> S.translate 162 290
-              Marseilles -> S.translate 186 417
-              Moscow -> S.translate 481 234
-              Munich -> S.translate 258 359
-              Naples -> S.translate 278 469
-              Norway -> S.translate 270 187
-              Paris -> S.translate 173 334
-              Portugal -> S.translate 15 434
-              Rome -> S.translate 252 443
-              Rumania -> S.translate 402 413
-              Serbia -> S.translate 343 419
-              Sevastopol -> S.translate 483 396
-              Smyrna -> S.translate 424 502
-              Spain -> S.translate 80 432
-              StPetersburg -> S.translate 418 187
-              Sweden -> S.translate 323 196
-              Trieste -> S.translate 284 396
-              Tunis -> S.translate 220 529
-              Venice -> S.translate 261 397
-              Vienna -> S.translate 301 363
-              Warsaw -> S.translate 346 302
-              x -> error "supplyCentreIcon must only be applied to supplyCentres"
+supplyCentreIcon p = S.g ! A.transform t $ do
+  S.circle ! A.r "2"
+  S.circle ! A.r "3.5" ! A.style "fill : transparent; stroke : black;"
+    where t = case p of
+                Ankara -> S.translate 482 496
+                Belgium -> S.translate 186 305
+                Berlin -> S.translate 281 298
+                Brest -> S.translate 106 322
+                Budapest -> S.translate 326 376
+                Bulgaria -> S.translate 377 444
+                Constantinople -> S.translate 429 460
+                Denmark -> S.translate 272 252
+                Edinburgh -> S.translate 154 219
+                Greece -> S.translate 378 507
+                Holland -> S.translate 205 284
+                Kiel -> S.translate 254 278
+                Liverpool -> S.translate 144 257
+                London -> S.translate 162 290
+                Marseilles -> S.translate 186 417
+                Moscow -> S.translate 481 234
+                Munich -> S.translate 258 359
+                Naples -> S.translate 278 469
+                Norway -> S.translate 270 187
+                Paris -> S.translate 173 334
+                Portugal -> S.translate 15 434
+                Rome -> S.translate 252 443
+                Rumania -> S.translate 402 413
+                Serbia -> S.translate 343 419
+                Sevastopol -> S.translate 483 396
+                Smyrna -> S.translate 424 502
+                Spain -> S.translate 80 432
+                StPetersburg -> S.translate 418 187
+                Sweden -> S.translate 323 196
+                Trieste -> S.translate 284 396
+                Tunis -> S.translate 220 529
+                Venice -> S.translate 261 397
+                Vienna -> S.translate 301 363
+                Warsaw -> S.translate 346 302
+                x -> error "supplyCentreIcon must only be applied to supplyCentres"
 
 provinceText :: Province -> S.Svg
 provinceText NorwegianSea = S.text_ "NWG" ! A.x "220" ! A.y "70"
