@@ -33,6 +33,7 @@ module Diplomacy.Phase (
 
   ) where
 
+-- Phases
 -- Each turn is divided into 5 phases. We give a type for each of them.
 
 data Spring
@@ -42,7 +43,9 @@ data AutumnRetreat
 data Winter
 
 -- It will be useful to have a type-level cyclic order of the above types.
-
+-- As far as I can tell, it's not possible to define an *injective* type
+-- level cyclic function, since we cannot use the image of a data instance
+-- as the preimage of another.
 type family NextPhase x where
   NextPhase Spring = SpringRetreat
   NextPhase SpringRetreat = Autumn
@@ -50,7 +53,8 @@ type family NextPhase x where
   NextPhase AutumnRetreat = Winter
   NextPhase Winter = Spring
 
--- Each phase type has an associated "phase type"
+-- Phase types
+-- Each phase type has an associated phase type
 
 data Typical
 data Retreat
@@ -63,7 +67,7 @@ type family PhaseType x where
   PhaseType AutumnRetreat = Retreat
   PhaseType Winter = Adjust
 
--- | A phase is parameterized by a phase type.
+-- | A Phase value is parameterized by a phase type.
 data Phase a where
   PSpring :: Phase Spring
   PSpringRetreat :: Phase SpringRetreat
