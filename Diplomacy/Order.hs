@@ -2,28 +2,32 @@
 
 module Diplomacy.Order (
 
-    Order(..)
-
-  , HoldOrder(..)
-  , MoveOrder(..)
-  , SupportOrder(..)
-  , ConvoyOrder(..)
-  , SurrenderOrder(..)
-  , RetreatOrder(..)
-  , DisbandOrder(..)
-  , BuildOrder(..)
+    Hold(..)
+  , Move(..)
+  , Support(..)
+  , Convoy(..)
+  , Surrender(..)
+  , Withdraw(..)
+  , Disband(..)
+  , Build(..)
 
   , OrderSubject(..)
+  , OrderObject(..)
 
   , orderSubjectUnit
   , orderSubjectTarget
 
-  , orderSubject
+  , Order
 
-  , AlignedOrder(..)
-
-  , orderCountry
   , order
+  , orderSubject
+  , orderObject
+
+  , AlignedOrder
+
+  , alignOrder
+  , alignedOrderCountry
+  , alignedOrder
 
   ) where
 
@@ -32,14 +36,33 @@ import Diplomacy.Unit
 import Diplomacy.Province
 import Diplomacy.Country
 
-data HoldOrder = HoldOrder OrderSubject
-data MoveOrder = MoveOrder OrderSubject ProvinceTarget
-data SupportOrder = SupportOrder OrderSubject Unit ProvinceTarget (Maybe ProvinceTarget)
-data ConvoyOrder = ConvoyOrder OrderSubject Unit ProvinceTarget ProvinceTarget
-data SurrenderOrder = SurrenderOrder OrderSubject
-data RetreatOrder = RetreatOrder OrderSubject ProvinceTarget
-data DisbandOrder = DisbandOrder OrderSubject
-data BuildOrder = BuildOrder OrderSubject
+-- | Instruction to hold.
+data Hold = Hold
+
+-- | Instruction to move to some ProvinceTarget
+data Move = Move ProvinceTarget
+
+-- | Instruction to support some unit from some ProvinceTarget possibly into
+--   another ProvinceTarget (Nothing means support a hold).
+data Support = Support Unit ProvinceTarget (Maybe ProvinceTarget)
+
+-- | Instruction to convoy some unit from some ProvinceTarget to some
+--   ProvinceTarget
+data Convoy = Convoy Unit ProvinceTarget ProvinceTarget
+
+-- | Instruction to surrender (disband after dislodgement).
+data Surrender = Surrender
+
+-- | Instruction to retreat after dislodgement to some ProvinceTarget.
+--   We call it Withdraw because Retreat is already a phase type.
+data Withdraw = Withdraw ProvinceTarget
+
+-- | Instruction to disband during adjustment phase.
+data Disband = Disband
+
+-- | Instruction to build during adjustment phase (the thing being built is
+--   determined by some OrderSubject.
+data Build = Build
 
 -- | Subject of an order; the thing which is ordered.
 --   We describe it just like it's described in the rules:
@@ -55,43 +78,43 @@ orderSubjectUnit (OrderSubject u _) = u
 orderSubjectTarget :: OrderSubject -> ProvinceTarget
 orderSubjectTarget (OrderSubject _ pt) = pt
 
--- | Object of an order; the action to be carried out by some subject.
---   We describe it just like it's described in the rules:
---     H
---     M Paris (written "-Paris")
---     S F London-NorthSea
---     S A Munich
---     C A Spain-Naples
-data Order a where
+-- | An order, parameterized by the phase type to which it is relevant
+--   The principal use of this datatype is to give a phase type to each of
+--   the order datatypes described above.
+data OrderObject phaseType where
 
-  Hold :: HoldOrder -> Order Typical
-  Move :: MoveOrder -> Order Typical
-  Support :: SupportOrder -> Order Typical
-  -- ^ Second one is maybe because we can support a hold.
-  Convoy :: ConvoyOrder -> Order Typical
+  HoldObject :: Hold -> OrderObject Typical
+  MoveObject :: Move -> OrderObject Typical
+  SupportObject :: Support -> OrderObject Typical
+  ConvoyObject :: Convoy -> OrderObject Typical
 
-  Surrender :: SurrenderOrder -> Order Retreat
+  SurrenderObject :: Surrender -> OrderObject Retreat
   -- ^ We call it surrender because disband is taken by the adjustment phase
   --   order.
-  Retreat :: RetreatOrder -> Order Retreat
+  WithdrawObject :: Withdraw -> OrderObject Retreat
 
-  Disband :: DisbandOrder -> Order Adjust
-  Build :: BuildOrder -> Order Adjust
+  DisbandObject :: Disband -> OrderObject Adjust
+  BuildObject :: Build -> OrderObject Adjust
+
+newtype Order a = Order (OrderSubject, OrderObject a)
 
 orderSubject :: Order a -> OrderSubject
-orderSubject (Hold (HoldOrder os)) = os
-orderSubject (Move (MoveOrder os _)) = os
-orderSubject (Support (SupportOrder os _ _ _)) = os
-orderSubject (Convoy (ConvoyOrder os _ _ _)) = os
-orderSubject (Surrender (SurrenderOrder os)) = os
-orderSubject (Retreat (RetreatOrder os _)) = os
-orderSubject (Disband (DisbandOrder os)) = os
-orderSubject (Build (BuildOrder os)) = os
+orderSubject (Order (os, _)) = os
 
-data AlignedOrder a = AlignedOrder Country (Order a)
+orderObject :: Order a -> OrderObject a
+orderObject (Order (_, oo)) = oo
 
-orderCountry :: AlignedOrder a -> Country
-orderCountry (AlignedOrder c _) = c
+order :: OrderSubject -> OrderObject a -> Order a
+order os oo = Order (os, oo)
 
-order :: AlignedOrder a -> Order a
-order (AlignedOrder _ o) = o
+-- | An order paired with a country, meaning the country which issued it.
+newtype AlignedOrder a = AlignedOrder (Country, Order a)
+
+alignedOrderCountry :: AlignedOrder a -> Country
+alignedOrderCountry (AlignedOrder (c, _)) = c
+
+alignedOrder :: AlignedOrder a -> Order a
+alignedOrder (AlignedOrder (_, o)) = o
+
+alignOrder :: Country -> Order a -> AlignedOrder a
+alignOrder c o = AlignedOrder (c, o)
