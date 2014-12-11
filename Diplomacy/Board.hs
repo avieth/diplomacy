@@ -25,6 +25,12 @@ module Diplomacy.Board (
 
   , occupiedProvinceTargets
 
+  , unitCount
+
+  , supplyCentreCount
+
+  , dislodged
+
   ) where
 
 import qualified Data.Map as M
@@ -228,3 +234,36 @@ occupiedProvinceTargets :: Board a -> [(ProvinceTarget, AlignedUnit)]
 occupiedProvinceTargets b = M.foldrWithKey select [] (_occupy b)
   where select pt Nothing xs = xs
         select pt (Just u) xs = (pt, u) : xs
+
+-- | Number of supply centres countrolled by a given power.
+supplyCentreCount :: Country -> Board a -> Int
+supplyCentreCount c b = M.foldrWithKey count 0 (_control b)
+  where count pr control t =
+          if supplyCentre pr
+          then case control of
+                 Nothing -> t
+                 Just c' -> if c' == c then t + 1 else t
+          else t
+
+-- | We wish to count the number of units on the board belonging to a given
+--   Country, but since this is done differently for a Retreat board (must
+--   check the dislodged units) we use a typeclass to accomplish this
+--   transparently.
+class UnitCount phaseType where
+  unitCount :: Country -> Board phaseType -> Int
+
+instance UnitCount Typical where
+  unitCount c b = M.foldr count 0 (_occupy b)
+    where count unit t = maybe t (\u -> if alignedCountry u == c then t + 1 else t) unit
+
+instance UnitCount Retreat where
+  unitCount c b = (M.foldr count 0 (_occupy b)) + (M.foldr count 0 (_dislodge b))
+    where count unit t = maybe t (\u -> if alignedCountry u == c then t + 1 else t) unit
+
+instance UnitCount Adjust where
+  unitCount c b = M.foldr count 0 (_occupy b)
+    where count unit t = maybe t (\u -> if alignedCountry u == c then t + 1 else t) unit
+
+-- | Get the dislodged unit, if any, at a given ProvinceTarget.
+dislodged :: Board Retreat -> ProvinceTarget -> Maybe AlignedUnit
+dislodged brd pt = maybe Nothing id (M.lookup pt (_dislodge brd))
