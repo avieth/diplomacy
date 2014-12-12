@@ -9,7 +9,11 @@ import Diplomacy.Turn
 import Diplomacy.Phase
 import Diplomacy.Board
 import Diplomacy.PlayerCount
+import Diplomacy.Order
 import Diplomacy.Orders
+import Diplomacy.ResolvedOrder
+import Diplomacy.ResolvedOrders
+import Diplomacy.Resolve
 
 -- | Information about a game of diplomacy which will not change throughout
 --   the course of the game.
@@ -95,8 +99,25 @@ instance DiplomacyPhase Winter where
     let r = resolveWinter ords b
     in  DiplomacySpring dmi (nextBoard r) (nextStep s)
 
--- TODO import this?
-data ResolvedOrders phaseType
+-- TBD import this?
+-- With the order type in the picture, we'll have to use type classes with
+-- an existential type to express.
+--updateBoard (MoveSucceeded move) = -- Need to know entire order (with subject).
+--updateBoard _ = id
+{-
+newtype ResolvedOrders phaseType
+  = ResolvedOrders [ResolvedOrder phaseType]
+
+-- | Take the subset of ResolvedOrders which succeeded.
+succeeded :: ResolvedOrders phaseType -> [OrderSucceeded phaseType]
+succeeded (ResolvedOrders xs) = filter orderSucceeded xs
+
+failed :: ResolvedOrders phaseType -> [OrderFailed phaseType]
+failed (ResolvedOrders xs) = filter orderFailed xs
+
+updateBoard :: OrderSucceeded phaseType -> Board phaseType -> Board phaseType
+updateBoard = undefined
+-}
 
 -- | Values in this type pair a board with resolved orders which were resolved
 --   against that board.
@@ -126,11 +147,13 @@ nextBoard = undefined
 resolvedOrders :: ResolvedPhase a -> ResolvedOrders (PhaseType a)
 resolvedOrders (ResolvedPhase (_, resOrds)) = resOrds
 
+-- TODO move these to ResolvedOrder.hs ?
 resolveSpring
   :: Orders (PhaseType Spring)
   -> Board (PhaseType Spring)
   -> ResolvedPhase Spring
-resolveSpring = undefined
+resolveSpring ords brd
+  = ResolvedPhase (brd, map (resolveOrderTypical ords brd) ords)
 
 resolveSpringRetreat
   :: Orders (PhaseType SpringRetreat)
@@ -138,26 +161,30 @@ resolveSpringRetreat
   -> ResolvedOrders (PhaseType Spring)
   -- ^ Gotta have those orders from the previous Spring phase.
   -> ResolvedPhase SpringRetreat
-resolveSpringRetreat = undefined
+resolveSpringRetreat ords brd res
+  = ResolvedPhase (brd, map (resolveOrderRetreat ords brd res) ords)
 
 resolveAutumn
   :: Orders (PhaseType Autumn)
   -> Board (PhaseType Autumn)
   -> ResolvedPhase Autumn
-resolveAutumn= undefined
+resolveAutumn ords brd
+  = ResolvedPhase (brd, map (resolveOrderTypical ords brd) ords)
 
 resolveAutumnRetreat
   :: Orders (PhaseType AutumnRetreat)
   -> Board (PhaseType AutumnRetreat)
   -> ResolvedOrders (PhaseType Autumn)
   -> ResolvedPhase AutumnRetreat
-resolveAutumnRetreat = undefined
+resolveAutumnRetreat ords brd res
+  = ResolvedPhase (brd, map (resolveOrderRetreat ords brd res) ords)
 
 resolveWinter
   :: Orders (PhaseType Winter)
   -> Board (PhaseType Winter)
   -> ResolvedPhase Winter
-resolveWinter = undefined
+resolveWinter ords brd
+  = ResolvedPhase (brd, map (resolveOrderAdjust brd) ords)
 
 step :: Diplomacy a -> Step a
 step (DiplomacySpring _ _ s) = s

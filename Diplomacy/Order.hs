@@ -12,22 +12,14 @@ module Diplomacy.Order (
   , Build(..)
 
   , OrderSubject(..)
-  , OrderObject(..)
 
   , orderSubjectUnit
   , orderSubjectTarget
 
-  , Order
+  , Order(..)
 
-  , order
   , orderSubject
-  , orderObject
-
-  , AlignedOrder
-
-  , alignOrder
-  , alignedOrderCountry
-  , alignedOrder
+  , orderCountry
 
   ) where
 
@@ -78,43 +70,38 @@ orderSubjectUnit (OrderSubject u _) = u
 orderSubjectTarget :: OrderSubject -> ProvinceTarget
 orderSubjectTarget (OrderSubject _ pt) = pt
 
--- | An order, parameterized by the phase type to which it is relevant
---   The principal use of this datatype is to give a phase type to each of
---   the order datatypes described above.
-data OrderObject phaseType where
+-- | An order, parameterized by the phase type to which it is relevant.
+--   It completely characterizes an order: country issuing the order, subject
+--   of the order, and object of the order (hold, move, build, etc.)
+data Order phaseType where
 
-  HoldObject :: Hold -> OrderObject Typical
-  MoveObject :: Move -> OrderObject Typical
-  SupportObject :: Support -> OrderObject Typical
-  ConvoyObject :: Convoy -> OrderObject Typical
+  HoldOrder :: Country -> OrderSubject -> Hold -> Order Typical
+  MoveOrder :: Country -> OrderSubject -> Move -> Order Typical
+  SupportOrder :: Country -> OrderSubject -> Support -> Order Typical
+  ConvoyOrder :: Country -> OrderSubject -> Convoy -> Order Typical
 
-  SurrenderObject :: Surrender -> OrderObject Retreat
-  -- ^ We call it surrender because disband is taken by the adjustment phase
-  --   order.
-  WithdrawObject :: Withdraw -> OrderObject Retreat
+  SurrenderOrder :: Country -> OrderSubject -> Surrender -> Order Retreat
+  WithdrawOrder :: Country -> OrderSubject -> Withdraw -> Order Retreat
 
-  DisbandObject :: Disband -> OrderObject Adjust
-  BuildObject :: Build -> OrderObject Adjust
+  DisbandOrder :: Country -> OrderSubject -> Disband -> Order Adjust
+  BuildOrder :: Country -> OrderSubject -> Build -> Order Adjust
 
-newtype Order a = Order (OrderSubject, OrderObject a)
+orderCountry :: Order phaseType -> Country
+orderCountry (HoldOrder c _ _) = c
+orderCountry (MoveOrder c _ _) = c
+orderCountry (SupportOrder c _ _) = c
+orderCountry (ConvoyOrder c _ _) = c
+orderCountry (SurrenderOrder c _ _) = c
+orderCountry (WithdrawOrder c _ _) = c
+orderCountry (DisbandOrder c _ _) = c
+orderCountry (BuildOrder c _ _) = c
 
-orderSubject :: Order a -> OrderSubject
-orderSubject (Order (os, _)) = os
-
-orderObject :: Order a -> OrderObject a
-orderObject (Order (_, oo)) = oo
-
-order :: OrderSubject -> OrderObject a -> Order a
-order os oo = Order (os, oo)
-
--- | An order paired with a country, meaning the country which issued it.
-newtype AlignedOrder a = AlignedOrder (Country, Order a)
-
-alignedOrderCountry :: AlignedOrder a -> Country
-alignedOrderCountry (AlignedOrder (c, _)) = c
-
-alignedOrder :: AlignedOrder a -> Order a
-alignedOrder (AlignedOrder (_, o)) = o
-
-alignOrder :: Country -> Order a -> AlignedOrder a
-alignOrder c o = AlignedOrder (c, o)
+orderSubject :: Order phaseType -> OrderSubject
+orderSubject (HoldOrder _ s _) = s
+orderSubject (MoveOrder _ s _) = s
+orderSubject (SupportOrder _ s _) = s
+orderSubject (ConvoyOrder _ s _) = s
+orderSubject (SurrenderOrder _ s _) = s
+orderSubject (WithdrawOrder _ s _) = s
+orderSubject (DisbandOrder _ s _) = s
+orderSubject (BuildOrder _ s _) = s
