@@ -12,14 +12,19 @@ module Diplomacy.Order (
   , Build(..)
 
   , OrderSubject(..)
+  , OrderObject(..)
+
+  , defaultOrderObjectTypical
+  , defaultOrderObjectRetreat
 
   , orderSubjectUnit
   , orderSubjectTarget
 
   , Order(..)
 
-  , orderSubject
   , orderCountry
+  , orderSubject
+  , orderObject
 
   ) where
 
@@ -86,6 +91,25 @@ data Order phaseType where
   DisbandOrder :: Country -> OrderSubject -> Disband -> Order Adjust
   BuildOrder :: Country -> OrderSubject -> Build -> Order Adjust
 
+data OrderObject phaseType where
+
+  HoldObject :: Hold -> OrderObject Typical
+  MoveObject :: Move -> OrderObject Typical
+  SupportObject :: Support -> OrderObject Typical
+  ConvoyObject :: Convoy -> OrderObject Typical
+
+  SurrenderObject :: Surrender -> OrderObject Retreat
+  WithdrawObject :: Withdraw -> OrderObject Retreat
+
+  DisbandObject :: Disband -> OrderObject Adjust
+  BuildObject :: Build -> OrderObject Adjust
+
+defaultOrderObjectTypical :: OrderObject Typical
+defaultOrderObjectTypical = HoldObject Hold
+
+defaultOrderObjectRetreat :: OrderObject Retreat
+defaultOrderObjectRetreat = SurrenderObject Surrender
+
 orderCountry :: Order phaseType -> Country
 orderCountry (HoldOrder c _ _) = c
 orderCountry (MoveOrder c _ _) = c
@@ -105,3 +129,14 @@ orderSubject (SurrenderOrder _ s _) = s
 orderSubject (WithdrawOrder _ s _) = s
 orderSubject (DisbandOrder _ s _) = s
 orderSubject (BuildOrder _ s _) = s
+
+orderObject :: Order phaseType -> OrderObject phaseType
+orderObject (HoldOrder _ _ h) = HoldObject h
+orderObject (MoveOrder _ _ m) = MoveObject m
+orderObject (SupportOrder _ _ s) = SupportObject s
+orderObject (ConvoyOrder _ _ c) = ConvoyObject c
+orderObject (SurrenderOrder _ _ s) = SurrenderObject s
+orderObject (WithdrawOrder _ _ w) = WithdrawObject w
+orderObject (DisbandOrder _ _ d) = DisbandObject d
+orderObject (BuildOrder _ _ b) = BuildObject b
+

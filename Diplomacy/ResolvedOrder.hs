@@ -2,14 +2,12 @@
 
 module Diplomacy.ResolvedOrder (
 
-    ResolvedOrder
-  , OrderInvalid(..)
+    ResolvedOrder(..)
   , OrderFailed(..)
   , OrderSucceeded(..)
 
   , orderSucceeded
   , orderFailed
-  , orderInvalid
   , resolvedOrder
 
   ) where
@@ -19,19 +17,14 @@ import Control.Applicative
 import Diplomacy.Phase
 import Diplomacy.Province
 import Diplomacy.Unit
-import Diplomacy.Board
 import Diplomacy.Country
 import Diplomacy.Order
 import Diplomacy.Orders
 
 -- | An order is either invalid, fails, or succeeds.
---   This is described by an ResolvedOrder.
+--   This is described by a ResolvedOrder.
 data ResolvedOrder phaseType
-  = Invalid (OrderInvalid phaseType)
-    -- ^ Invalid means that the order could never go through, even if there
-    --   were no other orders out there. Contrast with the explanation of
-    --   Failed.
-  | Failed (OrderFailed phaseType)
+  = Failed (OrderFailed phaseType)
     -- ^ A Failed order is a valid order which could not be completed due to
     --   external factors (other orders).
   | Succeeded (OrderSucceeded phaseType)
@@ -44,105 +37,14 @@ orderFailed :: ResolvedOrder phaseType -> Bool
 orderFailed (Failed _) = True
 orderFailed _ = False
 
-orderInvalid :: ResolvedOrder phaseType -> Bool
-orderInvalid (Invalid _) = True
-orderInvalid _ = False
-
 -- | Uniformly treat a ResolvedOrder, no matter what case.
 resolvedOrder
-  :: (OrderInvalid phaseType -> a)
-  -> (OrderFailed phaseType -> a)
+  :: (OrderFailed phaseType -> a)
   -> (OrderSucceeded phaseType -> a)
   -> ResolvedOrder phaseType
   -> a
-resolvedOrder ifInvalid _ _ (Invalid ordi) = ifInvalid ordi
-resolvedOrder _ ifFailed _ (Failed ordf) = ifFailed ordf
-resolvedOrder _ _ ifSucceeded (Succeeded ords) = ifSucceeded ords
-
--- | Any order can be invalid. Each witness gives a reason.
---   The type parameter indicates the phase to which it is relevant.
-data OrderInvalid phaseType where
-
-  SubjectInvalid
-    :: Order phaseType 
-    -- ^ Could be any order.
-    --   For the other constructors, we spell out the components of the order
-    --   so that we can guarantee that the order is of the right type.
-    -> ProvinceTarget
-    -> Unit
-    -> OrderInvalid phaseType
-    -- ^ Unit not present at the target.
-
-  MoveTargetUnreachable
-    :: Country
-    -> OrderSubject
-    -> Move
-    -> ProvinceTarget
-    -> ProvinceTarget
-    -> OrderInvalid Typical
-  UnitCannotOccupy
-    :: Country
-    -> OrderSubject
-    -> Move
-    -> Unit
-    -> ProvinceTarget
-    -> OrderInvalid Typical
-
-  SupportAgainstSelf
-    :: Country
-    -> OrderSubject
-    -> Support
-    -> ProvinceTarget
-    -> OrderInvalid Typical
-
-  NotConvoyAdjacent
-    :: Country
-    -> OrderSubject
-    -> Convoy
-    -> ProvinceTarget
-    -> ProvinceTarget
-    -> OrderInvalid Typical
-
-  SurrenderUnitNotDislodged
-    :: Country
-    -> OrderSubject
-    -> Surrender
-    -> ProvinceTarget
-    -> OrderInvalid Retreat
-
-  WithdrawUnitNotDislodged
-    :: Country
-    -> OrderSubject
-    -> Withdraw
-    -> ProvinceTarget
-    -> OrderInvalid Retreat
-  WithdrawIntoAttackingProvince
-    :: Country
-    -> OrderSubject
-    -> Withdraw
-    -> ProvinceTarget
-    -> ProvinceTarget
-    -> OrderInvalid Retreat
-  WithdrawTargetNotAdjacent
-    :: Country
-    -> OrderSubject
-    -> Withdraw
-    -> ProvinceTarget
-    -> ProvinceTarget
-    -> OrderInvalid Retreat
-
-  InlandFleet
-    :: Country
-    -> OrderSubject
-    -> Build
-    -> ProvinceTarget
-    -> OrderInvalid Adjust
-  InsufficientSupplyCentres
-    :: Country
-    -> OrderSubject
-    -> Build
-    -> ProvinceTarget
-    -> OrderInvalid Adjust
+resolvedOrder ifFailed _ (Failed ordf) = ifFailed ordf
+resolvedOrder _ ifSucceeded (Succeeded ords) = ifSucceeded ords
 
 -- | Witness of a failed order, indicating that the order would have succeeded
 --   if not for some other order.
