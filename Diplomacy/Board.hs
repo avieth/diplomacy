@@ -13,6 +13,7 @@ module Diplomacy.Board (
   , endAdjustment
 
   , giveOrder
+  , orders
 
   , DiplomacyMap
   , diplomacyMap
@@ -139,11 +140,52 @@ giveOrder ord (TypicalBoard o c) = undefined
 giveOrder ord (RetreatBoard o c d res) = undefined
 giveOrder ord (AdjustBoard o c ords) = undefined
 
+-- | TODO this needs attention. Should be more concise, and not duplicate the
+--   big where clause.
+orders :: Country -> Board phaseType -> [Order phaseType]
+orders country (TypicalBoard brd _) = M.foldrWithKey selectOrder [] brd
+  where
+    selectOrder pt auo ords =
+        let au = dropOrderObject auo
+            u = alignedUnit au
+            country' = alignedCountry au
+            oo = dropAlignedUnit (auo)
+            subject = OrderSubject u pt
+        in if country' == country
+           then makeOrder country subject oo : ords
+           else ords
+orders country (RetreatBoard _ _ d _) = M.foldrWithKey selectOrder [] d
+  where
+    selectOrder pt auo ords =
+        let au = dropOrderObject auo
+            u = alignedUnit au
+            country' = alignedCountry au
+            oo = dropAlignedUnit (auo)
+            subject = OrderSubject u pt
+        in if country' == country
+           then makeOrder country subject oo : ords
+           else ords
+orders country (AdjustBoard _ _ o) = M.foldrWithKey selectOrder [] o
+  where
+    selectOrder pt auo ords =
+        let au = dropOrderObject auo
+            u = alignedUnit au
+            country' = alignedCountry au
+            oo = dropAlignedUnit (auo)
+            subject = OrderSubject u pt
+        in if country' == country
+           then makeOrder country subject oo : ords
+           else ords
+
 newtype AlignedUnitAndOrderObject phaseType
   = AlignedUnitAndOrderObject (Country, Unit, OrderObject phaseType)
+    deriving (Show)
 
 dropOrderObject :: AlignedUnitAndOrderObject phaseType -> AlignedUnit
 dropOrderObject (AlignedUnitAndOrderObject (c, u, _)) = align u c
+
+dropAlignedUnit :: AlignedUnitAndOrderObject phaseType -> OrderObject phaseType
+dropAlignedUnit (AlignedUnitAndOrderObject (_, _, oo)) = oo
 
 alignUnitOrder
   :: Country
@@ -394,7 +436,7 @@ initialBoard Seven =
 occupy :: ProvinceTarget -> Maybe AlignedUnit -> Board Typical -> Board Typical
 occupy pt maybeUnit (TypicalBoard o c) = TypicalBoard o' c
   where
-    o' = M.update (const nextValue) pt o
+    o' = M.alter (const nextValue) pt o
     oo = defaultOrderObjectTypical
     nextValue = fmap makeAlignedUnitOrder maybeUnit
     makeAlignedUnitOrder au = alignUnitOrder (alignedCountry au) (alignedUnit au) oo
@@ -402,13 +444,13 @@ occupy pt maybeUnit (TypicalBoard o c) = TypicalBoard o' c
 control :: Province -> Maybe Country -> Board a -> Board a
 control prv maybeCountry board = updateBoardControl newControl board
   where
-    newControl = M.update (const maybeCountry) prv (_controlled board)
+    newControl = M.alter (const maybeCountry) prv (_controlled board)
 
 dislodge :: ProvinceTarget -> Maybe AlignedUnit -> Board Retreat -> Board Retreat
 dislodge pt maybeUnit brd = updateBoardDislodge newDislodge brd
   where
     oo = defaultOrderObjectRetreat
-    newDislodge = M.update (const nextValue) pt (_dislodged brd)
+    newDislodge = M.alter (const nextValue) pt (_dislodged brd)
     nextValue = fmap makeAlignedUnitOrder maybeUnit
     makeAlignedUnitOrder au = alignUnitOrder (alignedCountry au) (alignedUnit au) oo
 

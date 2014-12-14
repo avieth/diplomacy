@@ -2,14 +2,30 @@
 
 -- Everything you need in order to play diplomacy.
 
-module Diplomacy.Diplomacy where
+module Diplomacy.Diplomacy (
+
+    Diplomacy
+
+  , diplomacy
+  , nextDiplomacy
+
+  , issueOrder
+  , checkOrders
+
+  , year
+  , step
+  , boardMap
+
+  ) where
 
 import Diplomacy.Step
 import Diplomacy.Turn
 import Diplomacy.Phase
+import Diplomacy.Country
 import Diplomacy.Board
 import Diplomacy.PlayerCount
 import Diplomacy.Order
+import Diplomacy.OrderInvalid
 import Diplomacy.Orders
 import Diplomacy.ResolvedOrder
 import Diplomacy.ResolvedOrders
@@ -114,7 +130,7 @@ diplomacy pc = DiplomacySpring info (initialBoard pc) (makeStep firstTurn spring
 --       -> (ResolvedOrders a, Diplomacy (NextPhase phase))
 --
 --     checkOrders :: Country -> Diplomacy phase -> Orders (PhaseType phase)
---     map :: Diplomacy phase -> DiplomacyMap (PhaseType phase)
+--     boardMap :: Diplomacy phase -> DiplomacyMap (PhaseType phase)
 --
 nextDiplomacy
   :: Diplomacy phase
@@ -122,34 +138,66 @@ nextDiplomacy
 
 nextDiplomacy (DiplomacySpring dmi brd stp) = (res, DiplomacySpringRetreat dmi brd' stp')
   where
-    (res, brd') = makeRetreat brd
+    (res, brd') = undefined -- makeRetreat brd
     stp' = nextStep stp
 
 nextDiplomacy (DiplomacySpringRetreat dmi brd stp) = (res, DiplomacyAutumn dmi brd' stp')
   where
-    (res, brd') = makeTypical brd
+    (res, brd') = undefined -- makeTypical brd
     stp' = nextStep stp
 
 nextDiplomacy (DiplomacyAutumn dmi brd stp) = (res, DiplomacyAutumnRetreat dmi brd' stp')
   where
-    (res, brd') = makeRetreat brd
+    (res, brd') = undefined -- makeRetreat brd
     stp' = nextStep stp
 
 nextDiplomacy (DiplomacyAutumnRetreat dmi brd stp) = (res, DiplomacyWinter dmi brd' stp')
   where
-    (res, brd') = makeAdjust brd
+    (res, brd') = undefined -- makeAdjust brd
     stp' = nextStep stp
 
 nextDiplomacy (DiplomacyWinter dmi brd stp) = (res, DiplomacySpring dmi brd' stp')
   where
-    (res, brd') = endAdjustment brd
+    (res, brd') = undefined -- endAdjustment brd
     stp' = nextStep stp
+
+issueOrder
+  :: Order (PhaseType phase)
+  -> Diplomacy phase
+  -> Either (OrderInvalid (PhaseType phase)) (Diplomacy phase)
+issueOrder ord dip =
+    case giveOrder ord (board dip) of
+      Left x -> Left x
+      Right brd' -> Right $ alterBoard (const brd') dip
+
+checkOrders :: Country -> Diplomacy phase -> [Order (PhaseType phase)]
+checkOrders country = (orders country) . board
+
+boardMap :: Diplomacy phase -> DiplomacyMap (PhaseType phase)
+boardMap = diplomacyMap . board
+
+board :: Diplomacy phase -> Board (PhaseType phase)
+board (DiplomacySpring _ brd _) = brd
+board (DiplomacySpringRetreat _ brd _) = brd
+board (DiplomacyAutumn _ brd _) = brd
+board (DiplomacyAutumnRetreat _ brd _) = brd
+board (DiplomacyWinter _ brd _) = brd
+
+alterBoard
+  :: (Board (PhaseType phase) -> Board (PhaseType phase))
+  -> Diplomacy phase
+  -> Diplomacy phase
+alterBoard f (DiplomacySpring x brd y) = DiplomacySpring x (f brd) y
+alterBoard f (DiplomacySpringRetreat x brd y) = DiplomacySpringRetreat x (f brd) y
+alterBoard f (DiplomacyAutumn x brd y) = DiplomacyAutumn x (f brd) y
+alterBoard f (DiplomacyAutumnRetreat x brd y) = DiplomacyAutumnRetreat x (f brd) y
+alterBoard f (DiplomacyWinter x brd y) = DiplomacyWinter x (f brd) y
 
 step :: Diplomacy a -> Step a
 step (DiplomacySpring _ _ s) = s
-step (DiplomacySpringRetreat _ _ _ s) = s
+step (DiplomacySpringRetreat _ _ s) = s
 step (DiplomacyAutumn _ _ s) = s
-step (DiplomacyAutumnRetreat _ _ _ s) = s
+step (DiplomacyAutumnRetreat _ _ s) = s
 step (DiplomacyWinter _ _ s) = s
 
 year :: Diplomacy a -> Int
@@ -158,171 +206,3 @@ year d = let currentTurn = turn (step d) in (asYear (startingYear d)) currentTur
 -- | TODO when supporting two player mode, starting year is 1914.
 startingYear :: Diplomacy a -> Year
 startingYear d = 1901
-
-{-
-class DiplomacyPhase phase where
-  nextDiplomacy
-    :: Orders (PhaseType phase)
-    -> Diplomacy phase
-    -> Diplomacy (NextPhase phase)
-
-instance DiplomacyPhase Spring where
-  nextDiplomacy ords (DiplomacySpring dmi b s) =
-    let r = resolveSpring ords b
-    in  DiplomacySpringRetreat dmi (nextBoardSpring r) (resolvedOrders r) (nextStep s)
-
-instance DiplomacyPhase SpringRetreat where
-  nextDiplomacy ords (DiplomacySpringRetreat dmi b res s) =
-    let r = resolveSpringRetreat ords b res
-    in  DiplomacyAutumn dmi (nextBoardSpringRetreat r) (nextStep s)
-
-instance DiplomacyPhase Autumn where
-  nextDiplomacy ords (DiplomacyAutumn dmi b s) =
-    let r = resolveAutumn ords b
-    in  DiplomacyAutumnRetreat dmi (nextBoardAutumn r) (resolvedOrders r) (nextStep s)
-
-instance DiplomacyPhase AutumnRetreat where
-  nextDiplomacy ords (DiplomacyAutumnRetreat dmi b res s) =
-    let r = resolveAutumnRetreat ords b res
-    in  DiplomacyWinter dmi (nextBoardAutumnRetreat r) (nextStep s)
-
-instance DiplomacyPhase Winter where
-  nextDiplomacy ords (DiplomacyWinter dmi b s) =
-    let r = resolveWinter ords b
-    in  DiplomacySpring dmi (nextBoardWinter r) (nextStep s)
--}
-
--- | Values in this type pair a board with resolved orders which were resolved
---   against that board.
-newtype ResolvedPhase phase
-  = ResolvedPhase (Board (PhaseType phase), ResolvedOrders (PhaseType phase))
-
--- | Use the information in a ResolvedPhase to produce the next board.
---   That's to say, take all of the successful orders and execute them.
---
---   Typical phase type orders:
---     Successful moves transplant units.
---
---   Retreat phase type orders:
---     Successful retreats transplant units.
---     Failed withdraws remove units.
---     Successful surrenders remove units.
---
---   Adjust phase type orders:
---     Successful disbands remove units.
---     Successful builds add units.
---
--- Should express this one as a fold on the ResolvedOrders value, starting
--- with the current board and altering it for each of the above cases.
-nextBoardSpring :: ResolvedPhase Spring -> Board (PhaseType (NextPhase Spring))
-nextBoardSpring (ResolvedPhase (brd, resOrds)) =
-    foldr update (makeRetreat brd) resOrds
-  where
-    -- Type signature is in fact necessary to pass type checking!
-    update :: ResolvedOrder Typical -> Board Retreat -> Board Retreat
-    update (Invalid _) brd = brd
-    update (Failed _) brd = brd
-    -- ^ No change for invalid or failed moves.
-    --   In Typical phase, only the successful moves induce a change.
-
-    update (Succeeded (MoveSucceeded c os (Move pt))) brd =
-      let brd' = occupy (orderSubjectTarget os) Nothing brd
-          brd'' = occupy pt (Just $ align (orderSubjectUnit os) c) brd'
-      in  maybe brd'' (\u -> dislodge pt (Just u) brd'') (unitAt brd (orderSubjectTarget os))
-    -- ^ A successful move puts the mover onto that target territory, and if
-    --   there's somebody there, dislodged him. Of course, we never update
-    --   control here, that's done at the end of the autumn phase.
-
-    update (Succeeded _) brd = brd
--- ^ No other orders affect any change in the board.
-
-nextBoardSpringRetreat
-  :: ResolvedPhase SpringRetreat
-  -> Board (PhaseType (NextPhase SpringRetreat))
-nextBoardSpringRetreat = undefined
-
--- Must remember to update control after autumn phase.
-nextBoardAutumn :: ResolvedPhase Autumn -> Board (PhaseType (NextPhase Autumn))
-nextBoardAutumn (ResolvedPhase (brd, resOrds)) =
-    foldr update (makeRetreat brd) resOrds
-  where
-    update :: ResolvedOrder Typical -> Board Retreat -> Board Retreat
-    update (Invalid _) brd = brd
-    update (Failed _) brd = brd
-
-    update (Succeeded (HoldSucceeded c os holdOrder)) brd =
-      control (ptProvince $ orderSubjectTarget os) (Just c) brd
-    -- ^ Successful holds ensure that the country is controlled by the holding
-    --   force's country.
-
-    update (Succeeded (MoveSucceeded c os (Move pt))) brd =
-      let brd' = occupy (orderSubjectTarget os) Nothing brd
-          brd'' = occupy pt (Just $ align (orderSubjectUnit os) c) brd'
-          brd''' = control (ptProvince pt) (Just c) brd''
-      in  maybe brd''' (\u -> dislodge pt (Just u) brd''') (unitAt brd (orderSubjectTarget os))
-    -- ^ A successful hold not only occupies and possibly dislodges, but also
-    --   gains control.
-
-    update (Succeeded _) brd = brd
-
-nextBoardAutumnRetreat
-  :: ResolvedPhase AutumnRetreat
-  -> Board (PhaseType (NextPhase AutumnRetreat))
-nextBoardAutumnRetreat = undefined
-
--- This one is tricky. How do we guarantee that units in excess of supply
--- centre count are removed???
--- We'll have to define some datatype which serves as proof that no country
--- has more units than supply centres. We shall do this in Board.hs
-nextBoardWinter
-  :: ResolvedPhase Winter
-  -> Board (PhaseType (NextPhase Winter))
-nextBoardWinter (ResolvedPhase (brd, resOrds)) =
-    foldr update (makeTypical brd) resOrds
-  where
-    update :: ResolvedOrder Adjust -> Board Typical -> Board Typical
-    update (Invalid
-    update (Succeeded 
-
-resolvedOrders :: ResolvedPhase a -> ResolvedOrders (PhaseType a)
-resolvedOrders (ResolvedPhase (_, resOrds)) = resOrds
-
--- TODO move these to ResolvedOrder.hs ?
-resolveSpring
-  :: Orders (PhaseType Spring)
-  -> Board (PhaseType Spring)
-  -> ResolvedPhase Spring
-resolveSpring ords brd
-  = ResolvedPhase (brd, map (resolveOrderTypical ords brd) ords)
-
-resolveSpringRetreat
-  :: Orders (PhaseType SpringRetreat)
-  -> Board (PhaseType SpringRetreat)
-  -> ResolvedOrders (PhaseType Spring)
-  -- ^ Gotta have those orders from the previous Spring phase.
-  -> ResolvedPhase SpringRetreat
-resolveSpringRetreat ords brd res
-  = ResolvedPhase (brd, map (resolveOrderRetreat ords brd res) ords)
-
-resolveAutumn
-  :: Orders (PhaseType Autumn)
-  -> Board (PhaseType Autumn)
-  -> ResolvedPhase Autumn
-resolveAutumn ords brd
-  = ResolvedPhase (brd, map (resolveOrderTypical ords brd) ords)
-
-resolveAutumnRetreat
-  :: Orders (PhaseType AutumnRetreat)
-  -> Board (PhaseType AutumnRetreat)
-  -> ResolvedOrders (PhaseType Autumn)
-  -> ResolvedPhase AutumnRetreat
-resolveAutumnRetreat ords brd res
-  = ResolvedPhase (brd, map (resolveOrderRetreat ords brd res) ords)
-
-resolveWinter
-  :: Orders (PhaseType Winter)
-  -> Board (PhaseType Winter)
-  -> ResolvedPhase Winter
-resolveWinter ords brd
-  = ResolvedPhase (brd, map (resolveOrderAdjust brd) ords)
-
