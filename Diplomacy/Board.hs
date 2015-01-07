@@ -21,14 +21,20 @@ module Diplomacy.Board (
   , unitAt
   , controllerOf
   , dislodged
+  , hasDislodged
+  , isDislodged
   , occupies
   , controls
+  , countryOccupies
+  , unitOccupies 
 
   , unitCount
   , supplyCentreCount
 
   , supplyCentreSurplusses
   , supplyCentreDefecits
+
+  , anyResolvedOrder
 
   ) where
 
@@ -41,7 +47,7 @@ import           Diplomacy.Province
 import           Diplomacy.Unit
 import           Diplomacy.PlayerCount
 import           Diplomacy.Order
-import           Diplomacy.OrderInvalid
+import           Diplomacy.ResolvedOrder
 import           Diplomacy.ResolvedOrders
 
 -- | Values of type Board phaseType capture the state of a diplomacy game at
@@ -130,52 +136,31 @@ diplomacyMap (TypicalBoard o c) = TypicalMap (M.map dropOrderObject o) c
 diplomacyMap (RetreatBoard o c d _) = RetreatMap o c (M.map dropOrderObject d)
 diplomacyMap (AdjustBoard o c _) = AdjustMap o c
 
--- | Give an order. If the order is invalid (cannot possible be fulfilled) then
---   we give the reason why.
+-- | Give an order. Please make sure it's valid; we don't check that for you
+--   TODO should reject invalid orders, but my first attempt caused a cyclic
+--   dependecy so I just dropped it.
 giveOrder
   :: Order phaseType
   -> Board phaseType
-  -> Either (OrderInvalid phaseType) (Board phaseType)
+  -> Board phaseType
 giveOrder ord (TypicalBoard o c) = undefined
 giveOrder ord (RetreatBoard o c d res) = undefined
 giveOrder ord (AdjustBoard o c ords) = undefined
 
--- | TODO this needs attention. Should be more concise, and not duplicate the
---   big where clause.
 orders :: Country -> Board phaseType -> [Order phaseType]
-orders country (TypicalBoard brd _) = M.foldrWithKey selectOrder [] brd
-  where
-    selectOrder pt auo ords =
-        let au = dropOrderObject auo
-            u = alignedUnit au
-            country' = alignedCountry au
-            oo = dropAlignedUnit (auo)
-            subject = OrderSubject u pt
-        in if country' == country
-           then makeOrder country subject oo : ords
-           else ords
-orders country (RetreatBoard _ _ d _) = M.foldrWithKey selectOrder [] d
-  where
-    selectOrder pt auo ords =
-        let au = dropOrderObject auo
-            u = alignedUnit au
-            country' = alignedCountry au
-            oo = dropAlignedUnit (auo)
-            subject = OrderSubject u pt
-        in if country' == country
-           then makeOrder country subject oo : ords
-           else ords
-orders country (AdjustBoard _ _ o) = M.foldrWithKey selectOrder [] o
-  where
-    selectOrder pt auo ords =
-        let au = dropOrderObject auo
-            u = alignedUnit au
-            country' = alignedCountry au
-            oo = dropAlignedUnit (auo)
-            subject = OrderSubject u pt
-        in if country' == country
-           then makeOrder country subject oo : ords
-           else ords
+orders country (TypicalBoard brd _) = M.foldrWithKey (selectOrder country) [] brd
+orders country (RetreatBoard _ _ d _) = M.foldrWithKey (selectOrder country) [] d
+orders country (AdjustBoard _ _ o) = M.foldrWithKey (selectOrder country) [] o
+
+selectOrder country pt auo ords =
+    let au = dropOrderObject auo
+        u = alignedUnit au
+        country' = alignedCountry au
+        oo = dropAlignedUnit (auo)
+        subject = OrderSubject u pt
+    in if country' == country
+       then makeOrder country subject oo : ords
+       else ords
 
 newtype AlignedUnitAndOrderObject phaseType
   = AlignedUnitAndOrderObject (Country, Unit, OrderObject phaseType)
@@ -493,3 +478,37 @@ controls b c p = maybe False ((==) c) (controllerOf b p)
 -- | Get the dislodged unit, if any, at a given ProvinceTarget.
 dislodged :: Board Retreat -> ProvinceTarget -> Maybe AlignedUnit
 dislodged brd pt = fmap dropOrderObject (M.lookup pt (_dislodged brd))
+
+hasDislodged :: Board Retreat -> ProvinceTarget -> Bool
+hasDislodged board = maybe False (const True) . dislodged board
+
+isDislodged :: Board Retreat -> AlignedUnit -> ProvinceTarget -> Bool
+isDislodged board au pt = maybe False ((==) au) (dislodged board pt)
+
+countryOccupies :: Country -> ProvinceTarget -> Board a -> Bool
+countryOccupies country pt (TypicalBoard o _) = maybe False check (M.lookup pt o)
+  where
+    check auo = alignedCountry (dropOrderObject auo) == country
+countryOccupies country pt (RetreatBoard o _ _ _) = maybe False check (M.lookup pt o)
+  where
+    check au = alignedCountry au == country
+countryOccupies country pt (AdjustBoard o _ _) = maybe False check (M.lookup pt o)
+  where
+    check au = alignedCountry au == country
+
+unitOccupies :: Unit -> ProvinceTarget -> Board a -> Bool
+unitOccupies unit pt (TypicalBoard o _) = maybe False check (M.lookup pt o)
+  where
+    check auo = alignedUnit (dropOrderObject auo) == unit
+unitOccupies unit pt (RetreatBoard o _ _ _) = maybe False check (M.lookup pt o)
+  where
+    check au = alignedUnit au == unit
+unitOccupies unit pt (AdjustBoard o _ _) = maybe False check (M.lookup pt o)
+  where
+    check au = alignedUnit au == unit
+
+anyResolvedOrder
+  :: Board Retreat
+  -> (ResolvedOrder Typical -> Bool)
+  -> Bool
+anyResolvedOrder (RetreatBoard _ _ _ resolvedOrders) = (flip any) resolvedOrders

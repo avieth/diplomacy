@@ -11,6 +11,15 @@ module Diplomacy.Order (
   , Disband(..)
   , Build(..)
 
+  , moveTarget
+  , supportedUnit
+  , supportingFrom
+  , supportingInto
+  , convoyedUnit
+  , convoyingFrom
+  , convoyingTo
+  , withdrawingTo
+
   , OrderSubject(..)
   , OrderObject(..)
 
@@ -70,6 +79,30 @@ data Disband = Disband
 --   determined by some OrderSubject.
 data Build = Build
   deriving (Show)
+
+moveTarget :: Move -> ProvinceTarget
+moveTarget (Move pt) = pt
+
+supportedUnit :: Support -> Unit
+supportedUnit (Support u _ _) = u
+
+supportingFrom :: Support -> ProvinceTarget
+supportingFrom (Support _ pt _) = pt
+
+supportingInto :: Support -> Maybe ProvinceTarget
+supportingInto (Support _ _ mpt) = mpt
+
+convoyedUnit :: Convoy -> Unit
+convoyedUnit (Convoy u _ _) = u
+
+convoyingFrom :: Convoy -> ProvinceTarget
+convoyingFrom (Convoy _ pt _) = pt
+
+convoyingTo :: Convoy -> ProvinceTarget
+convoyingTo (Convoy _ _ pt) = pt
+
+withdrawingTo :: Withdraw -> ProvinceTarget
+withdrawingTo (Withdraw pt) = pt
 
 -- | Subject of an order; the thing which is ordered.
 --   We describe it just like it's described in the rules:
@@ -179,4 +212,3 @@ orderObject (SurrenderOrder _ _ s) = SurrenderObject s
 orderObject (WithdrawOrder _ _ w) = WithdrawObject w
 orderObject (DisbandOrder _ _ d) = DisbandObject d
 orderObject (BuildOrder _ _ b) = BuildObject b
-
