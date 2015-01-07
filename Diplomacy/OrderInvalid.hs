@@ -4,6 +4,11 @@ module Diplomacy.OrderInvalid (
 
     OrderInvalid(..)
 
+  , OrderValidation
+
+  , ValidOrder
+  , outValidOrder
+
   , validateOrder
 
   ) where
@@ -15,8 +20,11 @@ import Diplomacy.Province
 import Diplomacy.Unit
 import Diplomacy.Order
 import Diplomacy.Country
-import Diplomacy.Board
 import Diplomacy.ResolvedOrder
+
+-- Board depends upon this module :( Must break cycle by using an hs-boot.
+import {-# SOURCE #-} Diplomacy.Board
+
 
 -- | Any order can be invalid. Each witness gives a reason.
 --   The type parameter indicates the phase to which it is relevant.
@@ -91,6 +99,9 @@ data OrderInvalid phaseType where
 newtype ValidOrder phaseType = ValidOrder {
     validOrder :: Order phaseType
   }
+
+outValidOrder :: ValidOrder phaseType -> Order phaseType
+outValidOrder = validOrder
 
 type OrderValidation phaseType = Either (OrderInvalid phaseType) (ValidOrder phaseType)
 
