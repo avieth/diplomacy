@@ -119,9 +119,6 @@ implies :: Bool -> OrderInvalid phaseType -> Validation phaseType
 implies True x = notOk x
 implies False _ = ok
 
-validateOrders :: Board phaseType -> [Order phaseType] -> [OrderValidation phaseType]
-validateOrders board = map (validateOrder board)
-
 validateOrder :: Board phaseType -> Order phaseType -> OrderValidation phaseType
 validateOrder board order = orderValidation order validation
   where
