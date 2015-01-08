@@ -4,15 +4,16 @@ module Diplomacy.Board (
 
     Board
 
+  -- This group of exports are the only means through which Board values
+  -- can come about.
   , initialBoard
-
   -- Functions for "advancing" a board from phase to phase.
   , makeRetreat
   , makeAdjust
   , makeTypical
   , endAdjustment
-
   , giveOrder
+
   , orders
 
   , DiplomacyMap
@@ -49,7 +50,10 @@ import           Diplomacy.PlayerCount
 import           Diplomacy.Order
 import           Diplomacy.ResolvedOrder
 import           Diplomacy.ResolvedOrders
-import           Diplomacy.OrderInvalid
+
+-- | TODO explain. We don't put AlignedUnits on the board, we put
+--   BoardEntry values, which contain a Unit and Country anyways.
+type BoardEntry phaseType = ValidOrder phaseType
 
 -- | Values of type Board phaseType capture the state of a diplomacy game at
 --   a phase of that type (we use a phase type rather than a phase because
@@ -61,25 +65,8 @@ import           Diplomacy.OrderInvalid
 data Board phaseType where
 
   TypicalBoard
-    :: M.Map ProvinceTarget (AlignedUnitAndOrderObject Typical)
-    -- ^ In a typical board, each ProvinceTarget which is
-    -- occupied determines an occupying country, a unit, and
-    -- an order. This gives us a static guarantee that every
-    -- unit in a typical phase has an order, and that's a good
-    -- thing.
-    -- But the story doesn't end there. We also want each of the OrderObjects
-    -- to correspond to a _valid_ order, i.e. if we build an Order from that
-    -- OrderObject, and the OrderSubject determined by the ProvinceTarget and
-    -- AlignedUnit (country and unit) then that Order must be valid against
-    -- this Board. I am not sure how to juggle the type system so as to prove
-    -- this, so for now we just rely upon convention:
-    --
-    --   (1) a Hold is valid if and only if its subject is valid (OrderInvalid.hs)
-    --   (2) the OrderSubject built from a ProvinceTarget and the Unit occupying
-    --       it, along with the Country to which that Unit is aligned, always
-    --       passes subject validation against that same Board (OrderInvalid.hs)
-    --
-    -- therefore using Hold as an OrderObject here will always pass validation.
+    :: M.Map ProvinceTarget (BoardEntry Typical)
+    -- ^ Occupation of ProvinceTargets.
     -> M.Map Province Country
     -- ^ Control of provinces.
     -> Board Typical
@@ -91,10 +78,8 @@ data Board phaseType where
     -- orders on the dislodged units.
     -> M.Map Province Country
     -- ^ Control of provinces.
-    -> M.Map ProvinceTarget (AlignedUnitAndOrderObject Retreat)
-    -- ^ Dislodged units. Each one has an order.
-    -- See the note in the TypicalBoard constructor. We rely here upon the
-    -- fact (from OrderInvalid.hs) that a Surrender order will always validate.
+    -> M.Map ProvinceTarget (BoardEntry Retreat)
+    -- ^ Dislodged units.
     -> ResolvedOrders Typical
     -- ^ Resolved orders from the previous phase; they are necessary to
     -- determine validity of retreat phase orders.
@@ -108,22 +93,9 @@ data Board phaseType where
     -- NormalizedBoard datatype.
     -> M.Map Province Country
     -- ^ Control of provinces.
-    -> M.Map ProvinceTarget (AlignedUnitAndOrderObject Adjust)
-    -- ^ Track the adjustment orders. This one is tricky because the adjustment
-    -- order subject interpretation is different depending on the order: for
-    -- a build it means make this (not yet existing) unit at this province
-    -- target, but for a disband it means remove this (existing) unit at this
-    -- province target.
-    --
-    -- A note on validity:
-    --   - cannot disband and build at the same province target in one adjust
-    --     phase; i.e. you can't swap a fleet for an army by disbanding then
-    --     building.
-    --   - must specify a ProvinceTarget, not just a Province.
-    --   - must be in home country
-    --   - must not cause a defecit
-    --   - cannot build a fleet inland
-    --
+    -> M.Map ProvinceTarget (BoardEntry Adjust)
+    -- ^ Track the adjustment orders. We do not group it with either of the
+    -- other two maps because orders are not required at Adjust phase.
     -> Board Adjust
 
 -- | A DiplomacyMap is a Board without any orders. The only way to create one
@@ -147,9 +119,18 @@ data DiplomacyMap phaseType where
     -> M.Map Province Country
     -> DiplomacyMap Adjust
 
+validOrderToAlignedUnit :: ValidOrder phaseType -> AlignedUnit
+validOrderToAlignedUnit validOrder = align unit country
+  where
+    unit = orderSubjectUnit . orderSubject . outValidOrder $ validOrder
+    country = orderCountry . outValidOrder $ validOrder
+
+validOrderToProvinceTarget :: ValidOrder phaseType -> ProvinceTarget
+validOrderToProvinceTarget = orderSubjectTarget . orderSubject . outValidOrder
+
 diplomacyMap :: Board phaseType -> DiplomacyMap phaseType
-diplomacyMap (TypicalBoard o c) = TypicalMap (M.map dropOrderObject o) c
-diplomacyMap (RetreatBoard o c d _) = RetreatMap o c (M.map dropOrderObject d)
+diplomacyMap (TypicalBoard o c) = TypicalMap (M.map validOrderToAlignedUnit o) c
+diplomacyMap (RetreatBoard o c d _) = RetreatMap o c (M.map validOrderToAlignedUnit d)
 diplomacyMap (AdjustBoard o c _) = AdjustMap o c
 
 -- | Give an order. The board is unchanged in case the order is invalid.
@@ -169,71 +150,32 @@ giveOrder order board = (orderValidation, nextBoard)
 -- | ValidOrder must have been generated by validateOrder against this very
 --   board!
 giveValidOrder :: ValidOrder phaseType -> Board phaseType -> Board phaseType
-giveValidOrder validOrder (TypicalBoard occupyMap controlMap) = TypicalBoard nextOccupyMap controlMap
+giveValidOrder validOrder (TypicalBoard occupyMap controlMap) =
+    TypicalBoard nextOccupyMap controlMap
   where
     nextOccupyMap = M.alter alteration provinceTarget occupyMap
-    provinceTarget = orderSubjectTarget . orderSubject . outValidOrder $ validOrder
-    object = orderObject . outValidOrder $ validOrder
-    alteration x = case x of
-      Just alignedUnitAndOrderObject -> Just $ updateOrderObject object alignedUnitAndOrderObject
-      -- How could it be Nothing? The Order passed validation!!!!
-      -- I wish I could figure out how to convince GHC of this.
-      Nothing -> error "Valid Typical order is not reaaaaaly valid!"
-giveValidOrder validOrder (RetreatBoard x y dislodgedMap z) = RetreatBoard x y nextDislodgedMap z
+    provinceTarget = validOrderToProvinceTarget validOrder
+    alteration = const $ Just validOrder
+giveValidOrder validOrder (RetreatBoard x y dislodgedMap z) =
+    RetreatBoard x y nextDislodgedMap z
   where
     nextDislodgedMap = M.alter alteration provinceTarget dislodgedMap
-    provinceTarget = orderSubjectTarget . orderSubject . outValidOrder $ validOrder
-    object = orderObject . outValidOrder $ validOrder
-    alteration x = case x of
-      Just alignedUnitAndOrderObject -> Just $ updateOrderObject object alignedUnitAndOrderObject
-      Nothing -> error "Valid Retreat order is not reaallly valid!"
-giveValidOrder validOrder (AdjustBoard x y orderMap) = AdjustBoard x y nextOrderMap
+    provinceTarget = validOrderToProvinceTarget validOrder
+    alteration = const $ Just validOrder
+giveValidOrder validOrder (AdjustBoard x y orderMap) =
+    AdjustBoard x y nextOrderMap
   where
     nextOrderMap = M.alter alteration provinceTarget orderMap
-    provinceTarget = orderSubjectTarget . orderSubject . outValidOrder $ validOrder
-    country = orderCountry . outValidOrder $ validOrder
-    unit = orderSubjectUnit . orderSubject . outValidOrder $ validOrder
-    object = orderObject . outValidOrder $ validOrder
-    alteration = const (Just $ alignUnitOrder country unit object)
+    provinceTarget = validOrderToProvinceTarget validOrder
+    alteration = const $ Just validOrder
 
-orders :: Country -> Board phaseType -> [Order phaseType]
-orders country (TypicalBoard brd _) = M.foldrWithKey (selectOrder country) [] brd
-orders country (RetreatBoard _ _ d _) = M.foldrWithKey (selectOrder country) [] d
-orders country (AdjustBoard _ _ o) = M.foldrWithKey (selectOrder country) [] o
+validOrders :: Board phaseType -> [ValidOrder phaseType]
+validOrders (TypicalBoard brd _) = M.foldr (:) [] brd
+validOrders (RetreatBoard _ _ d _) = M.foldr (:) [] d
+validOrders (AdjustBoard _ _ o) = M.foldr (:) [] o
 
-selectOrder country pt auo ords =
-    let au = dropOrderObject auo
-        u = alignedUnit au
-        country' = alignedCountry au
-        oo = dropAlignedUnit (auo)
-        subject = OrderSubject u pt
-    in if country' == country
-       then makeOrder country subject oo : ords
-       else ords
-
-newtype AlignedUnitAndOrderObject phaseType
-  = AlignedUnitAndOrderObject (Country, Unit, OrderObject phaseType)
-    deriving (Show)
-
-dropOrderObject :: AlignedUnitAndOrderObject phaseType -> AlignedUnit
-dropOrderObject (AlignedUnitAndOrderObject (c, u, _)) = align u c
-
-dropAlignedUnit :: AlignedUnitAndOrderObject phaseType -> OrderObject phaseType
-dropAlignedUnit (AlignedUnitAndOrderObject (_, _, oo)) = oo
-
-updateOrderObject
-  :: OrderObject phaseType
-  -> AlignedUnitAndOrderObject phaseType
-  -> AlignedUnitAndOrderObject phaseType
-updateOrderObject orderObject (AlignedUnitAndOrderObject (c, u, _)) =
-  AlignedUnitAndOrderObject (c, u, orderObject)
-
-alignUnitOrder
-  :: Country
-  -> Unit
-  -> OrderObject phaseType
-  -> AlignedUnitAndOrderObject phaseType
-alignUnitOrder c u o = AlignedUnitAndOrderObject (c, u, o)
+orders :: Board phaseType -> [Order phaseType]
+orders = map outValidOrder . validOrders
 
 -- | A report of which units were removed in normalization and from where.
 type RemovedUnits = [(AlignedUnit, ProvinceTarget)]
@@ -244,6 +186,9 @@ type RemovedUnits = [(AlignedUnit, ProvinceTarget)]
 newtype NormalizedBoard = NormalizedBoard (Board Adjust, RemovedUnits)
 
 endAdjustment :: Board Adjust -> (ResolvedOrders Adjust, Board Typical)
+endAdjustment = undefined
+{-
+TODO
 endAdjustment brd@(AdjustBoard o c ords) = (res, TypicalBoard o' c)
   where
     -- TODO must be careful to normalize only after we carry out the orders.
@@ -256,7 +201,7 @@ endAdjustment brd@(AdjustBoard o c ords) = (res, TypicalBoard o' c)
     o' = undefined -- M.mapWithKey mapper brd'
     oo = defaultOrderObjectTypical
     mapper pt au = alignUnitOrder (alignedCountry au) (alignedUnit au) oo
-
+-}
 -- | The board in the NormalizedBoard is guaranteed to have no supply centre
 --   defecits, since the only way in to NormalizedBoard is via normalizeBoard
 --   (unless you cheat and use the constructor directly, but you mustn't!).
@@ -267,7 +212,7 @@ normalizedBoard (NormalizedBoard (AdjustBoard o c _, _)) = TypicalBoard o' c
   where
     o' = M.mapWithKey mapper o
     oo = defaultOrderObjectTypical
-    mapper pt au = alignUnitOrder (alignedCountry au) (alignedUnit au) oo
+    mapper pt au = undefined -- TODO alignUnitOrder (alignedCountry au) (alignedUnit au) oo
 
 removedUnits :: NormalizedBoard -> RemovedUnits
 removedUnits (NormalizedBoard (_, r)) = r
@@ -348,19 +293,19 @@ supplyCentreSurplusses = M.map (\x -> -x) . supplyCentreDefecits
 --   TODO perhaps we should demand the order resolutions here so we can fill
 --   in the dislodged map?
 --   No, we should just produce the resolutions here and return them.
-makeRetreat :: Board Typical -> Board Retreat
-makeRetreat (TypicalBoard o c) = RetreatBoard (M.map dropOrderObject o) c M.empty res
+makeRetreat :: Board Typical -> (ResolvedOrders Typical, Board Retreat)
+makeRetreat board = (resolutions, nextBoard)
   where
-    -- TODO will compute this by resolving orders.
-    res = undefined
+    resolutions = resolveOrders (validOrders board)
+    nextBoard = undefined -- TODO applyResolutionsTypical resolutions board
 
 -- | Making an adjustment board entails updating the control map so that every
 --   occupying unit takes control of the province it occupies.
-makeAdjust :: Board Retreat -> Board Adjust
-makeAdjust (RetreatBoard o c d _) = AdjustBoard o c' M.empty
+makeAdjust :: Board Retreat -> (ResolvedOrders Retreat, Board Adjust)
+makeAdjust board = (resolutions, nextBoard)
   where
-    c' = M.foldrWithKey update c o
-    update pt au c = M.insert (ptProvince pt) (alignedCountry au) c
+    resolutions = resolveOrders (validOrders board)
+    nextBoard = undefined -- TODO applyResolutionsRetreatAdjust resolutions board
 
 -- | To make a Typical board from an Adjust phase, look elsewhere. You must
 --   go through NormalizedBoard.
@@ -370,19 +315,18 @@ makeAdjust (RetreatBoard o c d _) = AdjustBoard o c' M.empty
 --   No, that will be necessary, so that we can identify invalid withdraw
 --   orders! So this type signature stands; we'll knock the previous resolutions
 --   off of the Diplomacy type.
-makeTypical :: Board Retreat -> Board Typical
-makeTypical (RetreatBoard o c d _) = TypicalBoard o' c
+makeTypical :: Board Retreat -> (ResolvedOrders Retreat, Board Typical)
+makeTypical board = (resolutions, nextBoard)
   where
-    o' = M.mapWithKey mapper o
-    oo = defaultOrderObjectTypical
-    mapper pt au = alignUnitOrder (alignedCountry au) (alignedUnit au) oo
+    resolutions = resolveOrders (validOrders board)
+    nextBoard = undefined -- TODO applyResolutionsRetreatTypical resolutions board
 
 _controlled :: Board a -> M.Map Province Country
 _controlled (TypicalBoard _ c) = c
 _controlled (RetreatBoard _ c _ _) = c
 _controlled (AdjustBoard _ c _) = c
 
-_dislodged :: Board Retreat -> M.Map ProvinceTarget (AlignedUnitAndOrderObject Retreat)
+_dislodged :: Board Retreat -> M.Map ProvinceTarget (ValidOrder Retreat)
 _dislodged (RetreatBoard _ _ d _) = d
 
 -- | Low-level unsafe update of the board's control map.
@@ -391,12 +335,14 @@ updateBoardControl map (TypicalBoard o _) = TypicalBoard o map
 updateBoardControl map (RetreatBoard o _ d res) = RetreatBoard o map d res
 updateBoardControl map (AdjustBoard o _ ords) = AdjustBoard o map ords
 
-
+{-
+TODO
 updateBoardDislodge
   :: M.Map ProvinceTarget (AlignedUnitAndOrderObject Retreat)
   -> Board Retreat
   -> Board Retreat
 updateBoardDislodge d (RetreatBoard o c _ res) = RetreatBoard o c d res
+-}
 
 emptyBoard :: Board Typical
 emptyBoard = TypicalBoard M.empty M.empty
@@ -475,12 +421,21 @@ initialBoard Seven =
           turkishFleet = Just (align fleet Ottoman)
 
 occupy :: ProvinceTarget -> Maybe AlignedUnit -> Board Typical -> Board Typical
-occupy pt maybeUnit (TypicalBoard o c) = TypicalBoard o' c
+occupy provinceTarget maybeUnit board = case maybeUnit of
+    Nothing -> removeOccupy provinceTarget board
+    Just au -> insertOccupy provinceTarget (alignedCountry au) (alignedUnit au) board
+
+removeOccupy :: ProvinceTarget -> Board Typical -> Board Typical
+removeOccupy provinceTarget (TypicalBoard o c) = TypicalBoard o' c
   where
-    o' = M.alter (const nextValue) pt o
-    oo = defaultOrderObjectTypical
-    nextValue = fmap makeAlignedUnitOrder maybeUnit
-    makeAlignedUnitOrder au = alignUnitOrder (alignedCountry au) (alignedUnit au) oo
+    o' = M.delete provinceTarget o
+
+insertOccupy :: ProvinceTarget -> Country -> Unit -> Board Typical -> Board Typical
+insertOccupy provinceTarget country unit (TypicalBoard o c) = TypicalBoard o' c
+  where
+    o' = M.alter alteration provinceTarget o
+    alteration = const $ Just validOrder
+    validOrder = validOrderTypical country provinceTarget unit
 
 control :: Province -> Maybe Country -> Board a -> Board a
 control prv maybeCountry board = updateBoardControl newControl board
@@ -488,22 +443,31 @@ control prv maybeCountry board = updateBoardControl newControl board
     newControl = M.alter (const maybeCountry) prv (_controlled board)
 
 dislodge :: ProvinceTarget -> Maybe AlignedUnit -> Board Retreat -> Board Retreat
-dislodge pt maybeUnit brd = updateBoardDislodge newDislodge brd
-  where
-    oo = defaultOrderObjectRetreat
-    newDislodge = M.alter (const nextValue) pt (_dislodged brd)
-    nextValue = fmap makeAlignedUnitOrder maybeUnit
-    makeAlignedUnitOrder au = alignUnitOrder (alignedCountry au) (alignedUnit au) oo
+dislodge provinceTarget maybeUnit board = case maybeUnit of
+    Nothing -> removeDislodge provinceTarget board
+    Just au -> insertDislodge provinceTarget (alignedCountry au) (alignedUnit au) board
 
-unitAt :: ProvinceTarget -> Board a -> Maybe AlignedUnit
-unitAt pt (TypicalBoard o _) = fmap dropOrderObject (M.lookup pt o)
+removeDislodge :: ProvinceTarget -> Board Retreat -> Board Retreat
+removeDislodge provinceTarget (RetreatBoard x y d z) = RetreatBoard x y d' z
+  where
+    d' = M.delete provinceTarget d
+
+insertDislodge :: ProvinceTarget -> Country -> Unit -> Board Retreat -> Board Retreat
+insertDislodge provinceTarget country unit (RetreatBoard x y d z) = RetreatBoard x y d' z
+  where
+    d' = M.alter alteration provinceTarget d
+    alteration = const $ Just validOrder
+    validOrder = validOrderRetreat country provinceTarget unit
+
+unitAt :: ProvinceTarget -> Board phaseType -> Maybe AlignedUnit
+unitAt pt (TypicalBoard o _) = fmap validOrderToAlignedUnit (M.lookup pt o)
 unitAt pt (RetreatBoard o _ _ _) = M.lookup pt o
 unitAt pt (AdjustBoard o _ _) = M.lookup pt o
 
 unitCount :: Country -> Board a -> Int
 unitCount c (TypicalBoard o _) = M.foldr count 0 o
   where
-    count auo t = if alignedCountry (dropOrderObject auo) == c
+    count auo t = if alignedCountry (validOrderToAlignedUnit auo) == c
                   then t + 1
                   else t
 unitCount c (RetreatBoard o _ d _) = occupyCount + dislodgedCount 
@@ -511,7 +475,7 @@ unitCount c (RetreatBoard o _ d _) = occupyCount + dislodgedCount
     occupyCount = M.foldr countOccupy 0 o
     dislodgedCount = M.foldr countDislodged 0 d
     countOccupy unit t = if alignedCountry unit == c then t + 1 else t
-    countDislodged auo t = if alignedCountry (dropOrderObject auo) == c
+    countDislodged auo t = if alignedCountry (validOrderToAlignedUnit auo) == c
                            then t + 1
                            else t
 unitCount c (AdjustBoard o _ _) = M.foldr count 0 o
@@ -521,7 +485,7 @@ unitCount c (AdjustBoard o _ _) = M.foldr count 0 o
 occupies :: AlignedUnit -> ProvinceTarget -> Board a -> Bool
 occupies au pt (TypicalBoard o _) = maybe False check (M.lookup pt o)
   where
-    check auo = dropOrderObject auo == au
+    check auo = validOrderToAlignedUnit auo == au
 occupies au pt (RetreatBoard o _ _ _) = maybe False ((==) au) (M.lookup pt o)
 occupies au pt (AdjustBoard o _ _) = maybe False ((==) au) (M.lookup pt o)
 
@@ -533,7 +497,7 @@ controls b c p = maybe False ((==) c) (controllerOf b p)
 
 -- | Get the dislodged unit, if any, at a given ProvinceTarget.
 dislodged :: Board Retreat -> ProvinceTarget -> Maybe AlignedUnit
-dislodged brd pt = fmap dropOrderObject (M.lookup pt (_dislodged brd))
+dislodged brd pt = fmap validOrderToAlignedUnit (M.lookup pt (_dislodged brd))
 
 hasDislodged :: Board Retreat -> ProvinceTarget -> Bool
 hasDislodged board = maybe False (const True) . dislodged board
@@ -544,7 +508,7 @@ isDislodged board au pt = maybe False ((==) au) (dislodged board pt)
 countryOccupies :: Country -> ProvinceTarget -> Board a -> Bool
 countryOccupies country pt (TypicalBoard o _) = maybe False check (M.lookup pt o)
   where
-    check auo = alignedCountry (dropOrderObject auo) == country
+    check auo = alignedCountry (validOrderToAlignedUnit auo) == country
 countryOccupies country pt (RetreatBoard o _ _ _) = maybe False check (M.lookup pt o)
   where
     check au = alignedCountry au == country
@@ -555,7 +519,7 @@ countryOccupies country pt (AdjustBoard o _ _) = maybe False check (M.lookup pt 
 unitOccupies :: Unit -> ProvinceTarget -> Board a -> Bool
 unitOccupies unit pt (TypicalBoard o _) = maybe False check (M.lookup pt o)
   where
-    check auo = alignedUnit (dropOrderObject auo) == unit
+    check auo = alignedUnit (validOrderToAlignedUnit auo) == unit
 unitOccupies unit pt (RetreatBoard o _ _ _) = maybe False check (M.lookup pt o)
   where
     check au = alignedUnit au == unit

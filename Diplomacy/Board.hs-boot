@@ -6,7 +6,7 @@ import Diplomacy.Unit
 import Diplomacy.Province
 import Diplomacy.Phase
 import Diplomacy.Country
-import Diplomacy.ResolvedOrder
+import {-# SOURCE #-} Diplomacy.ResolvedOrder
 
 type role Board nominal
 data Board phaseType
