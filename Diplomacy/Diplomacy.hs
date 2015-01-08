@@ -29,7 +29,6 @@ import Diplomacy.OrderInvalid
 import Diplomacy.Orders
 import Diplomacy.ResolvedOrder
 import Diplomacy.ResolvedOrders
-import Diplomacy.Resolve
 import Diplomacy.Province
 import Diplomacy.Unit
 
