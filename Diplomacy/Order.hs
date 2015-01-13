@@ -121,20 +121,20 @@ orderSubjectTarget (OrderSubject _ pt) = pt
 -- | An order, parameterized by the phase type to which it is relevant.
 --   It completely characterizes an order: country issuing the order, subject
 --   of the order, and object of the order (hold, move, build, etc.)
-data Order phaseType where
+data Order phaseType orderType where
 
-  HoldOrder :: Country -> OrderSubject -> Hold -> Order Typical
-  MoveOrder :: Country -> OrderSubject -> Move -> Order Typical
-  SupportOrder :: Country -> OrderSubject -> Support -> Order Typical
-  ConvoyOrder :: Country -> OrderSubject -> Convoy -> Order Typical
+  HoldOrder :: Country -> OrderSubject -> Hold -> Order Typical Hold
+  MoveOrder :: Country -> OrderSubject -> Move -> Order Typical Move
+  SupportOrder :: Country -> OrderSubject -> Support -> Order Typical Support
+  ConvoyOrder :: Country -> OrderSubject -> Convoy -> Order Typical Convoy
 
-  SurrenderOrder :: Country -> OrderSubject -> Surrender -> Order Retreat
-  WithdrawOrder :: Country -> OrderSubject -> Withdraw -> Order Retreat
+  SurrenderOrder :: Country -> OrderSubject -> Surrender -> Order Retreat Surrender
+  WithdrawOrder :: Country -> OrderSubject -> Withdraw -> Order Retreat Withdraw
 
-  DisbandOrder :: Country -> OrderSubject -> Disband -> Order Adjust
-  BuildOrder :: Country -> OrderSubject -> Build -> Order Adjust
+  DisbandOrder :: Country -> OrderSubject -> Disband -> Order Adjust Disband
+  BuildOrder :: Country -> OrderSubject -> Build -> Order Adjust Build
 
-instance Show (Order phaseType) where
+instance Show (Order phaseType orderType) where
   show (HoldOrder c os h) = "HoldOrder (" ++ (show c) ++ " " ++ (show os) ++ " " ++ (show h) ++ ")"
   show (MoveOrder c os m) = "MoveOrder (" ++ (show c) ++ " " ++ (show os) ++ " " ++ (show m) ++ ")"
   show (SupportOrder c os s) = "SupportOrder (" ++ (show c) ++ " " ++ (show os) ++ " " ++ (show s) ++ ")"
@@ -144,7 +144,11 @@ instance Show (Order phaseType) where
   show (DisbandOrder c os d) = "DisbandOrder (" ++ (show c) ++ " " ++ (show os) ++ " " ++ (show d) ++ ")"
   show (BuildOrder c os b) = "BuildOrder (" ++ (show c) ++ " " ++ (show os) ++ " " ++ (show b) ++ ")"
 
-makeOrder :: Country -> OrderSubject -> OrderObject phaseType -> Order phaseType
+makeOrder
+  :: Country
+  -> OrderSubject
+  -> OrderObject phaseType orderType
+  -> Order phaseType orderType
 makeOrder country subject (HoldObject h) = HoldOrder country subject h
 makeOrder country subject (MoveObject m) = MoveOrder country subject m
 makeOrder country subject (SupportObject s) = SupportOrder country subject s
@@ -154,20 +158,20 @@ makeOrder country subject (WithdrawObject w) = WithdrawOrder country subject w
 makeOrder country subject (DisbandObject d) = DisbandOrder country subject d
 makeOrder country subject (BuildObject b) = BuildOrder country subject b
 
-data OrderObject phaseType where
+data OrderObject phaseType orderType where
 
-  HoldObject :: Hold -> OrderObject Typical
-  MoveObject :: Move -> OrderObject Typical
-  SupportObject :: Support -> OrderObject Typical
-  ConvoyObject :: Convoy -> OrderObject Typical
+  HoldObject :: Hold -> OrderObject Typical Hold
+  MoveObject :: Move -> OrderObject Typical Move
+  SupportObject :: Support -> OrderObject Typical Support
+  ConvoyObject :: Convoy -> OrderObject Typical Convoy
 
-  SurrenderObject :: Surrender -> OrderObject Retreat
-  WithdrawObject :: Withdraw -> OrderObject Retreat
+  SurrenderObject :: Surrender -> OrderObject Retreat Surrender
+  WithdrawObject :: Withdraw -> OrderObject Retreat Withdraw
 
-  DisbandObject :: Disband -> OrderObject Adjust
-  BuildObject :: Build -> OrderObject Adjust
+  DisbandObject :: Disband -> OrderObject Adjust Disband
+  BuildObject :: Build -> OrderObject Adjust Build
 
-instance Show (OrderObject phaseType) where
+instance Show (OrderObject phaseType orderType) where
   show (HoldObject h) = "HoldObject " ++ (show h) ++ ")"
   show (MoveObject m) = "MoveObject (" ++ (show m) ++ ")"
   show (SupportObject s) = "SupportObject " ++ (show s) ++ ")"
@@ -177,13 +181,13 @@ instance Show (OrderObject phaseType) where
   show (DisbandObject d) = "DisbandObject " ++ (show d) ++ ")"
   show (BuildObject b) = "BuildObject " ++ (show b) ++ ")"
 
-defaultOrderObjectTypical :: OrderObject Typical
+defaultOrderObjectTypical :: OrderObject Typical Hold
 defaultOrderObjectTypical = HoldObject Hold
 
-defaultOrderObjectRetreat :: OrderObject Retreat
+defaultOrderObjectRetreat :: OrderObject Retreat Surrender
 defaultOrderObjectRetreat = SurrenderObject Surrender
 
-orderCountry :: Order phaseType -> Country
+orderCountry :: Order phaseType orderType -> Country
 orderCountry (HoldOrder c _ _) = c
 orderCountry (MoveOrder c _ _) = c
 orderCountry (SupportOrder c _ _) = c
@@ -193,7 +197,7 @@ orderCountry (WithdrawOrder c _ _) = c
 orderCountry (DisbandOrder c _ _) = c
 orderCountry (BuildOrder c _ _) = c
 
-orderSubject :: Order phaseType -> OrderSubject
+orderSubject :: Order phaseType orderType -> OrderSubject
 orderSubject (HoldOrder _ s _) = s
 orderSubject (MoveOrder _ s _) = s
 orderSubject (SupportOrder _ s _) = s
@@ -203,7 +207,7 @@ orderSubject (WithdrawOrder _ s _) = s
 orderSubject (DisbandOrder _ s _) = s
 orderSubject (BuildOrder _ s _) = s
 
-orderObject :: Order phaseType -> OrderObject phaseType
+orderObject :: Order phaseType orderType -> OrderObject phaseType orderType
 orderObject (HoldOrder _ _ h) = HoldObject h
 orderObject (MoveOrder _ _ m) = MoveObject m
 orderObject (SupportOrder _ _ s) = SupportObject s
