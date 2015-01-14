@@ -6,8 +6,13 @@ module Diplomacy.Province (
   , adjacency
   , adjacent
 
-  , convoyAdjacent
-  , moveAdjacent
+  , neighbours
+  , provinceCommonNeighbours
+  , provinceCommonCoasts
+  , commonNeighbours
+  , commonCoasts
+  , provinceWaterReachables
+  , waterReachables
 
   , ProvinceType(..)
   , provinceType
@@ -41,6 +46,8 @@ module Diplomacy.Province (
   , allProvinceTargets
 
   ) where
+
+import Control.Monad (guard)
 
 import Diplomacy.Country
 
@@ -512,57 +519,86 @@ isWater prv = case provinceType prv of
   Water -> True
   _ -> False
 
--- | Valid moves do not correspond exactly to adjacent (incl. convoy) provinces.
---   We account here for the special cases involving coastlines.
---   See https://www.wizards.com/avalonhill/rules/diplomacy.pdf page 5
---   The Kiel/Constantinople and Sweden/Denmark clarifications are already
---   defined in the Province adjacency; we need only look after the split
---   coastlines in StPetersburg, Bulgaria, and Spain.
-moveAdjacent :: ProvinceTarget -> ProvinceTarget -> Bool
--- Easiest case first: convince yourself that special coastline is not
--- reachable from a special coastline. This is the whole point of special
--- coastlines: a unit on one can never move immediately to another; it must
--- go through water provinces.
-moveAdjacent (Special _) (Special _) = False
--- A special province target is never reached by convoy, so we can use adjacent
--- to determine this. A move to a special target must be from a non-inland
--- province target (subtle: only fleets can move to special coastlines, and
--- fleets will never be inland), and we use the blacklist function to take
--- care of ad-hoc special cases presented in the rulebook.
-moveAdjacent pt0 (Special pc) =
-    let prv0 = ptProvince pt0
-    in (not (blacklist prv0 pc)) && (not (isInland prv0)) && ((pcProvince pc) `adjacent` prv0)
--- Surely reachability is symmetric!
-moveAdjacent (Special pc) pt0 = moveAdjacent pt0 (Special pc)
--- The fall-through case: just use the Province adjacency definition, eliminating
--- a convoy-adjacent move for fleets.
-moveAdjacent (Normal prv0) (Normal prv1) = prv0 `adjacent` prv1
-
-convoyAdjacent :: ProvinceTarget -> ProvinceTarget -> Bool
-convoyAdjacent (Special _) _ = False
-convoyAdjacent _ (Special _) = False
-convoyAdjacent (Normal prv0) (Normal prv1) = convoyAdjacent' prv0 prv1
-
--- | Adjacent via convoy iff there is a nontrivial noncyclic path over water
---   provinces from first province to second.
-convoyAdjacent' :: Province -> Province -> Bool
-convoyAdjacent' prv0 prv1
-    | prv0 == prv1 = False
-    | otherwise = convoyAdjacent'' [] prv0 prv1
-  where
-    -- Must use the 'used' name to track provinces already visited, so that we don't
-    -- get caught in loops in our adjacency function.
-    convoyAdjacent'' used prv0 prv1 =
-      let waterNeighbours = filter (\x -> isWater x && (not (elem x used))) (adjacency prv0)
-      in any (\x -> (x `adjacent` prv1) || (convoyAdjacent'' (x : used) x prv1)) waterNeighbours
-
 -- | True iff the given province should not be considered adjacent to the
---   given province coast.
-blacklist :: Province -> ProvinceCoast -> Bool
-blacklist WesternMediterranean SpainNorth = True
--- NB MidAtlanticOcean to SpainSouth is fine!
-blacklist GulfOfBothnia StPetersburgNorth = True
-blacklist BarentsSea StPetersburgWest = True
-blacklist BlackSea BulgariaSouth = True
-blacklist AegeanSea BulgariaEast = True
+--   given province coast, even though they are adjacent as provinces.
+blacklist :: Province -> ProvinceTarget -> Bool
+blacklist p (Special c) = coastBlacklist p c
+  where
+    coastBlacklist :: Province -> ProvinceCoast -> Bool
+    coastBlacklist WesternMediterranean SpainNorth = True
+    coastBlacklist GulfOfLyon SpainNorth = True
+    -- NB MidAtlanticOcean to SpainSouth is fine!
+    coastBlacklist GulfOfBothnia StPetersburgNorth = True
+    coastBlacklist BarentsSea StPetersburgWest = True
+    coastBlacklist BlackSea BulgariaSouth = True
+    coastBlacklist AegeanSea BulgariaEast = True
+    coastBlacklist _ _ = False
 blacklist _ _ = False
+
+-- TODO TODAY!!!
+-- Define LISTS of valid moves and convoys from a given ProvinceTarget, then
+-- redefine the above few methods in terms of this and `elem`.
+-- commonCoast, as well.
+-- Yes here we have definitions for Provinces which should be usable to
+-- implement anoalogues for ProvinceTargets.
+
+provinceCommonNeighbours :: Province -> Province -> [Province]
+provinceCommonNeighbours province1 province2 =
+    [ x | x <- adjacency province1, y <- adjacency province2, x == y ]
+
+-- Fact: always [] if either argument is inland.
+provinceCommonCoasts :: Province -> Province -> [Province]
+provinceCommonCoasts province1 province2 =
+    filter isWater (provinceCommonNeighbours province1 province2)
+
+-- | List containing all Provinces reachable by a path through 1 or more
+--   water territories. This can and often does include the input province.
+--   Fact: if input is inland, output is empty.
+--   Fact: if input is not inland, output contains no inland.
+provinceWaterReachables :: Province -> [Province]
+provinceWaterReachables province = provinceWaterReachables' waterNeighbours waterNeighbours
+
+  where
+
+    waterNeighbours = filter isWater (adjacency province)
+
+    provinceWaterReachables' seenSoFar vanguard =
+        let nextVanguard = [ y | x <- vanguard, y <- adjacency x, isWater y, not (elem y seenSoFar) ]
+        in case nextVanguard of
+             -- In this case seenSoFar consists only of water provinces. Grab
+             -- all of their non-water (coastal) neighbours too.
+             [] -> [ y | x <- seenSoFar, y <- adjacency x, not (isWater y) ] ++ seenSoFar
+             xs -> provinceWaterReachables' (nextVanguard ++ seenSoFar) nextVanguard
+
+-- | Exactly the same as provinceWaterReachables but we use neighbours instead
+--   of adjacency.
+waterReachables :: ProvinceTarget -> [ProvinceTarget]
+waterReachables pt = waterReachables' waterNeighbours waterNeighbours
+
+  where
+
+    waterNeighbours = filter (isWater . ptProvince) (neighbours pt)
+
+    waterReachables' seenSoFar vanguard =
+        let nextVanguard = [ y | x <- vanguard, y <- neighbours x, isWater (ptProvince y), not (elem y seenSoFar) ]
+        in case nextVanguard of
+             [] -> [ y | x <- seenSoFar, y <- neighbours x, not (isWater (ptProvince y)) ] ++ seenSoFar
+             xs -> waterReachables' (nextVanguard ++ seenSoFar) nextVanguard
+
+-- | ProvinceTarget neighbours; this is like adjacency but for ProvinceTargets,
+--   using the blacklist to handle the special coasts.
+neighbours :: ProvinceTarget -> [ProvinceTarget]
+neighbours pt1 = do
+  x <- adjacency (ptProvince pt1)
+  guard $ not (blacklist x pt1)
+  y <- provinceTargets x
+  guard $ not (blacklist (ptProvince pt1) y)
+  return y
+
+commonNeighbours :: ProvinceTarget -> ProvinceTarget -> [ProvinceTarget]
+commonNeighbours pt1 pt2 =
+    [ x | x <- neighbours pt1, y <- neighbours pt2, x == y ]
+
+commonCoasts :: ProvinceTarget -> ProvinceTarget -> [ProvinceTarget]
+commonCoasts pt1 pt2 =
+    filter (isWater . ptProvince) (commonNeighbours pt1 pt2)
