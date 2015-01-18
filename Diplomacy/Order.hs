@@ -46,39 +46,39 @@ import Diplomacy.Country
 
 -- | Instruction to hold.
 data Hold = Hold
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 -- | Instruction to move to some ProvinceTarget
 data Move = Move ProvinceTarget
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
--- | Instruction to support some unit from some ProvinceTarget possibly into
---   another ProvinceTarget (Nothing means support a hold).
-data Support = Support Unit ProvinceTarget (Maybe ProvinceTarget)
-  deriving (Show)
+-- | Instruction to support some unit from some ProvinceTarget into another.
+--   The two ProvinceTargets coincide in case the Support is for a Hold.
+data Support = Support Unit ProvinceTarget ProvinceTarget
+  deriving (Show, Eq, Ord)
 
 -- | Instruction to convoy some unit from some ProvinceTarget to some
 --   ProvinceTarget
 data Convoy = Convoy Unit ProvinceTarget ProvinceTarget
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 -- | Instruction to surrender (disband after dislodgement).
 data Surrender = Surrender
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 -- | Instruction to retreat after dislodgement to some ProvinceTarget.
 --   We call it Withdraw because Retreat is already a phase type.
 data Withdraw = Withdraw ProvinceTarget
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 -- | Instruction to disband during adjustment phase.
 data Disband = Disband
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 -- | Instruction to build during adjustment phase (the thing being built is
 --   determined by some OrderSubject.
 data Build = Build
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 moveTarget :: Move -> ProvinceTarget
 moveTarget (Move pt) = pt
@@ -89,8 +89,8 @@ supportedUnit (Support u _ _) = u
 supportingFrom :: Support -> ProvinceTarget
 supportingFrom (Support _ pt _) = pt
 
-supportingInto :: Support -> Maybe ProvinceTarget
-supportingInto (Support _ _ mpt) = mpt
+supportingInto :: Support -> ProvinceTarget
+supportingInto (Support _ _ pt) = pt
 
 convoyedUnit :: Convoy -> Unit
 convoyedUnit (Convoy u _ _) = u
@@ -110,7 +110,7 @@ withdrawingTo (Withdraw pt) = pt
 --     A Berlin
 --     etc.
 data OrderSubject = OrderSubject Unit ProvinceTarget
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 orderSubjectUnit :: OrderSubject -> Unit
 orderSubjectUnit (OrderSubject u _) = u
@@ -143,6 +143,13 @@ instance Show (Order phaseType orderType) where
   show (WithdrawOrder c os w) = "WithdrawOrder (" ++ (show c) ++ " " ++ (show os) ++ " " ++ (show w) ++ ")"
   show (DisbandOrder c os d) = "DisbandOrder (" ++ (show c) ++ " " ++ (show os) ++ " " ++ (show d) ++ ")"
   show (BuildOrder c os b) = "BuildOrder (" ++ (show c) ++ " " ++ (show os) ++ " " ++ (show b) ++ ")"
+
+instance Eq (Order phaseType orderType) where
+  order1 == order2 = sameCountry && sameSubject && sameObject
+    where
+      sameCountry = (orderCountry order1) == (orderCountry order2)
+      sameSubject = (orderSubject order1) == (orderSubject order2)
+      sameObject = (orderObject order1) == (orderObject order2)
 
 makeOrder
   :: Country
@@ -180,6 +187,16 @@ instance Show (OrderObject phaseType orderType) where
   show (WithdrawObject w) = "WithdrawObject " ++ (show w) ++ ")"
   show (DisbandObject d) = "DisbandObject " ++ (show d) ++ ")"
   show (BuildObject b) = "BuildObject " ++ (show b) ++ ")"
+
+instance Eq (OrderObject phaseType orderType) where
+  (HoldObject h1) == (HoldObject h2) = h1 == h2
+  (MoveObject m1) == (MoveObject m2) = m1 == m2
+  (SupportObject s1) == (SupportObject s2) = s1 == s2
+  (ConvoyObject c1) == (ConvoyObject c2) = c1 == c2
+  (SurrenderObject s1) == (SurrenderObject s2) = s1 == s2
+  (WithdrawObject w1) == (WithdrawObject w2) = w1 == w2
+  (DisbandObject d1) == (DisbandObject d2) = d1 == d2
+  (BuildObject b1) == (BuildObject b2) = b1 == b2
 
 defaultOrderObjectTypical :: OrderObject Typical Hold
 defaultOrderObjectTypical = HoldObject Hold
