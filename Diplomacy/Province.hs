@@ -599,6 +599,7 @@ commonNeighbours :: ProvinceTarget -> ProvinceTarget -> [ProvinceTarget]
 commonNeighbours pt1 pt2 =
     [ x | x <- neighbours pt1, y <- neighbours pt2, x == y ]
 
+-- | Common neighbours which are water provinces.
 commonCoasts :: ProvinceTarget -> ProvinceTarget -> [ProvinceTarget]
 commonCoasts pt1 pt2 =
     filter (isWater . ptProvince) (commonNeighbours pt1 pt2)
