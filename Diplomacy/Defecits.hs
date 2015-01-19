@@ -4,7 +4,6 @@ module Diplomacy.Defecits (
 
   ) where
 
-import qualified Data.Map as M
-import           Diplomacy.Country
+import Diplomacy.Country
 
-type Defecits = M.Map Country Int
+type Defecits = Country -> Int
