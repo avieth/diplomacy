@@ -689,6 +689,12 @@ extractResolution (ResolutionContextTypical r) = r
 extractResolution (ResolutionContextRetreat r) = r
 extractResolution (ResolutionContextAdjust r _) = r
 
+fixedDefecit
+  :: ResolutionContext Adjust
+  -> Country
+  -> Int
+fixedDefecit (ResolutionContextAdjust _ defecits) country = defecits country
+
 withHolds
   :: ResolvedOrders Typical
   -> ((ValidOrder Typical Hold, ResolvedOrder Typical Hold) -> Maybe a)
@@ -712,6 +718,18 @@ withConvoys
   -> ((ValidOrder Typical Convoy, ResolvedOrder Typical Convoy) -> Maybe a)
   -> [a]
 withConvoys (ResolvedOrdersTypical _ _ _ cs) f = mapMaybe f cs
+
+withDisbands
+  :: ResolvedOrders Adjust
+  -> ((ValidOrder Adjust Disband, ResolvedOrder Adjust Disband) -> Maybe a)
+  -> [a]
+withDisbands (ResolvedOrdersAdjust ds _) f = mapMaybe f ds
+
+withBuilds
+  :: ResolvedOrders Adjust
+  -> ((ValidOrder Adjust Build, ResolvedOrder Adjust Build) -> Maybe a)
+  -> [a]
+withBuilds (ResolvedOrdersAdjust _ bs) f = mapMaybe f bs
 
 movesWithTarget
   :: ResolutionContext Typical
@@ -959,15 +977,14 @@ resolveDisband
   -> ResolvedOrder Adjust Disband
 resolveDisband _ _ = Succeeded OrderSucceeded
 
--- Not so easy! What if there are n disbands, n+1 builds, and defecit is 0?
--- All builds but one should succeed. Can we express this even with out
--- recursive-let style? I think it will induce a cycle and nontermination!!!
--- Each build will wait upon the other builds!
--- Solution: order the builds? Eliminate defecit excess as invalid?
--- Yes, ordering will work. Must define
---   getPriorBuilds :: ResolutionContext Adjust -> Order Adjsut Build -> [Order Adjust Build]
--- and use only prior builds and disbands in computing the defecit.
--- Prior will mean "issued before"
+-- | Note that in order to resolve builds, we must use an ordering of the
+--   ValidOrder Adjust Build values in the ResolutionContext Adjust. That's
+--   to handle cases in which a country has issued n valid build orders,
+--   but has a defecit of -(n - k), and so can build on n - k units. 
+--   To resolve a build order in this case, we must treat each valid order
+--   slightly differently: some most take precedence over others. We achieve
+--   this by using priorBuilds, which uses the order of the list of valid
+--   build orders in a ResolvedOrder Adjust.
 resolveBuild
   :: ResolutionContext Adjust
   -> ValidOrder Adjust Build
@@ -976,19 +993,72 @@ resolveBuild ctx validBuildOrder =
     if currentDefecit >= 0
     then Failed InsufficientSupplyCentres
     else Succeeded OrderSucceeded
-  where
-    currentDefecit = undefined
-    {-
-    currentDefecit = (fixedDefecit ctx country) - (numberOfDisbands ctx country) + numberOfPriorBuilds
-    numberOfPriorBuilds = length (priorBuilds ctx validBuildOrder)
-    country = orderSubjectCountry (orderSubject ((outValidOrder validBuildOrder)))
-    -}
 
-holdOrders = undefined
-moveOrders = undefined
-supportOrders = undefined
-convoyOrders = undefined
-surrenderOrders = undefined
-withdrawOrders = undefined
-disbandOrders = undefined
-buildOrders = undefined
+  where
+
+    currentDefecit :: Int
+    currentDefecit =
+      (fixedDefecit ctx issuingCountry) -
+      numberOfDisbands +
+      numberOfPriorBuilds
+
+    issuingCountry :: Country
+    issuingCountry = orderCountry (outValidOrder validBuildOrder)
+
+    numberOfPriorBuilds :: Int
+    numberOfPriorBuilds = length (priorBuilds ctx validBuildOrder)
+
+    numberOfDisbands :: Int
+    numberOfDisbands = length $ successfulDisbands ctx issuingCountry
+
+
+successfulDisbands
+  :: ResolutionContext Adjust
+  -> Country
+  -> [OrderSucceeded Adjust Disband]
+successfulDisbands ctx country = withDisbands (extractResolution ctx) selector
+  where
+    selector
+      :: (ValidOrder Adjust Disband, ResolvedOrder Adjust Disband)
+      -> Maybe (OrderSucceeded Adjust Disband)
+    selector (vord, res) =
+      let order = outValidOrder vord
+          country' = orderCountry order
+      in  if country' == country
+          then case res of 
+            Succeeded s -> Just s
+            Failed _ -> Nothing
+          else Nothing
+
+-- | Build orders must be ordered; we rely on their ordering to resolve build
+--   orders in cases where there are more build orders than would be allowed
+--   given that country's defecit.
+--   priorBuilds gives a list of ValidOrder Adjust Build such that each of
+--   them appears after the one given, in the ResolutionContext, not including
+--   the one given.
+priorBuilds
+  :: ResolutionContext Adjust
+  -> ValidOrder Adjust Build
+  -> [ValidOrder Adjust Build]
+priorBuilds ctx validBuildOrder = fst $ foldr combine ([], False) buildsFromIssuingCountry
+
+  where
+
+    combine _ (xs, True) = (xs, True)
+    combine vord (xs, False) =
+      if vord == validBuildOrder
+      then (xs, True)
+      else (vord : xs, False)
+
+    buildsFromIssuingCountry :: [ValidOrder Adjust Build]
+    buildsFromIssuingCountry = withBuilds (extractResolution ctx) selector
+
+    issuingCountry = orderCountry (outValidOrder validBuildOrder)
+
+    selector
+      :: (ValidOrder Adjust Build, ResolvedOrder Adjust Build)
+      -> Maybe (ValidOrder Adjust Build)
+    selector (vord, _) =
+      let order = outValidOrder vord
+          country = orderCountry order
+      in if country == issuingCountry then Just vord else Nothing
