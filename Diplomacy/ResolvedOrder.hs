@@ -44,6 +44,7 @@ module Diplomacy.ResolvedOrder (
 
 import qualified Data.Map as M
 import           Control.Applicative
+import           Control.Monad
 import           Data.Maybe (mapMaybe)
 
 import Diplomacy.Phase
@@ -602,19 +603,43 @@ data ResolvedOrder phaseType orderType
   = Succeeded (OrderSucceeded phaseType orderType)
   | Failed (OrderFailed phaseType orderType)
 
+-- Similar to Validation.
+type Resolution phaseType orderType = Maybe (OrderFailed phaseType orderType)
+
+-- Similar to orderValidation
+orderResolution
+  :: Resolution phaseType orderType
+  -> ResolvedOrder phaseType orderType
+orderResolution (Just x) = Failed x
+orderResolution Nothing = Succeeded OrderSucceeded
+
 data OrderSucceeded phaseType orderType where
   OrderSucceeded :: OrderSucceeded phaseType orderType
 
+-- | Reasons why an Order could fail.
 data OrderFailed phaseType orderType where
 
   HoldOverpowered
-    :: OrderSucceeded Typical Move
+    :: ValidOrder Typical Move
     -- ^ The move which overpowered the hold.
     -> OrderFailed Typical Hold
 
-  Standoff
-    :: [Order Typical Move]
+  MoveOverpowered
+    :: ValidOrder Typical Move
     -> OrderFailed Typical Move
+
+  -- | Failed to dislodge a hold.
+  Defended
+    :: ValidOrder Typical Hold
+    -> OrderFailed Typical Move
+
+  Standoff
+    :: [ValidOrder Typical Move]
+    -> OrderFailed Typical Move
+
+  -- | A move which needed a convoy did not get a convoy.
+  NoConvoy
+    :: OrderFailed Typical Move
 
   WouldDislodgeOwnUnit
     :: OrderFailed Typical Move
@@ -624,16 +649,20 @@ data OrderFailed phaseType orderType where
     -> OrderFailed Typical Support
 
   SupportDislodged
-    :: OrderSucceeded Typical Move
+    :: ValidOrder Typical Move
     -> OrderFailed Typical Support
 
   ConvoyDislodged
-    :: OrderSucceeded Typical Move
+    :: ValidOrder Typical Move
     -> OrderFailed Typical Convoy
 
   -- Failed because either the expected move order wasn't placed, or because
   -- other expected convoy orders were not placed.
   ConvoyFailed
+    :: OrderFailed Typical Convoy
+
+  -- | The expected move order wasn't made.
+  ConvoyDeclined 
     :: OrderFailed Typical Convoy
 
   WithdrawConflict
@@ -719,6 +748,12 @@ withConvoys
   -> [a]
 withConvoys (ResolvedOrdersTypical _ _ _ cs) f = mapMaybe f cs
 
+withWithdraws
+  :: ResolvedOrders Retreat
+  -> ((ValidOrder Retreat Withdraw, ResolvedOrder Retreat Withdraw) -> Maybe a)
+  -> [a]
+withWithdraws (ResolvedOrdersRetreat _ ws) f = mapMaybe f ws
+
 withDisbands
   :: ResolvedOrders Adjust
   -> ((ValidOrder Adjust Disband, ResolvedOrder Adjust Disband) -> Maybe a)
@@ -730,6 +765,58 @@ withBuilds
   -> ((ValidOrder Adjust Build, ResolvedOrder Adjust Build) -> Maybe a)
   -> [a]
 withBuilds (ResolvedOrdersAdjust _ bs) f = mapMaybe f bs
+
+-- | Count the number of successful supports for a given move.
+countSupportMove
+  :: ResolutionContext Typical
+  -> ValidOrder Typical Move
+  -> Int
+countSupportMove ctx vmove = length successfulSupports
+
+  where
+
+    successfulSupports :: [OrderSucceeded Typical Support]
+    successfulSupports = withSupports (extractResolution ctx) (\(vsupp, res) ->
+          let SupportOrder _ _ (Support _ supportingFrom supportingTo) = outValidOrder vsupp
+          in  if movingFrom == supportingFrom && movingTo == supportingTo
+              then case res of
+                Succeeded s -> Just s
+                Failed _ -> Nothing
+              else Nothing
+        )
+
+    MoveOrder _ subject (Move movingTo) = outValidOrder vmove
+
+    movingFrom = orderSubjectTarget subject
+
+-- | Count the number of successful supports for a given hold.
+--   Much in common with countSupportMove. Potential factoring via
+--     countSupport
+--       :: ResolutionContext Typical
+--       -> ProvinceTarget
+--       -> ProvinceTarget
+--       -> Int
+countSupportHold
+  :: ResolutionContext Typical
+  -> ValidOrder Typical Hold
+  -> Int
+countSupportHold ctx vhold = length successfulSupports
+
+  where
+
+    successfulSupports :: [OrderSucceeded Typical Support]
+    successfulSupports = withSupports (extractResolution ctx) (\(vsupp, res) ->
+          let SupportOrder _ _ (Support _ supportingFrom supportingTo) = outValidOrder vsupp
+          in  if supportingFrom == holdingAt && supportingTo == holdingAt
+              then case res of
+                Succeeded s -> Just s
+                Failed _ -> Nothing
+              else Nothing
+        )
+
+    HoldOrder _ subject _ = outValidOrder vhold
+
+    holdingAt = orderSubjectTarget subject
 
 movesWithTarget
   :: ResolutionContext Typical
@@ -744,103 +831,24 @@ movesWithTarget ctx provinceTarget = withMoves (extractResolution ctx) selector
           then Just (vmove, res)
           else Nothing
 
-holdSupport
-  :: ResolutionContext Typical
-  -> ValidOrder Typical Hold
-  -> [(ValidOrder Typical Support, OrderSucceeded Typical Support)]
-holdSupport ctx validHoldOrder = withSupports (extractResolution ctx) selector
-  where
-    selector (vsupport, res) =
-      let SupportObject s = orderObject (outValidOrder vsupport)
-          supportFrom = supportingFrom s
-          supportInto = supportingInto s
-          holdOrder = outValidOrder validHoldOrder
-          holdingAt = orderSubjectTarget (orderSubject holdOrder)
-      in  if supportFrom == supportInto && supportFrom == holdingAt
-          then case res of
-            Succeeded s -> Just (vsupport, s)
-            Failed _ -> Nothing
-          else Nothing
-
+-- | The ValidOrder Retreat Withdraw values in the ResolutionContext which
+--   have the same target as a given ValidOrder Retreat Withdraw. Will not
+--   include the input ValidOrder.
 conflictingWithdraws
   :: ResolutionContext Retreat
   -> ValidOrder Retreat Withdraw
   -> [ValidOrder Retreat Withdraw]
-conflictingWithdraws validWithdraw = undefined
-
--- TODO shouldn't this be called MoveSupport and take a ValidOrder Typical Move?
-supportsFromInto
-  :: ResolutionContext Typical
-  -> ProvinceTarget
-  -> ProvinceTarget
-  -> [(ValidOrder Typical Support, OrderSucceeded Typical Support)]
-supportsFromInto ctx ptFrom ptTo = withSupports (extractResolution ctx) selector
+conflictingWithdraws ctx validWithdraw = conflicting
   where
-    selector (vsupport, res) =
-      let SupportObject s = orderObject (outValidOrder vsupport)
-          supportFrom = supportingFrom s
-          supportInto = supportingInto s
-      in  if supportFrom == ptFrom && supportInto == ptTo
-          -- Careful only to force res in case the above condition holds.
-          then case res of
-            Succeeded s -> Just (vsupport, s)
-            Failed _ -> Nothing
-          else Nothing
+    conflicting :: [ValidOrder Retreat Withdraw]
+    conflicting = withWithdraws (extractResolution ctx) (\(vwith, _) ->
+          let WithdrawOrder _ _ (Withdraw intoProvince') = outValidOrder vwith
+          in  if vwith /= validWithdraw && intoProvince == intoProvince'
+              then Just vwith
+              else Nothing
+        )
 
--- TODO need this? Delete if nobody uses it.
-supportsInto
-  :: ResolutionContext Typical
-  -> ProvinceTarget
-  -> [(ValidOrder Typical Support, OrderSucceeded Typical Support)]
-supportsInto ctx ptTo = withSupports (extractResolution ctx) selector
-  where
-    selector (vsupport, res) =
-      let SupportObject s = orderObject (outValidOrder vsupport)
-          supportInto = supportingInto s
-      in  if supportInto == ptTo
-          then case res of
-            Succeeded s -> Just (vsupport, s)
-            Failed _ -> Nothing
-          else Nothing
-
--- | Determine the move order with (strictly) the most support into a given
---   ProvinceTarget, or Nothing in case there is none such. To rephrase: of
---   all the ValidOrder Typical Move values in the ResolutionContext Typical,
---   find the one which has strictly more support than any other.
-mostSupportInto
-  :: ResolutionContext Typical
-  -> ProvinceTarget
-  -> Maybe (ValidOrder Typical Move, Int)
-mostSupportInto ctx provinceTarget = dominator movesWithSupport
-
-  where
-
-    dominator :: [(ValidOrder Typical Move, Int)] -> Maybe (ValidOrder Typical Move, Int)
-    dominator = foldr combine Nothing
-      where
-        -- We track the greatest seen so far, but we dump it in case we find
-        -- another which is equal. In this way, we always end up with the
-        -- strict maximum, or Nothing if there is no strict maximum.
-        combine (v, i) Nothing = Just (v, i)
-        combine (v, i) (Just (v', j)) =
-          if i == j
-          then Nothing
-          else if i > j then Just (v, i) else Just (v', j)
-
-    movesWithSupport :: [(ValidOrder Typical Move, Int)]
-    movesWithSupport = withMoves (extractResolution ctx) countSupport
-
-    countSupport
-      :: (ValidOrder Typical Move, ResolvedOrder Typical Move)
-      -> Maybe (ValidOrder Typical Move, Int)
-    countSupport (validMove, _) =
-      let MoveObject m = orderObject (outValidOrder validMove)
-          subject = orderSubject (outValidOrder validMove)
-          movingInto = moveTarget m
-          movingFrom = orderSubjectTarget subject
-      in  if movingInto == provinceTarget
-          then Just (validMove, length $ supportsFromInto ctx movingFrom movingInto)
-          else Nothing
+    WithdrawOrder _ _ (Withdraw intoProvince) = outValidOrder validWithdraw
 
 resolveOrdersTypical :: ValidOrders Typical -> ResolvedOrders Typical
 resolveOrdersTypical vords =
@@ -871,30 +879,47 @@ resolveOrdersAdjust defecits vords =
 -- | Resolve a hold order.
 --
 --   A hold fails if and only if there is some move into its territory which
---   succeeds. This is not a circular definition, because the resolution of
---   moves does not depend upon the resolution of any holds.
+--   has strictly more support than it and all other moves against it.
+--   We can't appeal to the resolutions of the move orders into the holding
+--   target, because those may depend upon this resolution!
 resolveHold
   :: ResolutionContext Typical
   -> ValidOrder Typical Hold
   -> ResolvedOrder Typical Hold
-resolveHold ctx validHoldOrder = case withMoves (extractResolution ctx) selector of
-    [] -> Succeeded (OrderSucceeded)
-    [s] -> Failed (HoldOverpowered s)
-    -- If we reach this case, it means more than one move into a particular
-    -- province target has succeeded, but that's not possible by definition
-    -- of resolveMove
-    _ -> error "Impossible"
+resolveHold ctx validHoldOrder = orderResolution holdOverpowered
+
   where
-    selector (vmove, res) =
-      let MoveObject m = orderObject (outValidOrder vmove)
-          movingInto = moveTarget m
-          holdOrder = outValidOrder validHoldOrder
-          holdingAt = orderSubjectTarget (orderSubject holdOrder)
-      in  if movingInto == holdingAt
-          then case res of
-            Succeeded s -> Just s
-            Failed _ -> Nothing
-          else Nothing
+
+    holdOverpowered :: Resolution Typical Hold
+    holdOverpowered = case mostMoveSupport of
+      -- There's no move with strictly the most support, so this hold must
+      -- succeed (if there are moves, they'll be a standoff).
+      Nothing -> Nothing
+      -- There's a dominating move; must check that it has strictly more
+      -- support than this hold does.
+      Just ((validMove, res), moveSupport) ->
+        if moveSupport > holdSupport
+        -- Are we safe to force res in case the condition passes?
+        -- Do we need to? Can't we just fake it and drop in OrderSucceeded?
+        then Just (HoldOverpowered validMove)
+        else Nothing
+
+    holdSupport :: Int
+    holdSupport = countSupportHold ctx validHoldOrder
+
+    mostMoveSupport :: Maybe ((ValidOrder Typical Move, ResolvedOrder Typical Move), Int)
+    mostMoveSupport = strictMaximum (countSupportMove ctx . fst) attackingMoves
+
+    attackingMoves :: [(ValidOrder Typical Move, ResolvedOrder Typical Move)]
+    attackingMoves = withMoves (extractResolution ctx) (\(vmove, res) ->
+          let MoveOrder _ _ (Move movingTo) = outValidOrder vmove
+          in  if movingTo == holdingAt
+              then Just (vmove, res)
+              else Nothing
+        )
+
+    holdingAt :: ProvinceTarget
+    holdingAt = orderSubjectTarget (orderSubject (outValidOrder validHoldOrder))
 
 -- This will be the hardest one I think.
 resolveMove
@@ -902,21 +927,195 @@ resolveMove
   -> ValidOrder Typical Move
   -> ResolvedOrder Typical Move
 resolveMove ctx validMoveOrder =
-    if False --isConvoyed validMoveOrder
+    if requiresConvoy validMoveOrder
     then resolveConvoyedMove ctx validMoveOrder
     else resolveNormalMove ctx validMoveOrder
+  where
+    requiresConvoy :: ValidOrder Typical Move -> Bool
+    requiresConvoy validMove =
+        let MoveOrder _ subject (Move movingTo) = outValidOrder validMove
+            movingFrom = orderSubjectTarget subject
+        in  elem movingTo (neighbours movingFrom)
 
+-- | First, establish that the convoy route succeeds.
+--   If so, fall back to normal move resolution.
 resolveConvoyedMove
   :: ResolutionContext Typical
   -> ValidOrder Typical Move
   -> ResolvedOrder Typical Move
-resolveConvoyedMove ctx validMoveOrder = undefined
+resolveConvoyedMove ctx validMoveOrder = orderResolution $
+    (noConvoyForMove ctx validMoveOrder) <|> (moveOverpowered ctx validMoveOrder)
 
 resolveNormalMove
   :: ResolutionContext Typical
   -> ValidOrder Typical Move
   -> ResolvedOrder Typical Move
-resolveNormalMove ctx validMoveOrder = undefined
+resolveNormalMove ctx validMoveOrder = orderResolution $
+    moveOverpowered ctx validMoveOrder
+
+noConvoyForMove
+  :: ResolutionContext Typical
+  -> ValidOrder Typical Move
+  -> Resolution Typical Move
+noConvoyForMove ctx validMove = case successfulConvoyRoutes of
+    [] -> Just NoConvoy
+    _ -> Nothing
+
+  where
+
+    -- We shall examine all successful convoy orders which reference this move
+    -- order, and separate them into paths from source to target. If there is
+    -- at least one path, then it's all good, the move can convoy.
+    --
+    -- Note that paradoxes like that of Pandin are taken care of not here, but
+    -- in resolveSupport and resolveConvoy. A convoy will fail if any
+    -- attacker has strictly more support than it does, regardless of whether
+    -- there would be a standoff, so if we get a complete convoy route here
+    -- then we know that this move order could not cut support that was
+    -- essential for a dislodgement of one of the convoying fleets, because
+    -- any such support we know already to be insufficient!
+
+    successfulConvoyRoutes :: [[ValidOrder Typical Convoy]]
+    successfulConvoyRoutes = map fst $ steps initialConvoys adjacentConvoys isTerminalConvoy
+
+    isTerminalConvoy :: ValidOrder Typical Convoy -> Bool
+    isTerminalConvoy validOrder =
+        let ConvoyOrder _ subject _ = outValidOrder validOrder
+            convoyingAt = orderSubjectTarget subject
+        in  elem movingTo (neighbours convoyingAt)
+
+    adjacentConvoys :: ValidOrder Typical Convoy -> [ValidOrder Typical Convoy]
+    adjacentConvoys vconvoy = filter (isAdjacentConvoy vconvoy) convoys
+
+    isAdjacentConvoy :: ValidOrder Typical Convoy -> ValidOrder Typical Convoy -> Bool
+    isAdjacentConvoy vconvoy1 vconvoy2 =
+        let ConvoyOrder _ subject1 _ = outValidOrder vconvoy1
+            ConvoyOrder _ subject2 _ = outValidOrder vconvoy2
+            convoyingAt1 = orderSubjectTarget subject1
+            convoyingAt2 = orderSubjectTarget subject2
+        in  elem convoyingAt2 (neighbours convoyingAt1)
+
+    initialConvoys :: [([ValidOrder Typical Convoy], Bool)]
+    initialConvoys = fmap (\x -> ([x], False)) (filter isInitialConvoy convoys)
+
+    isInitialConvoy :: ValidOrder Typical Convoy -> Bool
+    isInitialConvoy vconvoy =
+        let ConvoyOrder _ subject _ = outValidOrder vconvoy
+            convoyingAt = orderSubjectTarget subject
+        in  elem convoyingAt (neighbours movingFrom)
+
+    convoys = withConvoys (extractResolution ctx) (\(vconvoy, res) ->
+          let ConvoyOrder _ _ (Convoy _ convoyingFrom convoyingTo) = outValidOrder vconvoy
+          in  if movingFrom == convoyingFrom && movingTo == convoyingTo
+              then case res of
+                Succeeded _ -> Just vconvoy
+                Failed _ -> Nothing
+              else Nothing
+        )
+
+    MoveOrder _ subject (Move movingTo) = outValidOrder validMove
+
+    movingFrom :: ProvinceTarget
+    movingFrom = orderSubjectTarget subject
+
+    -- Enumerate (in a probably very inefficient way) all of the non-cyclic
+    -- paths (according to an Eq instance) from a set of starting values
+    -- according to a generating function and a goal function.
+    steps
+      :: Eq a
+      => [([a], Bool)]
+      -- ^ We pair each list with a Bool so we can tell when to stop
+      -- expanding it (once the goal function has been satisfied by its
+      -- head).
+      -> (a -> [a])
+      -- ^ Generates a next generation from a seed. Will be applied to the
+      -- head of each candidate list which has not yet reached the goal.
+      -> (a -> Bool)
+      -- ^ The goal function.
+      -> [([a], Bool)]
+    steps xss next goal = do
+      (xs, completed) <- xss
+      if completed
+      then return (xs, completed)
+      else do
+        guard $ not (null xs)
+        n <- next (head xs)
+        guard $ not (elem n xs)
+        if goal n
+        then return (n : xs, True)
+        else steps [(n : xs, False)] next goal
+
+moveOverpowered
+  :: ResolutionContext Typical
+  -> ValidOrder Typical Move
+  -> Resolution Typical Move
+moveOverpowered ctx validMoveOrder = overpoweredByHold <|> overpoweredByMove
+      -- With this order of Resolutions, we should be able to appeal to 
+      -- resolveHold in the latter Resolution: if overpoweredByMove does not
+      -- produce a Just, ending the computation, then we know that there is
+      -- no dominating move, so we can resolveHold, which will also identify
+      -- the lack of a dominating move (doesn't need to look at the
+      -- resolutions) and report success!
+
+  where
+
+    overpoweredByHold :: Resolution Typical Move
+    overpoweredByHold = case holdingOrders of
+      [] -> Nothing
+      (vhold, res) : _ -> case res of
+        -- It's safe to force res because resolveHold does not force any
+        -- resolutions.
+        Succeeded _ -> Just (Defended vhold)
+        Failed _ -> Nothing
+
+    -- We know (but GHC does not) that there can be at most one element in
+    -- this list.
+    holdingOrders :: [(ValidOrder Typical Hold, ResolvedOrder Typical Hold)]
+    holdingOrders = withHolds (extractResolution ctx) (\(vhold, res) ->
+          let HoldOrder _ subject _ = outValidOrder vhold
+              holdingAt = orderSubjectTarget subject
+          in  if holdingAt == movingTo
+              then Just (vhold, res)
+              else Nothing
+        )
+
+    overpoweredByMove :: Resolution Typical Move
+    overpoweredByMove = case mostSupport of
+        Nothing -> Just (Standoff (map fst conflictingMoves))
+        Just (m, _) ->
+          if m == validMoveOrder
+          then Nothing
+          else Just (MoveOverpowered m)
+
+    mostSupport :: Maybe (ValidOrder Typical Move, ResolvedOrder Typical Move)
+    mostSupport = fmap fst (strictMaximum (countSupportMove ctx . fst) conflictingMoves)
+
+    conflictingMoves :: [(ValidOrder Typical Move, ResolvedOrder Typical Move)]
+    conflictingMoves = withMoves (extractResolution ctx) (\(vmove, res) ->
+          let MoveOrder _ _ (Move movingTo') = outValidOrder vmove
+          in  if vmove /= validMoveOrder && movingTo == movingTo'
+              then Just (vmove, res)
+              else Nothing
+        )
+
+    MoveOrder _ _ (Move movingTo) = outValidOrder validMoveOrder
+
+-- | Compute the strict maximum of some list, where each element is associated
+--   with an ordered and equality-decidable thing via a function.
+--   If there is no strict maximum, you get Nothing.
+strictMaximum
+  :: (Eq a, Ord a)
+  => (b -> a)
+  -> [b]
+  -> Maybe (b, a)
+strictMaximum f = (foldr combine Nothing) . (map (\x -> (x, f x)))
+  where
+    combine :: (Eq a, Ord a) => (b, a) -> Maybe (b, a) -> Maybe (b, a)
+    combine x Nothing = Just x
+    combine (x, i) (Just (y, j)) =
+        if i == j
+        then Nothing
+        else if i > j then Just (x, i) else Just (y, j)
 
 -- TODO must revise this one... Must fill in dominator in the where clause
 -- to indicate a move from the support's into target which has more power
@@ -939,23 +1138,84 @@ resolveSupport ctx validSupportOrder = case dominator of
 --   attacked from some place other than supportInto
 --   dislodged by move from supportInto
 
-
-
--- A convoy fails if and only if some move dislodged it.
+-- | A convoy fails if and only if some move dislodged it.
+--
+-- Something to think about: does the resolution of a convoy have anything to
+-- do with the paradoxes of convoying? I think those are just about the
+-- resolutions of supports when a convoy is involved.
+-- In that famous Pandin's Paradox, we will find that a convoying fleet is
+-- disrupted without being dislodged: an attacker overpowers it, but is also
+-- bounced by another equally-supported attacker.
+-- So all that we have to do here is check whether
+--
+--   1. the expected move order was given
+--   2. there is _any_ attack on the convoying fleet which _would_ dislodge
+--      it, regardless of whether it would actually result in a standoff.
+--      So we don't look for a dominator, we look for any attack with strictly
+--      more support than the support for the convoying fleet.
+--
+-- Hm, but we don't want to check other convoying fleets for a path, right?
+-- Yes, we consider a convoy to succeed even if the army being convoyed
+-- doesn't actually make it, whether due to a standoff at the target or due to
+-- an incomplete convoy chain.
+--
 resolveConvoy
   :: ResolutionContext Typical
   -> ValidOrder Typical Convoy
   -> ResolvedOrder Typical Convoy
-resolveConvoy ctx validConvoyOrder = undefined
+resolveConvoy ctx validConvoyOrder = orderResolution resolution
 
-{-case dominator of
-    Just dominatingMove -> Failed (ConvoyDislodged dominatingMove)
-    Nothing -> Succeeded
   where
-    convoyOrder = outValidOrder validConvoyOrder
-    convoyingTarget = orderSubjectTarget (orderSubject convoyOrder)
-    dominator = mostSupportInto ctx convoyingTarget
-    -}
+
+    resolution :: Resolution Typical Convoy
+    resolution = expectedMoveOrderNotGiven <|> convoyingFleetOverpowered
+
+    expectedMoveOrderNotGiven :: Resolution Typical Convoy
+    expectedMoveOrderNotGiven =
+        if null compatibleMove
+        then Just ConvoyDeclined
+        else Nothing
+
+    -- We know (but GHC doesn't) that this list can be either empty or a
+    -- singleton. We use it to decide expectedMoveOrderNotGiven
+    compatibleMove :: [ValidOrder Typical Move]
+    compatibleMove = withMoves (extractResolution ctx) (\(vord, _) ->
+        let MoveOrder _ subject (Move movingTo) = outValidOrder vord
+            movingFrom = orderSubjectTarget subject
+        in  if   (movingFrom == (convoyingFrom convoyObject))
+              && (movingTo == (convoyingTo convoyObject))
+            then Just vord
+            else Nothing
+      )
+
+    ConvoyObject convoyObject = orderObject (outValidOrder validConvoyOrder)
+
+    convoyingFleetOverpowered :: Resolution Typical Convoy
+    convoyingFleetOverpowered = undefined
+
+-- Note: the first test for a move which requires a convoy should be a check
+-- whether there is at least one convoy chain, because this does not require
+-- forcing the resolutions. If that passes, THEN we must force the resolutions
+-- of the convoys in each path, until one succeeds (and if none succeeds, order
+-- fails).
+-- Thus resolveMove will only force a convoy resolution in case that convoy
+-- is part of a convoy chain that could carry the move.
+-- Here, the check for convoyingFleetOverpowered will stop the move in the
+-- case of Pandin's Paradox, because the move which would have cut support is
+-- identified as not capable of cutting support _without resolving any convoys_
+-- but rather just looking at the ValidOrder values in the resolution:
+--   support against a water territory is not cut by a move such that
+--   it requires a convoy and its ONLY convoy route which even COULD succeed
+--   includes the target of that support. In case there were another convoy
+--   route, the support is cut if that convoy route succeeds.
+--   What if another convoy route's success depends upon the success of that
+--   original convoying fleet (the one being attacked?)
+--   Right, we have to cast out every convoy route which includes the attacked
+--   convoying fleet! Yes, that's it:
+--
+--   support against a convoying fleet is NOT cut by a move such that it
+--   requires a convoy and EVERY convoy route which even COULD
+--   succeed includes the target of that support.
 
 resolveSurrender
   :: ResolutionContext Retreat
