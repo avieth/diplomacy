@@ -11,11 +11,6 @@ module Diplomacy.Unit (
   , Army(..)
   , Fleet(..)
 
-  , AlignedUnit
-  , align
-  , alignedUnit
-  , alignedCountry
-
   ) where
 
 import Diplomacy.Country
@@ -26,21 +21,8 @@ data Army = Army
 data Fleet = Fleet
   deriving (Eq, Ord, Show)
 
--- | TODO will have to put some location information on here I think.
 data Unit = UArmy Army | UFleet Fleet
   deriving (Eq, Ord, Show)
-
-data AlignedUnit = AlignedUnit Unit Country
-  deriving (Eq, Ord, Show)
-
-align :: Unit -> Country -> AlignedUnit
-align = AlignedUnit
-
-alignedCountry :: AlignedUnit -> Country
-alignedCountry (AlignedUnit _ c) = c
-
-alignedUnit :: AlignedUnit -> Unit
-alignedUnit (AlignedUnit u _) = u
 
 army :: Unit
 army = UArmy Army
