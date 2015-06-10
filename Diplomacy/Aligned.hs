@@ -1,28 +1,43 @@
-module Aligned (
+{-|
+Module      : Diplomacy.Aligned
+Description : Align datatypes to GreatPowers
+Copyright   : (c) Alexander Vieth, 2015
+Licence     : BSD3
+Maintainer  : aovieth@gmail.com
+Stability   : experimental
+Portability : non-portable (GHC only)
+-}
+
+{-# LANGUAGE AutoDeriveTypeable #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE StandaloneDeriving #-}
+
+module Diplomacy.Aligned (
 
     Aligned
   , align
-  , unalign
-  , alignedCountry
+  , alignedThing
+  , alignedGreatPower
 
   ) where
 
-import Diplomacy.Country
+import Diplomacy.GreatPower
 
-data Aligned a = Aligned a Country
-  deriving (Eq, Ord)
+data Aligned t where
+    Aligned :: t -> GreatPower -> Aligned t
 
-align :: a -> Country -> Aligned a
-align = Aligned
-
-unalign :: Aligned a -> a
-unalign (Aligned x _) = x
-
-alignedCountry :: Aligned a -> Country
-alignedCountry (Aligned _ c) = c
+deriving instance Eq t => Eq (Aligned t)
+deriving instance Ord t => Ord (Aligned t)
+deriving instance Show t => Show (Aligned t)
 
 instance Functor Aligned where
-  fmap f (Aligned x c) = Aligned (f x) c
+    fmap f (Aligned x y) = Aligned (f x) y
 
-instance Show a => Show (Aligned a) where
-  show (Aligned x c) = show c ++ " : " ++ show x
+align :: t -> GreatPower -> Aligned t
+align = Aligned
+
+alignedThing :: Aligned t -> t
+alignedThing (Aligned x _) = x
+
+alignedGreatPower :: Aligned t -> GreatPower
+alignedGreatPower (Aligned _ x) = x

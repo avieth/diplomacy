@@ -1,27 +1,40 @@
+{-|
+Module      : Diplomacy.OrderSubject
+Description : Definition of OrderSubject
+Copyright   : (c) Alexander Vieth, 2015
+Licence     : BSD3
+Maintainer  : aovieth@gmail.com
+Stability   : experimental
+Portability : non-portable (GHC only)
+-}
+
+{-# LANGUAGE AutoDeriveTypeable #-}
+
 module Diplomacy.OrderSubject (
 
-    OrderSubject(..)
+    OrderSubject
   , orderSubjectUnit
-  , orderSubjectTarget
+  , orderSubjectProvinceTarget
 
   ) where
 
 import Diplomacy.Unit
 import Diplomacy.Province
 
--- | Subject of an order; the thing which is ordered.
---   We describe it just like it's described in the rules:
---     F London
---     A Berlin
---     etc.
-data OrderSubject = OrderSubject Unit ProvinceTarget
-  deriving (Eq, Ord)
+-- | Description of the subject of an order. Some examples:
+--
+--     a. F Bre - Eng
+--     b. A Par S A Bre - Pic
+--
+--   have subjects
+--
+--     a. (Fleet, Normal Brest)
+--     b. (Army, Normal Paris)
+--
+type OrderSubject = (Unit, ProvinceTarget)
 
 orderSubjectUnit :: OrderSubject -> Unit
-orderSubjectUnit (OrderSubject u _) = u
+orderSubjectUnit (x, _) = x
 
-orderSubjectTarget :: OrderSubject -> ProvinceTarget
-orderSubjectTarget (OrderSubject _ pt) = pt
-
-instance Show OrderSubject where
-  show (OrderSubject u pt) = show u ++ " " ++ show pt
+orderSubjectProvinceTarget :: OrderSubject -> ProvinceTarget
+orderSubjectProvinceTarget (_, x) = x

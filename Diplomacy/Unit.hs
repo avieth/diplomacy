@@ -1,39 +1,27 @@
+{-|
+Module      : Diplomacy.Unit
+Description : Definition of units (armies and fleets)
+Copyright   : (c) Alexander Vieth, 2015
+Licence     : BSD3
+Maintainer  : aovieth@gmail.com
+Stability   : experimental
+Portability : non-portable (GHC only)
+-}
+
+{-# LANGUAGE AutoDeriveTypeable #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE StandaloneDeriving #-}
+
 module Diplomacy.Unit (
 
-    Unit
-
-  , army
-  , fleet
-
-  , isArmy
-  , isFleet
-
-  , Army(..)
-  , Fleet(..)
+    Unit(..)
 
   ) where
 
-import Diplomacy.Country
+data Unit where
+    Army :: Unit
+    Fleet :: Unit
 
-data Army = Army
-  deriving (Eq, Ord, Show)
-
-data Fleet = Fleet
-  deriving (Eq, Ord, Show)
-
-data Unit = UArmy Army | UFleet Fleet
-  deriving (Eq, Ord, Show)
-
-army :: Unit
-army = UArmy Army
-
-fleet :: Unit
-fleet = UFleet Fleet
-
-isArmy :: Unit -> Bool
-isArmy (UArmy _) = True
-isArmy (UFleet _) = False
-
-isFleet :: Unit -> Bool
-isFleet (UFleet _) = True
-isFleet (UArmy _) = False
+deriving instance Eq Unit
+deriving instance Ord Unit
+deriving instance Show Unit

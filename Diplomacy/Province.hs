@@ -1,3 +1,5 @@
+{-# LANGUAGE DataKinds #-}
+
 module Diplomacy.Province (
 
     Province(..)
@@ -7,6 +9,7 @@ module Diplomacy.Province (
   , adjacent
 
   , neighbours
+  , isSameOrNeighbour
   , provinceCommonNeighbours
   , provinceCommonCoasts
   , commonNeighbours
@@ -49,7 +52,7 @@ module Diplomacy.Province (
 
 import Control.Monad (guard)
 
-import Diplomacy.Country
+import Diplomacy.GreatPower
 
 -- | Exhaustive enumeration of the places on the diplomacy board.
 --   Refernce: https://www.wizards.com/avalonhill/rules/diplomacy.pdf
@@ -300,7 +303,8 @@ adjacent prv0 prv1 = prv0 `elem` (adjacency prv1)
 allProvinces :: [Province]
 allProvinces = [minBound .. maxBound]
 
--- | A list of all pairs for which adjacency is symmetric
+-- | A list of all pairs for which adjacency is not symmetric.
+--   Should be []
 symmetryCheck :: [(Province, Province)]
 symmetryCheck = filter (not . adjacencyIsSymmetric) (pairs allProvinces)
 
@@ -365,19 +369,19 @@ supplyCentres = filter supplyCentre [minBound..maxBound]
 -- | Some provinces belong to a country.
 --   This is useful in conjunction with supplyCentre to determine which
 --   provinces can be used by a given country to build a unit.
-country :: Province -> Maybe Country
+country :: Province -> Maybe GreatPower
 country Bohemia = Just Austria
 country Budapest = Just Austria
 country Galacia = Just Austria
 country Trieste = Just Austria
 country Tyrolia = Just Austria
 country Vienna = Just Austria
-country Clyde = Just UnitedKingdom
-country Edinburgh = Just UnitedKingdom
-country Liverpool = Just UnitedKingdom
-country London = Just UnitedKingdom
-country Wales = Just UnitedKingdom
-country Yorkshire = Just UnitedKingdom
+country Clyde = Just England
+country Edinburgh = Just England
+country Liverpool = Just England
+country London = Just England
+country Wales = Just England
+country Yorkshire = Just England
 country Brest = Just France
 country Burgundy = Just France
 country Gascony = Just France
@@ -442,7 +446,7 @@ country Skagerrak = Nothing
 country TyrrhenianSea = Nothing
 country WesternMediterranean = Nothing
 
-isHome :: Country -> Province -> Bool
+isHome :: GreatPower -> Province -> Bool
 isHome c p = maybe False ((==) c) (country p)
 
 -- | Province does not express all move order targets, like the north coast
@@ -450,7 +454,7 @@ isHome c p = maybe False ((==) c) (country p)
 data ProvinceTarget
   = Normal Province
   | Special ProvinceCoast
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord)
 
 isSpecial :: ProvinceTarget -> Bool
 isSpecial (Special _) = True
@@ -460,6 +464,7 @@ isNormal :: ProvinceTarget -> Bool
 isNormal (Normal _) = True
 isNormal _ = False
 
+allProvinceTargets :: [ProvinceTarget]
 allProvinceTargets = map Normal allProvinces ++ map Special (allProvinces >>= provinceCoasts)
 
 -- | Like allProvinceTargets but those ProvinceTargets which have ProvinceCoasts
@@ -484,7 +489,7 @@ data ProvinceCoast
   | SpainSouth
   | BulgariaEast
   | BulgariaSouth
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord)
 
 pcProvince :: ProvinceCoast -> Province
 pcProvince StPetersburgNorth = StPetersburg
@@ -568,7 +573,7 @@ provinceWaterReachables province = provinceWaterReachables' waterNeighbours wate
              -- In this case seenSoFar consists only of water provinces. Grab
              -- all of their non-water (coastal) neighbours too.
              [] -> [ y | x <- seenSoFar, y <- adjacency x, not (isWater y) ] ++ seenSoFar
-             xs -> provinceWaterReachables' (nextVanguard ++ seenSoFar) nextVanguard
+             _ -> provinceWaterReachables' (nextVanguard ++ seenSoFar) nextVanguard
 
 -- | Exactly the same as provinceWaterReachables but we use neighbours instead
 --   of adjacency.
@@ -583,7 +588,7 @@ waterReachables pt = waterReachables' waterNeighbours waterNeighbours
         let nextVanguard = [ y | x <- vanguard, y <- neighbours x, isWater (ptProvince y), not (elem y seenSoFar) ]
         in case nextVanguard of
              [] -> [ y | x <- seenSoFar, y <- neighbours x, not (isWater (ptProvince y)) ] ++ seenSoFar
-             xs -> waterReachables' (nextVanguard ++ seenSoFar) nextVanguard
+             _ -> waterReachables' (nextVanguard ++ seenSoFar) nextVanguard
 
 -- | ProvinceTarget neighbours; this is like adjacency but for ProvinceTargets,
 --   using the blacklist to handle the special coasts.
@@ -595,6 +600,9 @@ neighbours pt1 = do
   guard $ not (blacklist (ptProvince pt1) y)
   return y
 
+isSameOrNeighbour :: ProvinceTarget -> ProvinceTarget -> Bool
+isSameOrNeighbour to from = to == from || elem to (neighbours from)
+
 commonNeighbours :: ProvinceTarget -> ProvinceTarget -> [ProvinceTarget]
 commonNeighbours pt1 pt2 =
     [ x | x <- neighbours pt1, y <- neighbours pt2, x == y ]
@@ -603,3 +611,17 @@ commonNeighbours pt1 pt2 =
 commonCoasts :: ProvinceTarget -> ProvinceTarget -> [ProvinceTarget]
 commonCoasts pt1 pt2 =
     filter (isWater . ptProvince) (commonNeighbours pt1 pt2)
+
+-- TODO should define a parser for ProvinceTarget as well, in such a way
+-- that show pt always parses to pt.
+instance Show ProvinceTarget where
+  show (Normal province) = take 3 $ show province
+  show (Special provinceCoast) = show provinceCoast
+
+instance Show ProvinceCoast where
+  show StPetersburgNorth = "StP NC"
+  show StPetersburgWest = "StP WC"
+  show SpainNorth = "Spa NC"
+  show SpainSouth = "Spa SC"
+  show BulgariaEast = "Bul EC"
+  show BulgariaSouth = "Bul SC"
