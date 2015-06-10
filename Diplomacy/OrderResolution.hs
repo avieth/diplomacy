@@ -24,9 +24,8 @@ module Diplomacy.OrderResolution (
 
     Resolved
   , SomeResolved(..)
+  , withSomeResolved
   , someResolvedValidOrder
-
-  , ResolvedOrders
 
   , FailureReason(..)
 
@@ -36,7 +35,6 @@ module Diplomacy.OrderResolution (
 
   ) where
 
---import qualified Data.Map as M
 import Data.Monoid
 import Data.Many
 import Data.MayFail
@@ -54,7 +52,6 @@ import Diplomacy.OrderType
 import Diplomacy.OrderObject
 import Diplomacy.Order
 import Diplomacy.Province
-import Diplomacy.EachProvinceTarget
 import Diplomacy.Valid
 
 type Resolved (k :: Phase -> OrderType -> *) (phase :: Phase) (order :: OrderType) =
@@ -74,9 +71,6 @@ withSomeResolved f term = case term of
 someResolvedValidOrder :: SomeResolved Order phase -> Valid (SomeOrder phase)
 someResolvedValidOrder res = case res of
     SomeResolved (order, _) -> Valid (SomeOrder order)
-
-type ResolvedOrders phase =
-    EachProvinceTarget (Aligned Unit, SomeResolved OrderObject phase)
 
 -- | Enumeration of reasons why an order could not succeed.
 data FailureReason (phase :: Phase) (order :: OrderType) where
@@ -140,13 +134,11 @@ data ResolutionError (phase :: Phase) where
       :: [Order Typical Move]
       -> SomeOrder Typical
       -> ResolutionError Typical
-    -- | Multiple moves to the same province target are judged successful.
-    MultipleWinningMoves
-      :: [Order Typical Move]
-      -> ResolutionError Typical
-    MultipleFailedMovesFromProvince
-      :: [Order Typical Move]
-      -> ResolutionError Typical
+    --   Multiple moves to the same province target are judged successful.
+    --   TODO use this. Perhaps a post-resolution sanity check?
+    --MultipleWinningMoves
+    --  :: [Order Typical Move]
+    --  -> ResolutionError Typical
 
 -- | Every list in duplicateOrders vs consists of orders from vs which have the
 --   same province as their subjects.
@@ -203,6 +195,7 @@ winningMovesTo p = filter (isWinningMoveTo p)
 movesTo :: Province -> [Order Typical Move] -> [Order Typical Move]
 movesTo p = filter (\x -> (ptProvince (movingTo x) == p))
 
+-- | Resolve the retreat phase.
 resolveRetreat :: OrderResolution Retreat [SomeResolved Order Retreat]
 resolveRetreat =
         resolveMultipleOrdersAtProvince
@@ -225,6 +218,7 @@ resolveRetreatOrders validOrders =
                 [] -> passes (Identity (SomeResolved (order, Nothing)))
                 xs -> passes (Identity (SomeResolved (order, Just (WithdrawCollision (fmap outValid xs)))))
 
+-- | Resolve the adjust phase.
 resolveAdjust :: OrderResolution Adjust [SomeResolved Order Adjust]
 resolveAdjust =
         resolveMultipleOrdersAtProvince
@@ -239,45 +233,6 @@ resolveAdjustOrders = sequenceA . fmap resolveAdjustOrder
       -> MayFail (ResolutionError Adjust) Identity (SomeResolved Order Adjust)
     resolveAdjustOrder validOrder = case outValid validOrder of
         SomeOrder order -> passes (Identity (SomeResolved (order, Nothing)))
-
-
-{-
-type Orders phase = EachProvinceTarget (Aligned Unit, SomeOrderObject phase)
-type ValidOrders phase = EachProvinceTarget (Aligned Unit, Valid (SomeOrderObject phase))
-type OrderSet phase = [SomeOrder phase]
-type ValidOrderSet phase = [Valid (SomeOrder phase)]
-type ResolvedOrderSet phase = [SomeResolved Order phase]
-
-orderSet :: Orders phase -> OrderSet phase
-orderSet = M.foldWithKey makeSomeOrder []
-  where
-    makeSomeOrder target (aunit, someObject) rest = case someObject of
-        SomeOrderObject object ->
-            let subject = (alignedThing aunit, target)
-                power = alignedGreatPower aunit
-                order = Order $ align (subject, object) power
-            in  SomeOrder order : rest
-
-validOrderSet :: ValidOrders phase -> ValidOrderSet phase
-validOrderSet = M.foldWithKey makeSomeValidOrder []
-  where
-    makeSomeValidOrder target (aunit, someObject) rest = case someObject of
-        Valid (SomeOrderObject object) ->
-            let subject = (alignedThing aunit, target)
-                power = alignedGreatPower aunit
-                order = Order $ align (subject, object) power
-            in  Valid (SomeOrder order) : rest
-
-resolvedOrderSet :: ResolvedOrders phase -> ResolvedOrderSet phase
-resolvedOrderSet = M.foldWithKey makeSomeResolvedOrder []
-  where
-    makeSomeResolvedOrder target (aunit, someObject) rest = case someObject of
-        SomeResolved (object, resolution) ->
-            let subject = (alignedThing aunit, target)
-                power = alignedGreatPower aunit
-                order = Order $ align (subject, object) power
-            in  SomeResolved (order, resolution) : rest
--}
 
 -- | The move orders of a typical phase of a diplomacy match form a certain
 --   kind of graph. The provinces are nodes, the moves are edges, and
@@ -680,31 +635,8 @@ resolveTypicalOrders validOrders =
     concatenate (resolvedSupports, resolvedMoves) =
         (SomeResolved <$> resolvedSupports) ++ (SomeResolved <$> resolvedMoves)
 
+-- | Resolve the typical phase.
 resolveTypical :: OrderResolution Typical [SomeResolved Order Typical]
 resolveTypical =
         resolveMultipleOrdersAtProvince
     >=> resolveTypicalOrders
-
-
-
-
-move1 :: Order Typical Move
-move1 = Order (align ((Fleet, Normal Brest), MoveObject (Normal Brest)) France)
-
-move2 :: Order Typical Move
-move2 = Order (align ((Army, Normal Paris), MoveObject (Normal Brest)) France)
-
-move3 :: Order Typical Move
-move3 = Order (align ((Army, Normal Brest), MoveObject (Normal Paris)) France)
-
-move4 :: Order Typical Move
-move4 = Order (align ((Fleet, Normal EnglishChannel), MoveObject (Normal Brest)) France)
-
-move5 :: Order Typical Move
-move5 = Order (align ((Army, Normal Paris), MoveObject (Normal Picardy)) France)
-
-move6 :: Order Typical Move
-move6 = Order (align ((Fleet, Normal Picardy), MoveObject (Normal EnglishChannel)) France)
-
-support1 :: Order Typical Support
-support1 = Order (align ((Army, Normal Picardy), SupportObject (Army, Normal Paris) (Normal Brest)) France)
