@@ -500,7 +500,7 @@ analyzePath
   :: (Order Typical Move, [Order Typical Move], [Order Typical Support], [Order Typical Move])
   -> TypicalResolution
 analyzePath (order, competing, supports, otherMoves) =
-    TypicalResolution $ \(_, resolvedMoves) ->
+    TypicalResolution $ \(_, resolvedMoves) -> do
         -- Assumptions:
         -- (1) All (order : competing) have common target.
         -- (2) There is no unresolved move at this target.
@@ -521,11 +521,10 @@ analyzePath (order, competing, supports, otherMoves) =
         --    resolutions.
         -- We start by resolving all relevant supports. These can be cut only
         -- by other moves 
-        let localResolvedSupports =
-                resolveLocalSupport otherMoves resolvedMoves <$> supports
-            localResolvedMoves =
-                resolveLocalMoves (order : competing) localResolvedSupports
-        in  (localResolvedSupports, localResolvedMoves)
+        localResolvedSupports <- sequenceA $
+            resolveLocalSupport otherMoves resolvedMoves <$> supports
+        localResolvedMoves <- resolveLocalMoves (order : competing) localResolvedSupports
+        return (localResolvedSupports, localResolvedMoves)
 
       where
 
@@ -533,28 +532,32 @@ analyzePath (order, competing, supports, otherMoves) =
           :: [Order Typical Move]
           -> [Resolved Order Typical Move]
           -> Order Typical Support
-          -> Resolved Order Typical Support
-        resolveLocalSupport moves resolvedMoves order = (order, resolution)
+          -> MayFail (ResolutionError Typical) Identity (Resolved Order Typical Support)
+        resolveLocalSupport moves resolvedMoves order = hoist (\x -> Identity (order, x)) resolution
           where
+
             supportingFrom = orderSubjectProvinceTarget (orderSubject order)
             supportingPower = orderGreatPower order
-            resolution :: Maybe (FailureReason Typical Support)
+
+            resolution :: MayFail (ResolutionError Typical) Maybe (FailureReason Typical Support)
             resolution = cut <|> dislodged
-            cut :: Maybe (FailureReason Typical Support)
+
+            cut :: MayFail (ResolutionError Typical) Maybe (FailureReason Typical Support)
             cut = case filter ((/=) supportingPower . orderGreatPower) (movesTo (ptProvince supportingFrom) moves) of
-                [] -> Nothing
-                moves -> Just (SupportCut moves)
-            dislodged :: Maybe (FailureReason Typical Support)
+                [] -> passes Nothing
+                moves -> passes (Just (SupportCut moves))
+
+            dislodged :: MayFail (ResolutionError Typical) Maybe (FailureReason Typical Support)
             dislodged = case winningMovesTo (ptProvince supportingFrom) resolvedMoves of
-                [] -> Nothing
-                [move] -> Just (SupportDislodged (fst move))
-                _ -> error "TODO Must bring in MayFail here..."
+                [] -> passes Nothing
+                [move] -> passes (Just (SupportDislodged (fst move)))
+                moves -> fails (MultipleDislodgers (fmap fst moves) (SomeOrder order))
 
         resolveLocalMoves
           :: [Order Typical Move]
           -> [Resolved Order Typical Support]
-          -> [Resolved Order Typical Move]
-        resolveLocalMoves moves resolvedSupports =
+          -> MayFail (ResolutionError Typical) Identity [Resolved Order Typical Move]
+        resolveLocalMoves moves resolvedSupports = passes . Identity $
             let supportedMoves = calculateSupport resolvedSupports <$> moves
                 dominator = dominatingMove supportedMoves
             in  case dominator of
@@ -607,14 +610,14 @@ analyzeCycle :: Cycle -> TypicalResolution
 analyzeCycle cycle =
     TypicalResolution $ \_ -> case cycle of
         -- In this case it's a 2-cycle; those always fail.
-        Many x (One y) -> ([], [failX, failY])
+        Many x (One y) -> passes (Identity ([], [failX, failY]))
           where
             failX :: Resolved Order Typical Move
             failX = (x, Just (Move2Cycle y))
             failY :: Resolved Order Typical Move
             failY = (y, Just (Move2Cycle x))
         -- Any other cycle (holds included) succeeds.
-        ncycle -> ([], succeeds <$> manyToList ncycle)
+        ncycle -> passes (Identity ([], succeeds <$> manyToList ncycle))
 
 -- Whenever we pull the tip of a path we give every support which is
 -- relevant. Same for each cycle. Then at the end we fail every remaining
@@ -629,7 +632,10 @@ analyzeCycle cycle =
 newtype TypicalResolution = TypicalResolution {
     runTypicalResolution
       :: ([Resolved Order Typical Support], [Resolved Order Typical Move])
-      -> ([Resolved Order Typical Support], [Resolved Order Typical Move])
+      -> MayFail
+           (ResolutionError Typical)
+           Identity
+           ([Resolved Order Typical Support], [Resolved Order Typical Move])
   }
 
 makeTypicalResolution :: MoveOrderGraphWithSupports -> TypicalResolution
@@ -637,24 +643,19 @@ makeTypicalResolution = analyzeMoveOrderGraph analyzePath analyzeCycle
 
 evalTypicalResolution
   :: TypicalResolution
-  -> ([Resolved Order Typical Support], [Resolved Order Typical Move])
+  -> MayFail
+       (ResolutionError Typical)
+       Identity
+       ([Resolved Order Typical Support], [Resolved Order Typical Move])
 evalTypicalResolution = (flip runTypicalResolution) ([], [])
 
--- Is it really a monoid?
---
---   x `mappend` mempty = TypicalResolution $ \xs ->
---       let first = runTypicalResolution x xs
---       in  first
---
--- Yup, that works...
--- Should show associativity as well, but I'll just believe it for now. Seems
--- feasbile...
+-- TODO prove it's a monoid.
 instance Monoid TypicalResolution where
-    mempty = TypicalResolution $ const ([], [])
-    x `mappend` y = TypicalResolution $ \r ->
-        let first = runTypicalResolution x r
-            second = runTypicalResolution y first
-        in  up (++) second first
+    mempty = TypicalResolution $ const (passes (Identity ([], [])))
+    x `mappend` y = TypicalResolution $ \r -> do
+        first <- runTypicalResolution x r
+        second <- runTypicalResolution x first
+        return $ up (++) second first
       where
         up :: (forall a . f a -> f a -> f a) -> (f a, f b) -> (f a, f b) -> (f a, f b)
         up f (x, y) (x', y') = (f x x', f y y')
@@ -673,10 +674,11 @@ resolveTypicalOrders validOrders =
     let moves = validMoves validOrders
         supports = outValid <$> validSupports validOrders
         moveGraphWithSupports = (makeMoveOrderGraph moves, supports)
-        (resolvedSupports, resolvedMoves) =
-            evalTypicalResolution (makeTypicalResolution (moveGraphWithSupports))
-        resolved = (SomeResolved <$> resolvedSupports) ++ (SomeResolved <$> resolvedMoves)
-    in  passes (Identity resolved)
+        resolved = evalTypicalResolution (makeTypicalResolution (moveGraphWithSupports))
+    in  concatenate <$> resolved
+  where
+    concatenate (resolvedSupports, resolvedMoves) =
+        (SomeResolved <$> resolvedSupports) ++ (SomeResolved <$> resolvedMoves)
 
 resolveTypical :: OrderResolution Typical [SomeResolved Order Typical]
 resolveTypical =
