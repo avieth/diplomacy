@@ -26,6 +26,7 @@ module Diplomacy.OrderValidation (
 
     SomeValidOrder
   , OrderValidation
+  , InvalidReason(..)
 
   , validateMove
   , validateSupport
@@ -51,6 +52,7 @@ import Diplomacy.Occupation
 import Diplomacy.SupplyCentreDefecit
 import Diplomacy.Valid
 import Diplomacy.OrderResolution
+import Diplomacy.ResolvedOrders
 
 data SomeValidOrder phase where
     SomeValidOrder :: Valid (Order phase order) -> SomeValidOrder phase
@@ -236,9 +238,11 @@ validateSupportedCanDoMove occupation =
   where
     makeMove :: Order Typical Support -> Order Typical Move
     makeMove order =
-        let SupportObject asubject to = orderObject order
-            subject = alignedThing asubject
-            power = alignedGreatPower asubject
+        let SupportObject subject to = orderObject order
+            power = orderGreatPower order
+        --  It doesn't matter that the move we construct may have a different
+        --  issuing great power than the move being supported, because the
+        --  validity of a move is independent of the issuing power!
         in  Order $ align (subject, MoveObject to) power
     makeReason
       :: InvalidReason Typical Move
@@ -254,12 +258,10 @@ validateSupportedUnitPresent occupation =
 
 supportedUnitNotPresent :: Occupation -> Order Typical Support -> Bool
 supportedUnitNotPresent occupation order =
-    not (occupies provinceTarget alignedUnit occupation)
+    not (unitOccupies provinceTarget unit occupation)
   where
-    SupportObject afrom to = orderObject order
-    supportedSubject = alignedThing afrom
-    supportedGreatPower = alignedGreatPower afrom
-    alignedUnit = align (orderSubjectUnit supportedSubject) supportedGreatPower
+    SupportObject supportedSubject to = orderObject order
+    unit = orderSubjectUnit supportedSubject
     provinceTarget = orderSubjectProvinceTarget supportedSubject
 
 validateWithdrawIntoOccupiedProvince :: Occupation -> OrderValidation Retreat Withdraw

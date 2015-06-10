@@ -14,8 +14,10 @@ module Diplomacy.Occupation (
 
     Occupation
 
-  , occupies
   , occupy
+
+  , occupies
+  , unitOccupies
 
   ) where
 
@@ -29,6 +31,9 @@ type Occupation = EachProvinceTarget (Aligned Unit)
 
 occupies :: ProvinceTarget -> Aligned Unit -> Occupation -> Bool
 occupies pt aunit occupation = maybe False (== aunit) (M.lookup pt occupation)
+
+unitOccupies :: ProvinceTarget -> Unit -> Occupation -> Bool
+unitOccupies pt unit occupation = maybe False ((==) unit . alignedThing) (M.lookup pt occupation)
 
 occupy :: ProvinceTarget -> Aligned Unit -> Occupation -> Occupation
 occupy = M.insert
