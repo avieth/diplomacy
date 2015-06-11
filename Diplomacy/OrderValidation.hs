@@ -67,61 +67,56 @@ data InvalidReason (phase :: Phase) (order :: OrderType) where
     --   issuing country does not have a unit of the given type in the given
     --   province target.
     InvalidSubject
-      :: Order phase orderType -- ^ The invalid order.
-      -> InvalidReason phase orderType
+      :: InvalidReason phase orderType
 
     -- | The move cannot be achieved, even via convoy. A move to any
     --   nonadjacent inland province, for example; or from an inland province
     --   to any nonadjacent province; or a fleet moving to any nonadjacent
     --   or inland province, etc.
-    MoveNonAdjacent
-      :: Order Typical Move -- ^ The invalid order.
-      -> InvalidReason Typical Move
+    MoveImpossible
+      :: InvalidReason Typical Move
 
-    -- | The unit to be moved cannot legally occupy the target of the move.
-    MoveUnitCannotOccupy
-      :: Order Typical Move -- ^ The invalid order.
-      -> InvalidReason Typical Move
+    -- | The support is directed to or from the supporting unit's province.
+    --   For example, the following to are invalid for this reason:
+    --
+    --     A Munich S A Munch - Berlin
+    --     A Paris S A Brest - Paris
+    --
+    SupportSelf
+      :: InvalidReason Typical Support
 
     -- | The unit to support is not present.
     SupportedUnitNotPresent
-      :: Order Typical Support -- ^ The bougs order.
-      -> InvalidReason Typical Support
+      :: InvalidReason Typical Support
 
     -- | The supported unit could not legally do the move that would be
     --   supported.
     SupportedCouldNotDoMove
       :: InvalidReason Typical Move -- ^ The reason why the supported unit
                                     --   cannot do the move
-      -> Order Typical Support      -- ^ The invalid order.
       -> InvalidReason Typical Support
 
     -- | The supporting unit could not attack the target of support.
     SupporterCouldNotDoMove
-      :: Order Typical Support -- ^ The invalid order.
-      -> InvalidReason Typical Support
+      :: InvalidReason Typical Support
 
     -- | The withdraw destination is not directly adjacent to the province
     --   from which the unit withdraws.
     WithdrawNonAdjacent
-      :: Order Retreat Withdraw -- ^ The invalid order.
-      -> InvalidReason Retreat Withdraw
+      :: InvalidReason Retreat Withdraw
 
     -- | The withdraw destination is the province from which the withdrawing
     --   unit was dislodged.
     WithdrawIntoAttackingProvince
-      :: Order Retreat Withdraw -- ^ The invalid order.
-      -> InvalidReason Retreat Withdraw
+      :: InvalidReason Retreat Withdraw
 
     -- | The withdraw destination is occupied.
     WithdrawIntoOccupiedProvince
-      :: Order Retreat Withdraw -- ^ The invalid order.
-      -> InvalidReason Retreat Withdraw
+      :: InvalidReason Retreat Withdraw
 
     -- | The unit to be built cannot legally occupy the destination province.
     BuildUnitCannotOccupy
-      :: Order Adjust Build -- ^ The invalid order.
-      -> InvalidReason Adjust Build
+      :: InvalidReason Adjust Build
 
     -- | The unit is to be built in a non-home supply centre. This includes
     --   provinces which are not supply centres at all, like
@@ -129,39 +124,32 @@ data InvalidReason (phase :: Phase) (order :: OrderType) where
     --   rather than
     --     (not home) && supplyCentre
     BuildNotInHomeSupplyCentre
-      :: Order Adjust Build -- ^ The invalid order.
-      -> InvalidReason Adjust Build
+      :: InvalidReason Adjust Build
 
     -- | The issuing power does not have enough supply centres to allow for a
     --   new unit.
     BuildInsufficientSupplyCentres
-      :: Order Adjust Build -- ^ The invalid order.
-      -> InvalidReason Adjust Build
+      :: InvalidReason Adjust Build
 
 deriving instance Show (InvalidReason phase order)
+deriving instance Eq (InvalidReason phase order)
 
 valid :: OrderValidation phase order
 valid = const Nothing
 
-witnesses
-  :: (a -> Maybe b)
-  -> (b -> c)
-  -> (a -> Maybe c)
-witnesses = flip (fmap . fmap)
-
 -- | True implies invalid.
 implies
   :: (a -> Bool)
-  -> (a -> b)
+  -> b
   -> (a -> Maybe b)
-implies fbool finvalid order = case fbool order of
-    True -> Just (finvalid order)
+implies fbool invalid order = case fbool order of
+    True -> Just invalid
     False -> Nothing
 
 -- | True implies valid.
 orElse
   :: (a -> Bool)
-  -> (a -> b)
+  -> b
   -> (a -> Maybe b)
 orElse fbool = implies (not . fbool)
 
@@ -173,19 +161,19 @@ also left right = (<|>) <$> left <*> right
 
 validateAs
   :: (Order phase2 order2 -> Order phase1 order1)
-  -> (InvalidReason phase1 order1 -> Order phase2 order2 -> InvalidReason phase2 order2)
+  -> (InvalidReason phase1 order1 -> InvalidReason phase2 order2)
   -> OrderValidation phase1 order1
   -> OrderValidation phase2 order2
-validateAs forder finvalid validation1 order = case validation1 (forder order) of
+validateAs forder invalid validation1 order = case validation1 (forder order) of
     Nothing -> Nothing
-    Just reason -> Just (finvalid reason order)
+    Just reason -> Just (invalid reason)
 
 -- | Validation for the subject of an order.
 validateSubject :: Occupation -> OrderValidation phase order
 validateSubject occupation order =
     case occupies provinceTarget alignedUnit occupation of
         True -> Nothing
-        False -> Just (InvalidSubject order)
+        False -> Just InvalidSubject
   where
     subject = orderSubject order
     alignedUnit = align (orderSubjectUnit subject) (orderGreatPower order)
@@ -203,6 +191,7 @@ validateMove occupation =
 validateSupport :: Occupation -> OrderValidation Typical Support
 validateSupport occupation =
            validateSubject occupation
+    `also` validateSupportSelf
     `also` validateSupportedUnitPresent occupation
     `also` validateSupporterCanDoMove
     `also` validateSupportedCanDoMove occupation
@@ -232,6 +221,17 @@ validateBuild defecit =
 
 -- * Sub-validations used to define principal validations.
 
+validateSupportSelf :: OrderValidation Typical Support
+validateSupportSelf =
+    supportSelf
+    `implies`
+    SupportSelf
+  where
+    supportSelf order =
+        let supportAt = orderSubjectProvinceTarget (orderSubject (order))
+        in     supportAt == supportTarget (orderObject order)
+            || supportAt == orderSubjectProvinceTarget (supportedOrderSubject (orderObject order))
+
 validateSupportedCanDoMove :: Occupation -> OrderValidation Typical Support
 validateSupportedCanDoMove occupation =
     validateAs makeMove makeReason (validateMove occupation)
@@ -246,7 +246,6 @@ validateSupportedCanDoMove occupation =
         in  Order $ align (subject, MoveObject to) power
     makeReason
       :: InvalidReason Typical Move
-      -> Order Typical Support
       -> InvalidReason Typical Support
     makeReason = SupportedCouldNotDoMove
 
@@ -334,7 +333,7 @@ notInHomeSupplyCentre order = not (supplyCentre province && isHome power provinc
     power = orderGreatPower order
 
 validateMoveAdjacency :: OrderValidation Typical Move
-validateMoveAdjacency = invalidMoveAdjacency `implies` MoveNonAdjacent
+validateMoveAdjacency = invalidMoveAdjacency `implies` MoveImpossible
 
 invalidMoveAdjacency :: Order Typical Move -> Bool
 invalidMoveAdjacency order =
@@ -390,13 +389,16 @@ unitCannotMoveFromTo unit from to = unitCannotOccupy unit to || case unit of
 --   the rule which states that a unit can only support if it could legally move
 --   into the target of support.
 --   This rules out support-through-convoy, and is careful to permit support
---   by coastal fleets to provinces without a common coast.
+--   by coastal fleets to either coast of a multi-coast province.
 unitCannotSupportFromTo :: Unit -> ProvinceTarget -> ProvinceTarget -> Bool
 unitCannotSupportFromTo unit from to = unitCannotOccupy unit to || case unit of
     Army -> not (isSameOrNeighbour to from)
-    -- Fleets can support without the common-coast constraint that they
-    -- must respect for movement.
-    Fleet -> not (isSameOrNeighbour to from)
+    Fleet -> if isCoastal (ptProvince from) && isCoastal (ptProvince to)
+             then not (isSameOrNeighbour to from) || null (commonCoasts from to)
+             -- If supporting to a coastal province, any coast will do.
+             else if isCoastal (ptProvince to)
+             then all (not . (flip elem) (neighbours from)) (provinceTargets (ptProvince to))
+             else not (isSameOrNeighbour to from)
 
 -- | True if and only if the unit cannot legally withdraw from the first
 --   province target to the second. This is the same as for unconvoyed
