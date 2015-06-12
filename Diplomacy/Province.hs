@@ -406,11 +406,11 @@ country Sevastopol = Just Russia
 country StPetersburg = Just Russia
 country Ukraine = Just Russia
 country Warsaw = Just Russia
-country Ankara = Just Ottoman
-country Armenia = Just Ottoman
-country Constantinople = Just Ottoman
-country Smyrna = Just Ottoman
-country Syria = Just Ottoman
+country Ankara = Just Turkey
+country Armenia = Just Turkey
+country Constantinople = Just Turkey
+country Smyrna = Just Turkey
+country Syria = Just Turkey
 country Albania = Nothing
 country Belgium = Nothing
 country Bulgaria = Nothing
@@ -455,6 +455,12 @@ data ProvinceTarget
   = Normal Province
   | Special ProvinceCoast
     deriving (Eq, Ord)
+
+-- TODO should define a parser for ProvinceTarget as well, in such a way
+-- that show pt always parses to pt.
+instance Show ProvinceTarget where
+  show (Normal province) = show province
+  show (Special provinceCoast) = show provinceCoast
 
 isSpecial :: ProvinceTarget -> Bool
 isSpecial (Special _) = True
@@ -611,12 +617,6 @@ commonNeighbours pt1 pt2 =
 commonCoasts :: ProvinceTarget -> ProvinceTarget -> [ProvinceTarget]
 commonCoasts pt1 pt2 =
     filter (isWater . ptProvince) (commonNeighbours pt1 pt2)
-
--- TODO should define a parser for ProvinceTarget as well, in such a way
--- that show pt always parses to pt.
-instance Show ProvinceTarget where
-  show (Normal province) = take 3 $ show province
-  show (Special provinceCoast) = show provinceCoast
 
 instance Show ProvinceCoast where
   show StPetersburgNorth = "StP NC"

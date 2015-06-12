@@ -25,7 +25,7 @@ data GreatPower where
     Italy :: GreatPower
     Austria :: GreatPower
     Russia :: GreatPower
-    Ottoman :: GreatPower
+    Turkey :: GreatPower
 
 deriving instance Eq GreatPower
 deriving instance Ord GreatPower
