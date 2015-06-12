@@ -36,6 +36,7 @@ module Diplomacy.OrderResolution (
   ) where
 
 import Data.Monoid
+import Data.Maybe
 import Data.Many
 import Data.MayFail
 import Data.Functor.Identity
@@ -53,6 +54,9 @@ import Diplomacy.OrderObject
 import Diplomacy.Order
 import Diplomacy.Province
 import Diplomacy.Valid
+import Diplomacy.MoveOrderGraph
+
+import Debug.Trace
 
 type Resolved (k :: Phase -> OrderType -> *) (phase :: Phase) (order :: OrderType) =
     (k phase order, Maybe (FailureReason phase order))
@@ -90,6 +94,11 @@ data FailureReason (phase :: Phase) (order :: OrderType) where
       :: Order Typical Move -- The move which completes the 2-cycle.
       -> FailureReason Typical Move
 
+    -- | The move would dislodge the player's own unit.
+    MoveSelfDislodge
+      :: (Order Typical Move, FailureReason Typical Move)
+      -> FailureReason Typical Move
+
     -- | The supported unit did not give an order consistent with the support
     --   order.
     SupportedOrderNotGiven -- There's nothing to support.
@@ -121,6 +130,7 @@ data FailureReason (phase :: Phase) (order :: OrderType) where
     -- valid, they succeed!
 
 deriving instance Show (FailureReason phase order)
+deriving instance Eq (FailureReason phase order)
 
 -- | Whereas order validation proceeds one order at a time, order resolution
 --   must act on all orders of a given phase.
@@ -129,16 +139,20 @@ type OrderResolution phase t =
 
 -- | Enumeration of reasons why order resolution could not proceed.
 data ResolutionError (phase :: Phase) where
+    MalformedOrderGraph :: ResolutionError Typical
     MultipleOrdersAtProvince :: [[Valid (SomeOrder phase)]] -> ResolutionError phase
     MultipleDislodgers
       :: [Order Typical Move]
       -> SomeOrder Typical
       -> ResolutionError Typical
     --   Multiple moves to the same province target are judged successful.
-    --   TODO use this. Perhaps a post-resolution sanity check?
-    --MultipleWinningMoves
-    --  :: [Order Typical Move]
-    --  -> ResolutionError Typical
+    MultipleWinningMoves
+      :: [Order Typical Move]
+      -> ResolutionError Typical
+    --   Multiple moves from the same province target are judged failed.
+    MultipleFailedMoves
+      :: [Order Typical Move]
+      -> ResolutionError Typical
 
 -- | Every list in duplicateOrders vs consists of orders from vs which have the
 --   same province as their subjects.
@@ -234,296 +248,111 @@ resolveAdjustOrders = sequenceA . fmap resolveAdjustOrder
     resolveAdjustOrder validOrder = case outValid validOrder of
         SomeOrder order -> passes (Identity (SomeResolved (order, Nothing)))
 
--- | The move orders of a typical phase of a diplomacy match form a certain
---   kind of graph. The provinces are nodes, the moves are edges, and
---   each node has out-degree at most 1, since there can be at most one order
---   per province. So, we're left with a graph factored into paths and
---   cycles, such that each edge appears in at most one path or cycle, and
---   these paths and cycles are *maximal*, they are not proper subsets of
---   other paths or cycles in the graph.
---
---   This structure is used to incrementally judge the move orders of a typical
---   phase. It controls the structure of the typical phase resolution
---   computation.
---   - If there are no paths, then every cycle except for unconvoyed
---     2-cycles succeeds.
---   - If there are paths, we can resolve the tip of any of the paths by
---     calculating the support of it and of every other move into its target.
---     This resolves all moves with that target, their supports, as well as
---     support coming from the move target in case of dislodgement.
---
---  Assumption: there are no duplicates. If x is in cycles or paths, then it
---  appears in only one of them and only once.
---
-data MoveOrderGraph where
-    MoveOrderGraph :: Cycles -> Paths -> MoveOrderGraph
-
-deriving instance Show MoveOrderGraph
-
-type Cycles = [Cycle]
-type Paths = [Path]
-
--- | Path is left-to-right head-to-tail so that
---     x <- y <- z
---   has representation
---     Many x (Many y (One z))
-type Path = Many (Order Typical Move)
--- | Like a Path, but we're responsible for proving that every Cycle has
---
---       orderSubjectProvinceTarget . orderSubect . outValid . mlast
---     = moveTarget . orderObject . outValid . mfirst
---
-type Cycle = Many (Order Typical Move)
-
-emptyMoveOrderGraph :: MoveOrderGraph
-emptyMoveOrderGraph = MoveOrderGraph [] []
-
--- Check for multiple orders at province before using this.
---
--- NB a hold is a move where target and source coincide; we count it as a
--- cycle here.
-addMove :: Order Typical Move -> MoveOrderGraph -> MoveOrderGraph
-addMove order (MoveOrderGraph ps cs) =
-    let ps' = extendPaths order ps
-        (ps'', cs') = eliminateCycles ps'
-    in  if isHold order
-        then MoveOrderGraph ps (One order : cs)
-        else MoveOrderGraph ps'' (cs' ++ cs)
-
--- | Put a valid move into a list of paths, either extending an existing path
---   or making a new one (possibly a cycle, in case target and source coincide
---   as in a hold). This can be rectified by running eliminateCycles on the
---   output.
-extendPaths :: Order Typical Move -> Paths -> Paths
-extendPaths order ps = case ps of
-    [] -> [One order]
-    path : rest ->
-        let to = moveTarget . orderObject $ order
-            from = orderSubjectProvinceTarget . orderSubject $ order
-            to' = moveTarget . orderObject . mfirst $ path
-            from' = orderSubjectProvinceTarget . orderSubject . mlast $ path
-        in  if to' == from
-            then manyCons order path : rest
-            else if from' == to
-            then manySnoc path order : rest
-            else path : extendPaths order rest
-
-eliminateCycles :: Paths -> (Paths, Cycles)
-eliminateCycles ps = case ps of
-    [] -> ([], [])
-    path : rest ->
-        if to == from
-        -- In this then branch we add path to the cycles list, so we need to
-        -- guarantee that it's really a cycle, i.e. that
-        --
-        --       orderSubjectProvinceTargetTarget . orderSubect . outValid . mlast $ path
-        --     = moveTarget . orderObject . outValid . mfirst $ path
-        --
-        -- but that's exactly what we've done (see the where clause).
-        then (ps', path : cs)
-        else (path : ps', cs)
-      where
-        (ps', cs) = eliminateCycles rest
-        to = moveTarget . orderObject . mfirst $ path
-        from = orderSubjectProvinceTarget . orderSubject . mlast $ path
-
-removeMove :: Order Typical Move -> MoveOrderGraph -> MoveOrderGraph
-removeMove order (MoveOrderGraph ps cs) =
-    let ps' = removeMoveFromPaths order ps
-        (ps'', cs') = removeMoveFromCycles order cs
-    in  MoveOrderGraph (ps'' ++ ps') cs'
-
-removeMoveFromPaths :: Order Typical Move -> Paths -> Paths
-removeMoveFromPaths order ps = case ps of
-    [] -> []
-    path : rest ->
-        case splitMany order path of
-            SplitNotPresent -> path : removeMoveFromPaths order rest
-            -- No recursion necessary, since we assume each order appears
-            -- at most once.
-            SplitEmpty -> rest
-            SplitEnd path' -> path' : rest
-            SplitMiddle pathLeft pathRight -> pathLeft : pathRight : rest
-
-removeMoveFromCycles :: Order Typical Move -> Cycles -> (Paths, Cycles)
-removeMoveFromCycles order cs = case cs of
-    [] -> ([], [])
-    cycle : rest ->
-        case splitMany order cycle of
-            SplitNotPresent -> (ps, cycle : cs')
-            SplitEmpty -> (ps, cs')
-            -- path' must really be a path, since it is cycle with one element
-            -- removed (and all cycles that we deal with here are simple
-            -- cycles).
-            SplitEnd path' -> (path' : ps, cs')
-            -- pathLeft and pathRight together form one path.
-            -- pathLeft is the left-hand-side of the list, which by convention
-            -- is the terminal side of the move, so we want to tack the inital
-            -- side onto it (the terminus in pathLeft coincides with the
-            -- initiation in pathRight).
-            SplitMiddle pathLeft pathRight -> (manyAppend pathRight pathLeft : ps, cs')
-      where
-        (ps, cs') = removeMoveFromCycles order rest
-
 type MoveOrderGraphWithSupports = (MoveOrderGraph, [Order Typical Support])
-
--- | Take the tip of some path, and every other move with common target, giving
---   a smaller graph as well. Gives Nothing in case there are no paths in the
---   graph.
-takeTipOfPath
-  :: MoveOrderGraphWithSupports
-  -> Maybe (
-         Order Typical Move
-       , [Order Typical Move]
-       , [Order Typical Support]
-       , [Order Typical Move]
-       , MoveOrderGraphWithSupports
-       )
-takeTipOfPath (graph, supports) = case graph of
-    MoveOrderGraph [] _ -> Nothing
-    MoveOrderGraph (p : _) _ ->
-        let allMovesInGraph = moveOrderGraphToList graph
-            principalOrder = mfirst p
-            competingOrders = competingMoves principalOrder allMovesInGraph
-            supporting = relevantSupports (principalOrder : competingOrders) supports
-            newGraph = foldr removeMove graph (principalOrder : competingOrders)
-            otherMoves = moveOrderGraphToList newGraph
-        in  Just (principalOrder, competingOrders, supporting, otherMoves, (newGraph, supports))
-
--- | All moves which have the same target as some move. Includes holds.
-competingMoves :: Order Typical Move -> [Order Typical Move] -> [Order Typical Move]
-competingMoves order = filter (/= order) . movesTo (ptProvince (movingTo order))
 
 -- | All supports which support one of these moves (could be a hold).
 relevantSupports :: [Order Typical Move] -> [Order Typical Support] -> [Order Typical Support]
 relevantSupports orders = filter (\x -> any (supportsMove x) orders)
 
-moveOrderGraphToList :: MoveOrderGraph -> [Order Typical Move]
-moveOrderGraphToList graph = case graph of
-    MoveOrderGraph ps cs -> (ps >>= manyToList) ++ (cs >>= manyToList)
-
--- | Take some cycle from a graph
-takeCycle :: MoveOrderGraphWithSupports -> Maybe (Cycle, MoveOrderGraphWithSupports)
-takeCycle (graph, supports) = case graph of
-    MoveOrderGraph _ [] -> Nothing
-    MoveOrderGraph ps (c : cs) -> Just (c, (MoveOrderGraph ps cs, supports))
-
--- | Combine takeTipOfPath and takeCycle such that cycles are taken only if
---   there are no paths.
-takeNext
-  :: MoveOrderGraphWithSupports
-  -> Maybe (
-         Either
-           (Order Typical Move, [Order Typical Move], [Order Typical Support], [Order Typical Move])
-           Cycle
-       , MoveOrderGraphWithSupports
-       )
-takeNext graph = case takeTipOfPath graph of
-    Just (v, w, x, y, z) -> Just (Left (v, w, x, y), z)
-    Nothing -> case takeCycle graph of
-        Just (c, g) -> Just (Right c, g)
-        Nothing -> Nothing
-
--- | Recursion on a MoveOrderGraph. This is guaranteed to terminate, because
---   takeNext always produces a smaller graph.
---
---   In our use case, the monoid t shall be 
---     [Resolved Order Typical Move] -> [Resolved Order Typical Move]
---   and so analyzing a move order graph will give us a function of this type,
---   composed 
-analyzeMoveOrderGraph
-  :: Monoid t
-  => ((Order Typical Move, [Order Typical Move], [Order Typical Support], [Order Typical Move]) -> t)
-  -> (Cycle -> t)
-  -> MoveOrderGraphWithSupports
-  -> t
-analyzeMoveOrderGraph ifPath ifCycle graph = case takeNext graph of
-    Nothing -> mempty
-    Just (taken, graph') -> case taken of
-        Left x -> ifPath x `mappend` rest
-        Right x -> ifCycle x `mappend` rest
-      where rest = analyzeMoveOrderGraph ifPath ifCycle graph'
-
 -- | In which the tip of a path and all competing moves and their supports
 --   are resolved.
---
---   First component of argument is the tip of path, second is the competing
---   moves, third is all relevant supports, fourth is every unresolved
---   move in the graph but not in (order : competing).
---
-analyzePath
-  :: (Order Typical Move, [Order Typical Move], [Order Typical Support], [Order Typical Move])
+analyzeTip
+  :: [Order Typical Move]
+  -> (LNode Province, Many (LEdge (Order Typical Move)))
   -> TypicalResolution
-analyzePath (order, competing, supports, otherMoves) =
-    TypicalResolution $ \(_, resolvedMoves) -> do
-        -- Assumptions:
-        -- (1) All (order : competing) have common target.
-        -- (2) There is no unresolved move at this target.
-        -- (3) All supports support one of the moves in (1).
-        -- 
-        -- Implications:
-        -- (4) Supports in supports fail if and only if either of
-        --     a. There is a move into its province in otherMoves (cut)
-        --     b. There is a successful move into its province in resolvedMoves
-        --        (dislodged)
-        --
-        -- The plan:
-        -- 1. Resolve all of supports, using otherMoves and resolvedMoves.
-        -- 2. Use these resolution to calclate total support of each of
-        --    the moves from (1).
-        -- 3. Use those supports to find the dominator (if any).
-        -- 4. With the dominator (if any) in hand, we can decide the
-        --    resolutions.
-        -- We start by resolving all relevant supports. These can be cut only
-        -- by other moves 
-        localResolvedSupports <- sequenceA $
-            resolveLocalSupport otherMoves resolvedMoves <$> supports
-        localResolvedMoves <- resolveLocalMoves (order : competing) localResolvedSupports
-        return (localResolvedSupports, localResolvedMoves)
+analyzeTip allMoves (_, edges) = TypicalResolution $ \(unresolvedSupports, resolvedSupports, resolvedMoves) -> do
 
+    -- Assumptions:
+    -- (1) All moveOrders have common target.
+    -- (2) There is no unresolved move from this target (there may be a
+    --     resolved move from this target).
+    -- 
+    -- Implications:
+    -- (4) Supports in supports fail if and only if either of
+    --     a. There is a move into its province in otherMoves (cut)
+    --     b. There is a successful move into its province in resolvedMoves
+    --        (dislodged)
+    --
+    -- The plan:
+    -- 1. Resolve all of supports, using otherMoves and resolvedMoves.
+    -- 2. Use these resolution to calclate total support of each of
+    --    the moves from (1).
+    -- 3. Use those supports to find the dominator (if any).
+    -- 4. With the dominator (if any) in hand, we can decide the
+    --    resolutions.
+    -- We start by resolving all relevant supports. These can be cut only
+    -- by other moves 
+    let moveOrders = (\(_, _, x) -> x) <$> manyToList edges
+    let supporting = relevantSupports moveOrders unresolvedSupports
+    localResolvedSupports <- sequenceA $
+        resolveLocalSupport allMoves resolvedMoves <$> supporting
+    localResolvedMoves <- resolveLocalMoves moveOrders localResolvedSupports resolvedMoves
+    --trace (" + " ++ show edges) (return ())
+    --trace (" @ " ++ show resolvedMoves) (return ())
+    --trace (" - " ++ show localResolvedMoves) (return ())
+    return (localResolvedSupports ++ resolvedSupports, localResolvedMoves ++ resolvedMoves)
+
+  where
+
+    resolveLocalSupport
+      :: [Order Typical Move]
+      -> [Resolved Order Typical Move]
+      -> Order Typical Support
+      -> MayFail (ResolutionError Typical) Identity (Resolved Order Typical Support)
+    resolveLocalSupport moves resolvedMoves order = hoist (\x -> Identity (order, x)) resolution
       where
 
-        resolveLocalSupport
-          :: [Order Typical Move]
-          -> [Resolved Order Typical Move]
-          -> Order Typical Support
-          -> MayFail (ResolutionError Typical) Identity (Resolved Order Typical Support)
-        resolveLocalSupport moves resolvedMoves order = hoist (\x -> Identity (order, x)) resolution
-          where
+        supportingFrom = orderSubjectProvinceTarget (orderSubject order)
+        supportingPower = orderGreatPower order
 
-            supportingFrom = orderSubjectProvinceTarget (orderSubject order)
-            supportingPower = orderGreatPower order
+        resolution :: MayFail (ResolutionError Typical) Maybe (FailureReason Typical Support)
+        resolution = cut <|> dislodged
 
-            resolution :: MayFail (ResolutionError Typical) Maybe (FailureReason Typical Support)
-            resolution = cut <|> dislodged
+        cut :: MayFail (ResolutionError Typical) Maybe (FailureReason Typical Support)
+        cut = case filter ((/=) supportingPower . orderGreatPower) (movesTo (ptProvince supportingFrom) moves) of
+            [] -> passes Nothing
+            moves -> passes (Just (SupportCut moves))
 
-            cut :: MayFail (ResolutionError Typical) Maybe (FailureReason Typical Support)
-            cut = case filter ((/=) supportingPower . orderGreatPower) (movesTo (ptProvince supportingFrom) moves) of
-                [] -> passes Nothing
-                moves -> passes (Just (SupportCut moves))
+        dislodged :: MayFail (ResolutionError Typical) Maybe (FailureReason Typical Support)
+        dislodged = case winningMovesTo (ptProvince supportingFrom) resolvedMoves of
+            [] -> passes Nothing
+            [move] -> passes (Just (SupportDislodged (fst move)))
+            moves -> fails (MultipleDislodgers (fmap fst moves) (SomeOrder order))
 
-            dislodged :: MayFail (ResolutionError Typical) Maybe (FailureReason Typical Support)
-            dislodged = case winningMovesTo (ptProvince supportingFrom) resolvedMoves of
-                [] -> passes Nothing
-                [move] -> passes (Just (SupportDislodged (fst move)))
-                moves -> fails (MultipleDislodgers (fmap fst moves) (SomeOrder order))
-
-        resolveLocalMoves
-          :: [Order Typical Move]
-          -> [Resolved Order Typical Support]
-          -> MayFail (ResolutionError Typical) Identity [Resolved Order Typical Move]
-        resolveLocalMoves moves resolvedSupports = passes . Identity $
-            let supportedMoves = calculateSupport resolvedSupports <$> moves
-                dominator = dominatingMove supportedMoves
-            in  case dominator of
-                    Nothing -> bounced moves <$> moves
-                    Just x -> (x, Nothing) : (overpowered x <$> (moves \\ [x]))
+    resolveLocalMoves
+      :: [Order Typical Move]
+      -> [Resolved Order Typical Support]
+      -> [Resolved Order Typical Move]
+      -> MayFail (ResolutionError Typical) Identity [Resolved Order Typical Move]
+    resolveLocalMoves moves resolvedSupports resolvedMoves =
+        let supportedMoves = calculateSupport resolvedSupports <$> moves
+            dominator = dominatingMove supportedMoves
+        in  case dominator of
+                Nothing -> passes (Identity (bounced moves <$> moves))
+                Just (n, x) ->
+                    -- dominator still might not move, if the support is 1
+                    -- and there's a failed move from the target.
+                    if n > 1
+                    then passes (Identity ((x, Nothing) : others))
+                    else case filter (isFailedMoveFrom (ptProvince (movingTo x))) resolvedMoves of
+                             [] -> passes (Identity ((x, Nothing) : others))
+                             [failed] -> passes (Identity ((x, Just (MoveInsufficientSupport [fst failed])) : others))
+                             many -> fails (MultipleFailedMoves (fst <$> many))
+                  where
+                    others = overpowered x <$> (moves \\ [x])
+                             
+      where
 
         bounced :: [Order Typical Move] -> Order Typical Move -> Resolved Order Typical Move
         bounced moves move = (move, Just (MoveInsufficientSupport (moves \\ [move])))
 
         overpowered :: Order Typical Move -> Order Typical Move -> Resolved Order Typical Move
         overpowered dominator move = (move, Just (MoveOverpowered dominator))
+
+        isFailedMoveFrom :: Province -> Resolved Order Typical Move -> Bool
+        isFailedMoveFrom province (order, resolution) = case resolution of
+            Just _ -> ptProvince (movingFrom order) == province
+            _ -> False
 
         calculateSupport
           :: [Resolved Order Typical Support]
@@ -545,11 +374,13 @@ analyzePath (order, competing, supports, otherMoves) =
             supporters resolvedSupports order =
                 fst <$> filter ((flip countsAsSupportFor) order) resolvedSupports
 
-        dominatingMove :: [(Int, Order Typical Move)] -> Maybe (Order Typical Move)
+        dominatingMove :: [(Int, Order Typical Move)] -> Maybe (Int, Order Typical Move)
         dominatingMove xs = case xs of
             [] -> Nothing
-            [x] -> Just (snd x)
-            xs' -> snd . foldr dominates (0, Nothing) $ xs'
+            [x] -> Just x
+            xs' -> case foldr dominates (0, Nothing) xs' of
+                       (n, Nothing) -> Nothing
+                       (n, Just x) -> Just (n, x)
           where
             dominates (i, m) (j, l) =
                 if i > j
@@ -558,79 +389,156 @@ analyzePath (order, competing, supports, otherMoves) =
                 then (j, l)
                 else (i, Nothing)
 
-
-
 -- | In which a simple cycle in a graph with no paths is resolved.
-analyzeCycle :: Cycle -> TypicalResolution
-analyzeCycle cycle =
-    TypicalResolution $ \_ -> case cycle of
-        -- In this case it's a 2-cycle; those always fail.
-        Many x (One y) -> passes (Identity ([], [failX, failY]))
-          where
-            failX :: Resolved Order Typical Move
-            failX = (x, Just (Move2Cycle y))
-            failY :: Resolved Order Typical Move
-            failY = (y, Just (Move2Cycle x))
-        -- Any other cycle (holds included) succeeds.
-        ncycle -> passes (Identity ([], succeeds <$> manyToList ncycle))
+analyzeCycle :: Many (LEdge (Order Typical Move)) -> TypicalResolution
+analyzeCycle cycle = TypicalResolution $ \(unresolvedSupports, resolvedSupports, resolvedMoves) -> case cycle of
+    -- In this case it's a 2-cycle; those always fail.
+    Many (_, _, x) (One (_, _, y)) -> passes (Identity (resolvedSupports, failX : failY : resolvedMoves))
+      where
+        failX :: Resolved Order Typical Move
+        failX = (x, Just (Move2Cycle y))
+        failY :: Resolved Order Typical Move
+        failY = (y, Just (Move2Cycle x))
+    -- Any other cycle (holds included) succeeds.
+    ncycle -> passes (Identity (resolvedSupports, (succeeds . edgeMove <$> manyToList ncycle) ++ resolvedMoves))
 
--- Whenever we pull the tip of a path we give every support which is
--- relevant. Same for each cycle. Then at the end we fail every remaining
--- support, safe in the knowledge that it did not have a corresponding move.
--- YES this is a good idea.
--- BUT note that we DO still need all of the UNRESOLVED orders in context, at
--- least to resolve supports. When we pull the tip of a path and all relevant
--- support, we can SAFELY resolve supports by looking at other offending moves,
--- safe in the knowledge that any of those offending moves is NOT a move which
--- must dislodge the support in order to break it, since if it were, we would
--- have resolved it already (it would have been tip of path)!
+fail2Cycle :: TypicalResolution
+fail2Cycle = TypicalResolution $ \(_, resolvedSupports, resolvedMoves) -> do
+    resolvedMoves' <- sequenceA (failIf2Cycle resolvedMoves <$> resolvedMoves)
+    return (resolvedSupports, resolvedMoves')
+  where
+    failIf2Cycle
+      :: [Resolved Order Typical Move]
+      -> Resolved Order Typical Move
+      -> MayFail (ResolutionError Typical) Identity (Resolved Order Typical Move)
+    failIf2Cycle resolvedMoves (order, resolution) = case filter (is2Cycle order . fst) resolvedMoves of
+        [] -> passes (Identity (order, resolution))
+        [(order', _)] -> passes (Identity (order, Just (Move2Cycle order')))
+        -- TODO more specific error.
+        _ -> fails MalformedOrderGraph
+
+is2Cycle :: Order Typical Move -> Order Typical Move -> Bool
+is2Cycle order1 order2 =
+       movingFrom order1 == movingTo order2
+    && movingTo order1 == movingFrom order2
+
+failSelfDislodge :: TypicalResolution
+failSelfDislodge = TypicalResolution $ \(s, resolvedSupports, resolvedMoves) -> 
+    -- A graph of all of the successful moves.
+    let graph = makeMoveOrderGraph (fst <$> filter (isNothing . snd) resolvedMoves)
+    in  case analyzeMoveOrderGraph failSelfDislodge' (const mempty) graph of
+            Left () -> fails MalformedOrderGraph
+            Right resolution -> runTypicalResolution resolution (s, resolvedSupports, resolvedMoves)
+
+failSelfDislodge'
+  :: (LNode Province, Many (LEdge (Order Typical Move)))
+  -> TypicalResolution
+failSelfDislodge' (_, edges) = TypicalResolution $ \(_, resolvedSupports, resolvedMoves) -> 
+    case edgeMove <$> edges of
+        One order -> case mapMaybe (isSelfDislodge order) otherMoves of
+            [] -> passes (Identity (resolvedSupports, resolvedMoves))
+            [(order', resolution')] -> passes (Identity (resolvedSupports, (order, Just (MoveSelfDislodge (order', resolution'))) : otherMoves))
+          where
+            otherMoves = resolvedMoves \\ [(order, Nothing)]
+        moves -> fails (MultipleWinningMoves (manyToList moves))
+  where
+
+isSelfDislodge
+  :: Order Typical Move
+  -> Resolved Order Typical Move
+  -> Maybe (Order Typical Move, FailureReason Typical Move)
+isSelfDislodge order (order', resolution) = case resolution of
+    Just reason ->
+        if    movingTo order == movingFrom order'
+           && orderGreatPower order == orderGreatPower order'
+        then Just (order', reason)
+        else Nothing
+    _ -> Nothing
+
+failRemainingSupports :: TypicalResolution
+failRemainingSupports = TypicalResolution $ \(supports, resolvedSupports, resolvedMoves) -> do
+    let failedSupports = (\x -> (x, Just SupportedOrderNotGiven)) <$> supports
+    return (failedSupports ++ resolvedSupports, resolvedMoves)
+
 newtype TypicalResolution = TypicalResolution {
     runTypicalResolution
-      :: ([Resolved Order Typical Support], [Resolved Order Typical Move])
+      -- Input is 
+      --   yet unresolved supports
+      --   resolved supports so far
+      --   resolved orders so far
+      -- Output (in MayFail) is
+      --   resolved supports at this step plus resolved supports
+      --   resolved moves at this step plus resolved moves
+      -- Yes, it's unfortunate that you must append the resolved moves at
+      -- this step to the input resolved moves.
+      :: ([Order Typical Support], [Resolved Order Typical Support], [Resolved Order Typical Move])
       -> MayFail
            (ResolutionError Typical)
            Identity
            ([Resolved Order Typical Support], [Resolved Order Typical Move])
   }
 
-makeTypicalResolution :: MoveOrderGraphWithSupports -> TypicalResolution
-makeTypicalResolution = analyzeMoveOrderGraph analyzePath analyzeCycle
+instance Monoid TypicalResolution where
+    mempty = TypicalResolution $ \(s, rs, rm) -> passes (Identity (rs, rm))
+    x `mappend` y = TypicalResolution $ \(s, rs, rm) -> do
+        (rs', rm') <- runTypicalResolution x (s, rs, rm)
+        let s' = removeResolvedSupports rs' s
+        (rs'', rm'') <- runTypicalResolution y (s', rs', rm')
+        return $ (rs'', rm'')
+      where
+        removeResolvedSupports
+          :: [Resolved Order Typical Support]
+          -> [Order Typical Support]
+          -> [Order Typical Support]
+        removeResolvedSupports resolved remaining = remaining \\ (fst <$> resolved)
+
+-- | Resolution of the typical phase orders proceeds in 4 stages:
+--
+--   - First phase: take tip of path, calculate dominator, set him to
+--     successful and others to bounced; if no dominator, set any hold to
+--     successful and others to failed. Continue with cycles in the usual way,
+--     passing n-cycles and failing 2-cycles.
+--   - Second phase: revise all successful moves. If they are actually part
+--     of 2-cycles, set to fail.
+--   - Third phase: revise all successful moves again. If they would dislodge
+--     a friendly own unit, set to fail.
+--     Ah but this third phase is sensitive to order! We could use a graph
+--     analysis again. Yeah, how about that, build a graph of all successful
+--     moves.
+--   - Third phase: resolve all remaining supports (they fail).
+
+makeTypicalResolution :: MoveOrderGraph -> Either () TypicalResolution
+makeTypicalResolution g = do
+    stage1 <- analyzeMoveOrderGraph (analyzeTip (allMoves g)) analyzeCycle g
+    stage2 <- return fail2Cycle
+    stage3 <- return failSelfDislodge
+    stage4 <- return failRemainingSupports
+    return $ stage1 <> stage2 <> stage3 <> stage4
 
 evalTypicalResolution
-  :: TypicalResolution
+  :: [Order Typical Support]
+  -> TypicalResolution
   -> MayFail
        (ResolutionError Typical)
        Identity
        ([Resolved Order Typical Support], [Resolved Order Typical Move])
-evalTypicalResolution = (flip runTypicalResolution) ([], [])
-
--- TODO prove it's a monoid.
-instance Monoid TypicalResolution where
-    mempty = TypicalResolution $ const (passes (Identity ([], [])))
-    x `mappend` y = TypicalResolution $ \r -> do
-        first <- runTypicalResolution x r
-        second <- runTypicalResolution x first
-        return $ up (++) second first
-      where
-        up :: (forall a . f a -> f a -> f a) -> (f a, f b) -> (f a, f b) -> (f a, f b)
-        up f (x, y) (x', y') = (f x x', f y y')
-
--- | You must guarantee that there is at most one move in the list of orders
---   for each province!
-makeMoveOrderGraph
-  :: [Valid (Order Typical Move)]
-  -> MoveOrderGraph
-makeMoveOrderGraph =
-    foldr addMove emptyMoveOrderGraph . fmap outValid
+evalTypicalResolution supports = (flip runTypicalResolution) (supports, [], [])
 
 resolveTypicalOrders
   :: OrderResolution Typical [SomeResolved Order Typical]
 resolveTypicalOrders validOrders =
-    let moves = validMoves validOrders
+    let moves = outValid <$> validMoves validOrders
         supports = outValid <$> validSupports validOrders
-        moveGraphWithSupports = (makeMoveOrderGraph moves, supports)
-        resolved = evalTypicalResolution (makeTypicalResolution (moveGraphWithSupports))
-    in  concatenate <$> resolved
+        moveGraph = makeMoveOrderGraph moves
+        resolution = makeTypicalResolution moveGraph
+    in  case resolution of
+            -- TODO have the graph give a witness to the problem so we
+            -- can pass it through here.
+            Left () -> fails MalformedOrderGraph
+            Right resolution' ->
+                let resolved = evalTypicalResolution supports resolution'
+                in  concatenate <$> resolved
+        
   where
     concatenate (resolvedSupports, resolvedMoves) =
         (SomeResolved <$> resolvedSupports) ++ (SomeResolved <$> resolvedMoves)
