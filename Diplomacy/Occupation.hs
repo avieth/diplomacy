@@ -16,28 +16,36 @@ module Diplomacy.Occupation (
 
   , emptyOccupation
   , occupy
-
+  , occupier
   , occupies
   , unitOccupies
+  , occupied
 
   ) where
 
 import qualified Data.Map as M
+import Data.Maybe (isJust)
 import Diplomacy.Aligned
 import Diplomacy.Unit
 import Diplomacy.Province
-import Diplomacy.EachProvinceTarget
+import Diplomacy.Zone
 
-type Occupation = EachProvinceTarget (Aligned Unit)
+type Occupation = M.Map Zone (Aligned Unit)
 
 emptyOccupation :: Occupation
 emptyOccupation = M.empty
 
-occupy :: ProvinceTarget -> Aligned Unit -> Occupation -> Occupation
-occupy = M.insert
+occupy :: ProvinceTarget -> Maybe (Aligned Unit) -> Occupation -> Occupation
+occupy pt maunit = M.alter (const maunit) (Zone pt)
 
-occupies :: ProvinceTarget -> Aligned Unit -> Occupation -> Bool
-occupies pt aunit occupation = maybe False (== aunit) (M.lookup pt occupation)
+occupier :: ProvinceTarget -> Occupation -> Maybe (Aligned Unit)
+occupier pt = M.lookup (Zone pt)
 
-unitOccupies :: ProvinceTarget -> Unit -> Occupation -> Bool
-unitOccupies pt unit occupation = maybe False ((==) unit . alignedThing) (M.lookup pt occupation)
+occupies :: Aligned Unit -> ProvinceTarget -> Occupation -> Bool
+occupies aunit pt = (==) (Just aunit) . M.lookup (Zone pt)
+
+unitOccupies :: Unit -> ProvinceTarget -> Occupation -> Bool
+unitOccupies unit pt = (==) (Just unit) . fmap alignedThing . M.lookup (Zone pt)
+
+occupied :: ProvinceTarget -> Occupation -> Bool
+occupied pt = isJust . M.lookup (Zone pt)

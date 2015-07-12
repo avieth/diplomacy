@@ -7,6 +7,7 @@ module Diplomacy.Province (
 
   , adjacency
   , adjacent
+  , isSameOrAdjacent
 
   , neighbours
   , isSameOrNeighbour
@@ -300,6 +301,9 @@ adjacency WesternMediterranean = [NorthAfrica, MidAtlanticOcean, GulfOfLyon, Spa
 adjacent :: Province -> Province -> Bool
 adjacent prv0 prv1 = prv0 `elem` (adjacency prv1)
 
+isSameOrAdjacent :: Province -> Province -> Bool
+isSameOrAdjacent prv0 prv1 = prv0 == prv1 || adjacent prv0 prv1
+
 allProvinces :: [Province]
 allProvinces = [minBound .. maxBound]
 
@@ -453,6 +457,7 @@ isHome c p = maybe False ((==) c) (country p)
 --   of StPetersburg.
 data ProvinceTarget
   = Normal Province
+  -- TBD rename Special to MultiCoast or something else more descriptive?
   | Special ProvinceCoast
     deriving (Eq, Ord)
 
@@ -538,6 +543,8 @@ blacklist p (Special c) = coastBlacklist p c
     coastBlacklist :: Province -> ProvinceCoast -> Bool
     coastBlacklist WesternMediterranean SpainNorth = True
     coastBlacklist GulfOfLyon SpainNorth = True
+    coastBlacklist Gascony SpainSouth = True
+    coastBlacklist Marseilles SpainNorth = True
     -- NB MidAtlanticOcean to SpainSouth is fine!
     coastBlacklist GulfOfBothnia StPetersburgNorth = True
     coastBlacklist BarentsSea StPetersburgWest = True

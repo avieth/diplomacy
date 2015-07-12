@@ -24,7 +24,8 @@ would pass and lead one sane game state to another sane game state.
 
 module Diplomacy.OrderValidation (
 
-    SomeValidOrder
+    validate
+
   , OrderValidation
   , InvalidReason(..)
 
@@ -43,19 +44,24 @@ import Diplomacy.GreatPower
 import Diplomacy.Aligned
 import Diplomacy.Unit
 import Diplomacy.Phase
-import Diplomacy.OrderSubject
+import Diplomacy.Subject
 import Diplomacy.OrderType
 import Diplomacy.OrderObject
 import Diplomacy.Order
 import Diplomacy.Province
+import Diplomacy.Zone
 import Diplomacy.Occupation
 import Diplomacy.SupplyCentreDefecit
 import Diplomacy.Valid
 import Diplomacy.OrderResolution
-import Diplomacy.ResolvedOrders
 
-data SomeValidOrder phase where
-    SomeValidOrder :: Valid (Order phase order) -> SomeValidOrder phase
+validate
+  :: OrderValidation phase order
+  -> Order phase order
+  -> Either (InvalidReason phase order) (Valid (Order phase order))
+validate orderValidation order = case orderValidation order of
+    Nothing -> Right (Valid order)
+    Just reason -> Left reason
 
 type OrderValidation phase order =
     Order phase order -> Maybe (InvalidReason phase order)
@@ -171,13 +177,13 @@ validateAs forder invalid validation1 order = case validation1 (forder order) of
 -- | Validation for the subject of an order.
 validateSubject :: Occupation -> OrderValidation phase order
 validateSubject occupation order =
-    case occupies provinceTarget alignedUnit occupation of
+    case occupies alignedUnit provinceTarget occupation of
         True -> Nothing
         False -> Just InvalidSubject
   where
     subject = orderSubject order
-    alignedUnit = align (orderSubjectUnit subject) (orderGreatPower order)
-    provinceTarget = orderSubjectProvinceTarget subject
+    alignedUnit = align (subjectUnit subject) (orderGreatPower order)
+    provinceTarget = subjectProvinceTarget subject
 
 -- * Principal validations
 
@@ -201,7 +207,7 @@ validateSurrender :: Occupation -> OrderValidation Retreat Surrender
 validateSurrender = validateSubject
 
 -- | Validation for a withdraw order.
-validateWithdraw :: (Occupation, ResolvedOrders Typical) -> OrderValidation Retreat Withdraw
+validateWithdraw :: (Occupation, TypicalResolution) -> OrderValidation Retreat Withdraw
 validateWithdraw (occupation, resolved) =
            validateSubject occupation
     `also` validateWithdrawIntoAttackingProvince resolved
@@ -228,9 +234,9 @@ validateSupportSelf =
     SupportSelf
   where
     supportSelf order =
-        let supportAt = orderSubjectProvinceTarget (orderSubject (order))
+        let supportAt = subjectProvinceTarget (orderSubject (order))
         in     supportAt == supportTarget (orderObject order)
-            || supportAt == orderSubjectProvinceTarget (supportedOrderSubject (orderObject order))
+            || supportAt == subjectProvinceTarget (supportedSubject (orderObject order))
 
 validateSupportedCanDoMove :: Occupation -> OrderValidation Typical Support
 validateSupportedCanDoMove occupation =
@@ -257,11 +263,11 @@ validateSupportedUnitPresent occupation =
 
 supportedUnitNotPresent :: Occupation -> Order Typical Support -> Bool
 supportedUnitNotPresent occupation order =
-    not (unitOccupies provinceTarget unit occupation)
+    not (unitOccupies unit provinceTarget occupation)
   where
     SupportObject supportedSubject to = orderObject order
-    unit = orderSubjectUnit supportedSubject
-    provinceTarget = orderSubjectProvinceTarget supportedSubject
+    unit = subjectUnit supportedSubject
+    provinceTarget = subjectProvinceTarget supportedSubject
 
 validateWithdrawIntoOccupiedProvince :: Occupation -> OrderValidation Retreat Withdraw
 validateWithdrawIntoOccupiedProvince occupation =
@@ -270,23 +276,23 @@ validateWithdrawIntoOccupiedProvince occupation =
     WithdrawIntoOccupiedProvince
 
 withdrawIntoOccupiedProvince :: Occupation -> Order Retreat Withdraw -> Bool
-withdrawIntoOccupiedProvince occupation order = case M.lookup target occupation of
-    Nothing -> False
-    Just _ -> True
+withdrawIntoOccupiedProvince occupation order = occupied target occupation
   where
     WithdrawObject target = orderObject order
 
-validateWithdrawIntoAttackingProvince :: ResolvedOrders Typical -> OrderValidation Retreat Withdraw
+validateWithdrawIntoAttackingProvince
+    :: TypicalResolution
+    -> OrderValidation Retreat Withdraw
 validateWithdrawIntoAttackingProvince resolved =
     withdrawIntoAttackingProvince resolved
     `implies`
     WithdrawIntoAttackingProvince
 
 withdrawIntoAttackingProvince
-  :: ResolvedOrders Typical
-  -> Order Retreat Withdraw
-  -> Bool
-withdrawIntoAttackingProvince resolved order = case M.lookup target resolved of
+    :: TypicalResolution
+    -> Order Retreat Withdraw
+    -> Bool
+withdrawIntoAttackingProvince resolved order = case M.lookup (Zone target) resolved of
     Nothing -> False
     Just (_, SomeResolved (someOrderObject, resolution)) ->
         -- Must pattern match on the resolution, to know whether the move
@@ -296,7 +302,7 @@ withdrawIntoAttackingProvince resolved order = case M.lookup target resolved of
             _ -> False
   where
     WithdrawObject target = orderObject order
-    from = orderSubjectProvinceTarget (orderSubject order)
+    from = subjectProvinceTarget (orderSubject order)
 
 validateWithdrawNonAdjacent :: OrderValidation Retreat Withdraw
 validateWithdrawNonAdjacent =
@@ -307,8 +313,8 @@ validateWithdrawNonAdjacent =
 invalidWithdrawNonAdjacent :: Order Retreat Withdraw -> Bool
 invalidWithdrawNonAdjacent order = unitCannotWithdrawFromTo unit from to
   where
-    unit = orderSubjectUnit (orderSubject order)
-    from = orderSubjectProvinceTarget (orderSubject order)
+    unit = subjectUnit (orderSubject order)
+    from = subjectProvinceTarget (orderSubject order)
     WithdrawObject to = orderObject order
 
 validateBuildUnitCannotOccupy :: OrderValidation Adjust Build
@@ -323,13 +329,13 @@ validateBuildRespectsDefecit i = const (i >= 0) `implies` BuildInsufficientSuppl
 buildUnitCannotOccupy :: Order Adjust Build -> Bool
 buildUnitCannotOccupy order = unitCannotOccupy unit target
   where
-    unit = orderSubjectUnit (orderSubject order)
-    target = orderSubjectProvinceTarget (orderSubject order)
+    unit = subjectUnit (orderSubject order)
+    target = subjectProvinceTarget (orderSubject order)
 
 notInHomeSupplyCentre :: Order Adjust Build -> Bool
 notInHomeSupplyCentre order = not (supplyCentre province && isHome power province)
   where
-    province = ptProvince (orderSubjectProvinceTarget (orderSubject order))
+    province = ptProvince (subjectProvinceTarget (orderSubject order))
     power = orderGreatPower order
 
 validateMoveAdjacency :: OrderValidation Typical Move
@@ -341,8 +347,8 @@ invalidMoveAdjacency order =
     -- TODO uncomment this when we introduce convoy orders.
     -- && unitCannotConvoyFromTo unit from to
   where
-    unit = orderSubjectUnit (orderSubject order)
-    from = orderSubjectProvinceTarget (orderSubject order)
+    unit = subjectUnit (orderSubject order)
+    from = subjectProvinceTarget (orderSubject order)
     MoveObject to = orderObject order
 
 validateSupporterCanDoMove :: OrderValidation Typical Support
@@ -354,8 +360,8 @@ validateSupporterCanDoMove =
 invalidSupporterCanDoMove :: Order Typical Support -> Bool
 invalidSupporterCanDoMove order = unitCannotSupportFromTo unit from to
   where
-    unit = orderSubjectUnit (orderSubject order)
-    from = orderSubjectProvinceTarget (orderSubject order)
+    unit = subjectUnit (orderSubject order)
+    from = subjectProvinceTarget (orderSubject order)
     SupportObject _ to = orderObject order
 
 -- * Some utility functions.
@@ -384,21 +390,26 @@ unitCannotMoveFromTo unit from to = unitCannotOccupy unit to || case unit of
              then not (isSameOrNeighbour to from) || null (commonCoasts from to)
              else not (isSameOrNeighbour to from)
 
--- | True if and only if the unit cannot legally support a move from the
---   first province target to the second. This helps to recognize violations of
---   the rule which states that a unit can only support if it could legally move
---   into the target of support.
+-- | True if and only if the unit stationed at the first province target
+--   cannot legally support a move to the second province target.
 --   This rules out support-through-convoy, and is careful to permit support
 --   by coastal fleets to either coast of a multi-coast province.
 unitCannotSupportFromTo :: Unit -> ProvinceTarget -> ProvinceTarget -> Bool
-unitCannotSupportFromTo unit from to = unitCannotOccupy unit to || case unit of
-    Army -> not (isSameOrNeighbour to from)
-    Fleet -> if isCoastal (ptProvince from) && isCoastal (ptProvince to)
-             then not (isSameOrNeighbour to from) || null (commonCoasts from to)
-             -- If supporting to a coastal province, any coast will do.
-             else if isCoastal (ptProvince to)
-             then all (not . (flip elem) (neighbours from)) (provinceTargets (ptProvince to))
-             else not (isSameOrNeighbour to from)
+unitCannotSupportFromTo unit from to = case unit of
+    -- We use adjacent of Provinces rather than neighbourhood of ProvinceTargets
+    -- because an army can support into any special coast.
+    Army -> isWater (ptProvince to) || not (isSameOrAdjacent (ptProvince to) (ptProvince from))
+    -- The decision for fleet supports depends upon whether special coastlines
+    -- are involved.
+    Fleet ->
+        if isInland (ptProvince to)
+        then True
+        else if isWater (ptProvince to)
+        then unitCannotMoveFromTo unit from to
+        -- When supporting into a coastal ProvinceTarget,
+        -- unitCannotMoveFromTo is too strict: we must try it for every coast
+        -- of the province.
+        else all (unitCannotMoveFromTo Fleet from) (provinceTargetCluster to)
 
 -- | True if and only if the unit cannot legally withdraw from the first
 --   province target to the second. This is the same as for unconvoyed

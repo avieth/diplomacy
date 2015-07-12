@@ -21,7 +21,9 @@ module Diplomacy.OrderType (
 data OrderType where
     Move :: OrderType
     Support :: OrderType
+    Convoy :: OrderType
     Withdraw :: OrderType
     Surrender :: OrderType
     Disband :: OrderType
     Build :: OrderType
+    Continue :: OrderType

@@ -128,8 +128,13 @@ getCycles g = case labEdges g of
 -- | Get the cycle beginning at a given edge in a graph which consists only of
 --   simple cycles.
 getCycleAtEdge :: LEdge b -> Gr a b -> Maybe (Many (LEdge b))
-getCycleAtEdge e = getCycleAtEdge' [e] e e
+getCycleAtEdge e g = 
+    if isLoop e
+    then Just (One e)
+    else getCycleAtEdge' [e] e e g
   where
+    isLoop :: LEdge b -> Bool
+    isLoop (initial, terminal, _) = initial == terminal
     getCycleAtEdge'
       :: [LEdge b] -- the edges seen so far
       -> LEdge b -- the initial edge
@@ -173,7 +178,7 @@ removeCycle es g = foldr delLEdge g es
 --   *at most 1*. This ensures that all cycles are simple, and so @getCycles@
 --   makes sense. You get Left () in case the graph is malformed.
 analyzeMoveOrderGraph
-  :: ( Eq b, Monoid t)
+  :: (Eq b, Monoid t)
   => ((LNode a, Many (LEdge b)) -> t)
   -> (Many (LEdge b) -> t)
   -> Gr a b

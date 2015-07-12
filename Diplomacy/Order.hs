@@ -12,6 +12,7 @@ Portability : non-portable (GHC only)
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module Diplomacy.Order (
 
@@ -26,7 +27,7 @@ module Diplomacy.Order (
   , isHold
   , movingFrom
   , movingTo
-  , supportsMove
+  , supportsOrder
 
   ) where
 
@@ -34,22 +35,22 @@ import Data.Coerce (coerce)
 import Diplomacy.GreatPower
 import Diplomacy.Aligned
 import Diplomacy.Phase
-import Diplomacy.OrderSubject
+import Diplomacy.Subject
 import Diplomacy.OrderType
 import Diplomacy.OrderObject
 import Diplomacy.Province
 
 newtype Order (phase :: Phase) (order :: OrderType) = Order {
-    outOrder :: Aligned (OrderSubject, OrderObject phase order)
+    outOrder :: Aligned (Subject, OrderObject phase order)
   } deriving (Eq, Show)
 
-coerce' :: Order phase order -> Aligned (OrderSubject, OrderObject phase order)
+coerce' :: Order phase order -> Aligned (Subject, OrderObject phase order)
 coerce' = coerce
 
 orderGreatPower :: Order phase order -> GreatPower
 orderGreatPower = alignedGreatPower . coerce'
 
-orderSubject :: Order phase order -> OrderSubject
+orderSubject :: Order phase order -> Subject
 orderSubject = fst . alignedThing . coerce'
 
 orderObject :: Order phase order -> OrderObject phase order
@@ -58,22 +59,32 @@ orderObject = snd . alignedThing . coerce'
 data SomeOrder phase where
     SomeOrder :: Order phase order -> SomeOrder phase
 
+instance Eq (SomeOrder phase) where
+    SomeOrder o1 == SomeOrder o2 = case (orderObject o1, orderObject o2) of
+        (MoveObject _, MoveObject _) -> o1 == o2
+        (SupportObject _ _, SupportObject _ _) -> o1 == o2
+        _ -> False
+
+deriving instance Show (SomeOrder phase)
+
 isHold :: Order Typical Move -> Bool
 isHold order = from == to
   where
     to = moveTarget . orderObject $ order
-    from = orderSubjectProvinceTarget . orderSubject $ order
+    from = subjectProvinceTarget . orderSubject $ order
 
 movingFrom :: Order Typical Move -> ProvinceTarget
-movingFrom = orderSubjectProvinceTarget . orderSubject
+movingFrom = subjectProvinceTarget . orderSubject
 
 movingTo :: Order Typical Move -> ProvinceTarget
 movingTo = moveTarget . orderObject
 
-supportsMove :: Order Typical Support -> Order Typical Move -> Bool
-supportsMove supportOrder moveOrder = from == from' && to == to'
+supportsOrder :: OrderObject Typical Support -> SomeOrder Typical -> Bool
+supportsOrder supportOrderObject (SomeOrder order) =
+       supportedSubject supportOrderObject == orderSubject order
+    && supportTarget supportOrderObject == orderDestination order
   where
-    from = orderSubjectProvinceTarget (orderSubject moveOrder)
-    to = moveTarget (orderObject moveOrder)
-    from' = orderSubjectProvinceTarget (supportedOrderSubject (orderObject supportOrder))
-    to' = supportTarget (orderObject supportOrder)
+    orderDestination :: Order Typical order -> ProvinceTarget
+    orderDestination order = case orderObject order of
+        MoveObject pt -> pt
+        SupportObject _ _ -> subjectProvinceTarget (orderSubject order)
