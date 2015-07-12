@@ -1,6 +1,6 @@
 {-|
 Module      : Diplomacy.Occupation
-Description : 
+Description : Definition of Zone/ProvinceTarget occupation.
 Copyright   : (c) Alexander Vieth, 2015
 Licence     : BSD3
 Maintainer  : aovieth@gmail.com
@@ -30,6 +30,10 @@ import Diplomacy.Unit
 import Diplomacy.Province
 import Diplomacy.Zone
 
+-- | Each Zone is occupied by at most one Aligned Unit, but the functions on
+--   Occupation work with ProvinceTarget; the use of Zone as a key here is just
+--   to guarantee that we don't have, for instance, units on both of Spain's
+--   coasts simultaneously.
 type Occupation = M.Map Zone (Aligned Unit)
 
 emptyOccupation :: Occupation
