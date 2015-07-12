@@ -1,6 +1,6 @@
 {-|
 Module      : Diplomacy.Zone
-Description : 
+Description : ProvinceTarget with different Eq, Ord instances.
 Copyright   : (c) Alexander Vieth, 2015
 Licence     : BSD3
 Maintainer  : aovieth@gmail.com
@@ -22,6 +22,9 @@ module Diplomacy.Zone (
 import Diplomacy.Province
 
 -- | A ProvinceTarget in which coasts of the same Province are equal.
+--   This notion is useful because the rules of Diplomacy state that each
+--   Zone is occupied by at most one unit, i.e. there cannot be a unit at
+--   two coasts of the same Province.
 newtype Zone = Zone ProvinceTarget
 
 deriving instance Show Zone
