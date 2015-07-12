@@ -39,6 +39,24 @@ import Data.TypeNat.Nat
 import Data.TypeNat.Vect
 import Data.AtLeast
 
+tests :: Test
+tests = TestList [
+      sixA1
+    , sixA2
+    , sixA3
+    , sixA9
+    , sixA10
+    , sixA11
+    , sixA12
+    , sixB4
+    , sixB5
+    , sixB6
+    , sixC3
+    , sixC4
+    , sixC5
+    , sixE15
+    ]
+
 isValid :: Either (InvalidReason phase order) t -> Bool
 isValid = isRight
 
