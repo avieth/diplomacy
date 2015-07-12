@@ -1,6 +1,4 @@
 # Diplomacy
 
-Haskell implementation of the classic board game.
-
-This is far from ready for action. Currently we have only a couple rules
-implemented.
+These programs aspire to provide everything you need in order to talk about
+the board game Diplomacy in Haskell.
