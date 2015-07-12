@@ -16,7 +16,6 @@ See http://web.inter.nl.net/users/L.B.Kruijswijk/#6
 
 import qualified Data.Map as M
 import Control.Applicative
-import Data.MayFail
 import Data.Functor.Identity
 import Diplomacy.GreatPower
 import Diplomacy.Aligned
