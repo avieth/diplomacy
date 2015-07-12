@@ -55,6 +55,7 @@ tests = TestList [
     , sixC4
     , sixC5
     , sixC6
+    , sixC7
     , sixE15
     ]
 
@@ -500,6 +501,48 @@ sixC6 = (expectedResolution == resolution) ~? "6.C.6"
 
         , (Zone (Normal EnglishChannel), (align Fleet France, SomeResolved (ConvoyObject (Army, Normal Belgium) (Normal London), Nothing)))
         , (Zone (Normal Belgium), (align Army France, SomeResolved (MoveObject (Normal London), Nothing)))
+        ]
+
+-- 6.C.7. TEST CASE, DISRUPTED UNIT SWAP
+--
+-- If in a swap one of the unit bounces, then the swap fails.
+--
+-- England: 
+-- F North Sea Convoys A London - Belgium
+-- A London - Belgium
+--
+-- France: 
+-- F English Channel Convoys A Belgium - London
+-- A Belgium - London
+-- A Burgundy - Belgium
+--
+-- None of the units will succeed to move. 
+sixC7 :: Test
+sixC7 = (expectedResolution == resolution) ~? "6.C.7"
+  where
+
+    resolution = typicalResolution orders
+
+    orders = M.fromList [
+          (Zone (Normal NorthSea), (align Fleet England, SomeOrderObject (ConvoyObject (Army, Normal London) (Normal Belgium))))
+        , (Zone (Normal London), (align Army England, SomeOrderObject (MoveObject (Normal Belgium))))
+
+        , (Zone (Normal EnglishChannel), (align Fleet France, SomeOrderObject (ConvoyObject (Army, Normal Belgium) (Normal London))))
+        , (Zone (Normal Belgium), (align Army France, SomeOrderObject (MoveObject (Normal London))))
+        , (Zone (Normal Burgundy), (align Army France, SomeOrderObject (MoveObject (Normal Belgium))))
+        ]
+
+    expectedResolution = M.fromList [
+        -- Note that a Convoy can succeed even if the move which it would convoy
+        -- does not succeed.
+          (Zone (Normal NorthSea), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal London) (Normal Belgium), Nothing)))
+        , (Zone (Normal London), (align Army England, SomeResolved (MoveObject (Normal Belgium), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Burgundy) France) VNil) [])))))
+
+        , (Zone (Normal EnglishChannel), (align Fleet France, SomeResolved (ConvoyObject (Army, Normal Belgium) (Normal London), Nothing)))
+        -- Warning: potentially confusing failure reason... it means the English
+        -- army which was trying to move to Belgium causes this one to fail.
+        , (Zone (Normal Belgium), (align Army France, SomeResolved (MoveObject (Normal London), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Belgium) England) VNil) [])))))
+        , (Zone (Normal Burgundy), (align Army France, SomeResolved (MoveObject (Normal Belgium), Just (MoveBounced (AtLeast (VCons (align (Army, Normal London) England) VNil) [])))))
         ]
 
 -- The friendly head-to-head battle.
