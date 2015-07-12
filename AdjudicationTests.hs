@@ -51,6 +51,8 @@ tests = TestList [
     , sixB4
     , sixB5
     , sixB6
+    , sixC1
+    , sixC2
     , sixC3
     , sixC4
     , sixC5
@@ -334,6 +336,66 @@ changeCoasts :: Test
 changeCoasts = isMoveImpossible validation ~? "changeCoasts"
   where
     validation = validateMove (occupy (Special SpainNorth) (Just (align Fleet France)) emptyOccupation) (Order (align ((Fleet, Special SpainNorth), MoveObject (Special SpainSouth)) France))
+
+-- 6.C.1. TEST CASE, THREE ARMY CIRCULAR MOVEMENT
+--
+-- Three units can change place, even in spring 1901.
+--
+-- Turkey: 
+-- F Ankara - Constantinople
+-- A Constantinople - Smyrna
+-- A Smyrna - Ankara
+--
+-- All three units will move.
+sixC1 :: Test
+sixC1 = (expectedResolution == resolution) ~? "6.C.1"
+  where
+
+    resolution = typicalResolution orders
+
+    orders = M.fromList [
+          (Zone (Normal Ankara), (align Fleet Turkey, SomeOrderObject (MoveObject (Normal Constantinople))))
+        , (Zone (Normal Constantinople), (align Army Turkey, SomeOrderObject (MoveObject (Normal Smyrna))))
+        , (Zone (Normal Smyrna), (align Army Turkey, SomeOrderObject (MoveObject (Normal Ankara))))
+        ]
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Ankara), (align Fleet Turkey, SomeResolved (MoveObject (Normal Constantinople), Nothing)))
+        , (Zone (Normal Constantinople), (align Army Turkey, SomeResolved (MoveObject (Normal Smyrna), Nothing)))
+        , (Zone (Normal Smyrna), (align Army Turkey, SomeResolved (MoveObject (Normal Ankara), Nothing)))
+        ]
+
+
+-- 6.C.2. TEST CASE, THREE ARMY CIRCULAR MOVEMENT WITH SUPPORT
+--
+-- Three units can change place, even when one gets support.
+--
+-- Turkey: 
+-- F Ankara - Constantinople
+-- A Constantinople - Smyrna
+-- A Smyrna - Ankara
+-- A Bulgaria Supports F Ankara - Constantinople
+--
+-- Of course the three units will move, but knowing how programs are written, this can confuse the adjudicator. 
+sixC2 :: Test
+sixC2 = (expectedResolution == resolution) ~? "6.C.2"
+  where
+
+    resolution = typicalResolution orders
+
+    orders = M.fromList [
+          (Zone (Normal Ankara), (align Fleet Turkey, SomeOrderObject (MoveObject (Normal Constantinople))))
+        , (Zone (Normal Constantinople), (align Army Turkey, SomeOrderObject (MoveObject (Normal Smyrna))))
+        , (Zone (Normal Smyrna), (align Army Turkey, SomeOrderObject (MoveObject (Normal Ankara))))
+        , (Zone (Normal Bulgaria), (align Army Turkey, SomeOrderObject (SupportObject (Fleet, Normal Ankara) (Normal Constantinople))))
+        ]
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Ankara), (align Fleet Turkey, SomeResolved (MoveObject (Normal Constantinople), Nothing)))
+        , (Zone (Normal Constantinople), (align Army Turkey, SomeResolved (MoveObject (Normal Smyrna), Nothing)))
+        , (Zone (Normal Smyrna), (align Army Turkey, SomeResolved (MoveObject (Normal Ankara), Nothing)))
+        , (Zone (Normal Bulgaria), (align Army Turkey, SomeResolved (SupportObject (Fleet, Normal Ankara) (Normal Constantinople), Nothing)))
+        ]
 
 -- 6.C.3. TEST CASE, A DISRUPTED THREE ARMY CIRCULAR MOVEMENT
 --
