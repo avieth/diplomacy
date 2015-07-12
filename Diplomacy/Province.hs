@@ -1,3 +1,14 @@
+{-|
+Module      : Diplomacy.Province
+Description : Definition of Province, ProvinceTarget.
+Copyright   : (c) Alexander Vieth, 2015
+Licence     : BSD3
+Maintainer  : aovieth@gmail.com
+Stability   : experimental
+Portability : non-portable (GHC only)
+-}
+
+{-# LANGUAGE AutoDeriveTypeable #-}
 {-# LANGUAGE DataKinds #-}
 
 module Diplomacy.Province (
