@@ -40,7 +40,6 @@ import Data.Ord
 import Data.List
 import Data.Monoid
 import Data.Maybe
-import Data.Many
 import Data.AtLeast
 import Data.TypeNat.Nat
 import Data.TypeNat.Vect
@@ -61,7 +60,6 @@ import Diplomacy.Order
 import Diplomacy.Province
 import Diplomacy.Zone
 import Diplomacy.Valid
-import Diplomacy.MoveOrderGraph
 import Diplomacy.Subject
 import Diplomacy.ProofSearch
 
