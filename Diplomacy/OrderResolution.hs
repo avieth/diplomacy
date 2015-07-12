@@ -43,7 +43,6 @@ import Data.Maybe
 import Data.AtLeast
 import Data.TypeNat.Nat
 import Data.TypeNat.Vect
-import Data.MayFail
 import Data.Functor.Identity
 import Data.Traversable (sequenceA)
 import qualified Data.Map as M
