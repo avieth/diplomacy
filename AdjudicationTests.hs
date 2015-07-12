@@ -407,3 +407,51 @@ sixC3 = (expectedResolution == resolution) ~? "6.C.3"
         , (Zone (Normal Smyrna), (align Army Turkey, SomeResolved (MoveObject (Normal Ankara), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Constantinople) Turkey) VNil) [])))))
         , (Zone (Normal Bulgaria), (align Army Turkey, SomeResolved (MoveObject (Normal Constantinople), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Ankara) Turkey) VNil) [])))))
         ]
+
+-- 6.C.4. TEST CASE, A CIRCULAR MOVEMENT WITH ATTACKED CONVOY
+--
+-- When the circular movement contains an attacked convoy, the circular movement succeeds.
+--
+-- Austria: 
+-- A Trieste - Serbia
+-- A Serbia - Bulgaria
+--
+-- Turkey: 
+-- A Bulgaria - Trieste
+-- F Aegean Sea Convoys A Bulgaria - Trieste
+-- F Ionian Sea Convoys A Bulgaria - Trieste
+-- F Adriatic Sea Convoys A Bulgaria - Trieste
+--
+-- Italy: 
+-- F Naples - Ionian Sea
+--
+-- The fleet in the Ionian Sea is attacked but not dislodged. The circular movement succeeds. The Austrian and Turkish armies will advance.
+sixC4 :: Test
+sixC4 = (expectedResolution == resolution) ~? "6.C.4"
+  where
+
+    resolution = typicalResolution orders
+
+    orders = M.fromList [
+          (Zone (Normal Trieste), (align Army Austria, SomeOrderObject (MoveObject (Normal Serbia))))
+        , (Zone (Normal Serbia), (align Army Austria, SomeOrderObject (MoveObject (Normal Bulgaria))))
+
+        , (Zone (Normal Bulgaria), (align Army Turkey, SomeOrderObject (MoveObject (Normal Trieste))))
+        , (Zone (Normal AegeanSea), (align Fleet Turkey, SomeOrderObject (ConvoyObject (Army, Normal Bulgaria) (Normal Trieste))))
+        , (Zone (Normal IonianSea), (align Fleet Turkey, SomeOrderObject (ConvoyObject (Army, Normal Bulgaria) (Normal Trieste))))
+        , (Zone (Normal AdriaticSea), (align Fleet Turkey, SomeOrderObject (ConvoyObject (Army, Normal Bulgaria) (Normal Trieste))))
+
+        , (Zone (Normal Naples), (align Fleet Italy, SomeOrderObject (MoveObject (Normal IonianSea))))
+        ]
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Trieste), (align Army Austria, SomeResolved (MoveObject (Normal Serbia), Nothing)))
+        , (Zone (Normal Serbia), (align Army Austria, SomeResolved (MoveObject (Normal Bulgaria), Nothing)))
+
+        , (Zone (Normal Bulgaria), (align Army Turkey, SomeResolved (MoveObject (Normal Trieste), Nothing)))
+        , (Zone (Normal AegeanSea), (align Fleet Turkey, SomeResolved (ConvoyObject (Army, Normal Bulgaria) (Normal Trieste), Nothing)))
+        , (Zone (Normal IonianSea), (align Fleet Turkey, SomeResolved (ConvoyObject (Army, Normal Bulgaria) (Normal Trieste), Nothing)))
+        , (Zone (Normal AdriaticSea), (align Fleet Turkey, SomeResolved (ConvoyObject (Army, Normal Bulgaria) (Normal Trieste), Nothing)))
+
+        , (Zone (Normal Naples), (align Fleet Italy, SomeResolved (MoveObject (Normal IonianSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal IonianSea) Turkey) VNil) [])))))
+        ]
