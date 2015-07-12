@@ -1,6 +1,6 @@
 {-|
 Module      : Diplomacy.GreatPower
-Description : 
+Description : Definition of the great powers (countries).
 Copyright   : (c) Alexander Vieth, 2015
 Licence     : BSD3
 Maintainer  : aovieth@gmail.com
