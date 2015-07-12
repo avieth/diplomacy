@@ -58,6 +58,10 @@ tests = TestList [
     , sixC5
     , sixC6
     , sixC7
+    , sixD1
+    , sixD2
+    , sixD3
+    , sixD4
     , sixE15
     ]
 
@@ -605,6 +609,146 @@ sixC7 = (expectedResolution == resolution) ~? "6.C.7"
         -- army which was trying to move to Belgium causes this one to fail.
         , (Zone (Normal Belgium), (align Army France, SomeResolved (MoveObject (Normal London), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Belgium) England) VNil) [])))))
         , (Zone (Normal Burgundy), (align Army France, SomeResolved (MoveObject (Normal Belgium), Just (MoveBounced (AtLeast (VCons (align (Army, Normal London) England) VNil) [])))))
+        ]
+
+-- 6.D.1. TEST CASE, SUPPORTED HOLD CAN PREVENT DISLODGEMENT
+--
+-- The most simple support to hold order.
+--
+-- Austria: 
+-- F Adriatic Sea Supports A Trieste - Venice
+-- A Trieste - Venice
+--
+-- Italy: 
+-- A Venice Hold
+-- A Tyrolia Supports A Venice
+--
+-- The support of Tyrolia prevents that the army in Venice is dislodged. The army in Trieste will not move. 
+sixD1 :: Test
+sixD1 = (expectedResolution == resolution) ~? "6.D.1"
+  where
+
+    resolution = typicalResolution orders
+
+    orders = M.fromList [
+          (Zone (Normal AdriaticSea), (align Fleet Austria, SomeOrderObject (SupportObject (Army, Normal Trieste) (Normal Venice))))
+        , (Zone (Normal Trieste), (align Army Austria, SomeOrderObject (MoveObject (Normal Venice))))
+
+        , (Zone (Normal Venice), (align Army Italy, SomeOrderObject (MoveObject (Normal Venice))))
+        , (Zone (Normal Tyrolia), (align Army Italy, SomeOrderObject (SupportObject (Army, Normal Venice) (Normal Venice))))
+        ]
+
+    expectedResolution = M.fromList [
+          (Zone (Normal AdriaticSea), (align Fleet Austria, SomeResolved (SupportObject (Army, Normal Trieste) (Normal Venice), Nothing)))
+        , (Zone (Normal Trieste), (align Army Austria, SomeResolved (MoveObject (Normal Venice), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Venice) Italy) VNil) [])))))
+
+        , (Zone (Normal Venice), (align Army Italy, SomeResolved (MoveObject (Normal Venice), Nothing)))
+        , (Zone (Normal Tyrolia), (align Army Italy, SomeResolved (SupportObject (Army, Normal Venice) (Normal Venice), Nothing)))
+        ]
+
+-- 6.D.2. TEST CASE, A MOVE CUTS SUPPORT ON HOLD
+--
+-- The most simple support on hold cut.
+--
+-- Austria: 
+-- F Adriatic Sea Supports A Trieste - Venice
+-- A Trieste - Venice
+-- A Vienna - Tyrolia
+--
+-- Italy: 
+-- A Venice Hold
+-- A Tyrolia Supports A Venice
+--
+-- The support of Tyrolia is cut by the army in Vienna. That means that the army in Venice is dislodged by the army from Trieste. 
+sixD2 = (expectedResolution == resolution) ~? "6.D.2"
+  where
+
+    resolution = typicalResolution orders
+
+    orders = M.fromList [
+          (Zone (Normal AdriaticSea), (align Fleet Austria, SomeOrderObject (SupportObject (Army, Normal Trieste) (Normal Venice))))
+        , (Zone (Normal Trieste), (align Army Austria, SomeOrderObject (MoveObject (Normal Venice))))
+        , (Zone (Normal Vienna), (align Army Austria, SomeOrderObject (MoveObject (Normal Tyrolia))))
+
+        , (Zone (Normal Venice), (align Army Italy, SomeOrderObject (MoveObject (Normal Venice))))
+        , (Zone (Normal Tyrolia), (align Army Italy, SomeOrderObject (SupportObject (Army, Normal Venice) (Normal Venice))))
+        ]
+
+    expectedResolution = M.fromList [
+          (Zone (Normal AdriaticSea), (align Fleet Austria, SomeResolved (SupportObject (Army, Normal Trieste) (Normal Venice), Nothing)))
+        , (Zone (Normal Trieste), (align Army Austria, SomeResolved (MoveObject (Normal Venice), Nothing)))
+        , (Zone (Normal Vienna), (align Army Austria, SomeResolved (MoveObject (Normal Tyrolia), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Tyrolia) Italy) VNil) [])))))
+
+        , (Zone (Normal Venice), (align Army Italy, SomeResolved (MoveObject (Normal Venice), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Trieste) Austria) VNil) [])))))
+        , (Zone (Normal Tyrolia), (align Army Italy, SomeResolved (SupportObject (Army, Normal Venice) (Normal Venice), Just (SupportCut (AtLeast (VCons (align (Army, Normal Vienna) Austria) VNil) [])))))
+        ]
+
+-- 6.D.3. TEST CASE, A MOVE CUTS SUPPORT ON MOVE
+--
+-- The most simple support on move cut.
+--
+-- Austria: 
+-- F Adriatic Sea Supports A Trieste - Venice
+-- A Trieste - Venice
+--
+-- Italy: 
+-- A Venice Hold
+-- F Ionian Sea - Adriatic Sea
+--
+-- The support of the fleet in the Adriatic Sea is cut. That means that the army in Venice will not be dislodged and the army in Trieste stays in Trieste. 
+sixD3 = (expectedResolution == resolution) ~? "6.D.3"
+  where
+
+    resolution = typicalResolution orders
+
+    orders = M.fromList [
+          (Zone (Normal AdriaticSea), (align Fleet Austria, SomeOrderObject (SupportObject (Army, Normal Trieste) (Normal Venice))))
+        , (Zone (Normal Trieste), (align Army Austria, SomeOrderObject (MoveObject (Normal Venice))))
+
+        , (Zone (Normal Venice), (align Army Italy, SomeOrderObject (MoveObject (Normal Venice))))
+        , (Zone (Normal IonianSea), (align Fleet Italy, SomeOrderObject (MoveObject (Normal AdriaticSea))))
+        ]
+
+    expectedResolution = M.fromList [
+          (Zone (Normal AdriaticSea), (align Fleet Austria, SomeResolved (SupportObject (Army, Normal Trieste) (Normal Venice), Just (SupportCut (AtLeast (VCons (align (Fleet, Normal IonianSea) Italy) VNil) [])))))
+        , (Zone (Normal Trieste), (align Army Austria, SomeResolved (MoveObject (Normal Venice), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Venice) Italy) VNil) [])))))
+
+        , (Zone (Normal Venice), (align Army Italy, SomeResolved (MoveObject (Normal Venice), Nothing)))
+        , (Zone (Normal IonianSea), (align Fleet Italy, SomeResolved (MoveObject (Normal AdriaticSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal AdriaticSea) Austria) VNil) [])))))
+        ]
+
+-- 6.D.4. TEST CASE, SUPPORT TO HOLD ON UNIT SUPPORTING A HOLD ALLOWED
+--
+-- A unit that is supporting a hold, can receive a hold support.
+--
+-- Germany: 
+-- A Berlin Supports F Kiel
+-- F Kiel Supports A Berlin
+--
+-- Russia: 
+-- F Baltic Sea Supports A Prussia - Berlin
+-- A Prussia - Berlin
+--
+-- The Russian move from Prussia to Berlin fails. 
+sixD4 = (expectedResolution == resolution) ~? "6.D.4"
+  where
+
+    resolution = typicalResolution orders
+
+    orders = M.fromList [
+          (Zone (Normal Berlin), (align Army Germany, SomeOrderObject (SupportObject (Fleet, Normal Kiel) (Normal Kiel))))
+        , (Zone (Normal Kiel), (align Fleet Germany, SomeOrderObject (SupportObject (Army, Normal Berlin) (Normal Berlin))))
+
+        , (Zone (Normal BalticSea), (align Fleet Russia, SomeOrderObject (SupportObject (Army, Normal Prussia) (Normal Berlin))))
+        , (Zone (Normal Prussia), (align Army Russia, SomeOrderObject (MoveObject (Normal Berlin))))
+        ]
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Berlin), (align Army Germany, SomeResolved (SupportObject (Fleet, Normal Kiel) (Normal Kiel), Just (SupportCut (AtLeast (VCons (align (Army, Normal Prussia) Russia) VNil) [])))))
+        , (Zone (Normal Kiel), (align Fleet Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Berlin), Nothing)))
+
+        , (Zone (Normal BalticSea), (align Fleet Russia, SomeResolved (SupportObject (Army, Normal Prussia) (Normal Berlin), Nothing)))
+        , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
         ]
 
 -- The friendly head-to-head battle.
