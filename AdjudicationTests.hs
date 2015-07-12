@@ -54,6 +54,7 @@ tests = TestList [
     , sixC3
     , sixC4
     , sixC5
+    , sixC6
     , sixE15
     ]
 
@@ -333,64 +334,6 @@ changeCoasts = isMoveImpossible validation ~? "changeCoasts"
   where
     validation = validateMove (occupy (Special SpainNorth) (Just (align Fleet France)) emptyOccupation) (Order (align ((Fleet, Special SpainNorth), MoveObject (Special SpainSouth)) France))
 
--- The friendly head-to-head battle.
---
--- England:
---   F Holland Supports A Ruhr - Kiel
---   A Ruhr - Kiel
---
--- France:
---   A Kiel - Berlin
---   A Munich Supports A Kiel - Berlin
---   A Silesia Supports A Kiel - Berlin
---
--- Germany:
---   A Berlin - Kiel
---   F Denmark Supports A Berlin - Kiel
---   F Helgoland Bight Supports A Berlin - Kiel
---
--- Russia:
---   F Baltic Sea Supports A Prussia - Berlin
---   A Prussia - Berlin
---
--- No moves succeed.
-sixE15 = (expectedResolution == resolution) ~? "6.E.15"
-  where
-
-    resolution = typicalResolution orders
-
-    orders = M.fromList [
-          (Zone (Normal Holland), (align Fleet England, SomeOrderObject (SupportObject (Army, Normal Ruhr) (Normal Kiel))))
-        , (Zone (Normal Ruhr), (align Army England, SomeOrderObject (MoveObject (Normal Kiel))))
-
-        , (Zone (Normal Kiel), (align Army France, SomeOrderObject (MoveObject (Normal Berlin))))
-        , (Zone (Normal Munich), (align Army France, SomeOrderObject (SupportObject (Army, Normal Kiel) (Normal Berlin))))
-        , (Zone (Normal Silesia), (align Army France, SomeOrderObject (SupportObject (Army, Normal Kiel) (Normal Berlin))))
-
-        , (Zone (Normal Berlin), (align Army Germany, SomeOrderObject (MoveObject (Normal Kiel))))
-        , (Zone (Normal Denmark), (align Fleet Germany, SomeOrderObject (SupportObject (Army, Normal Berlin) (Normal Kiel))))
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeOrderObject (SupportObject (Army, Normal Berlin) (Normal Kiel))))
-
-        , (Zone (Normal BalticSea), (align Fleet Russia, SomeOrderObject (SupportObject (Army, Normal Prussia) (Normal Berlin))))
-        , (Zone (Normal Prussia), (align Army Russia, SomeOrderObject (MoveObject (Normal Berlin))))
-        ]
-
-    expectedResolution = M.fromList [
-          (Zone (Normal Holland), (align Fleet England, SomeResolved (SupportObject (Army, Normal Ruhr) (Normal Kiel), Nothing)))
-        , (Zone (Normal Ruhr), (align Army England, SomeResolved (MoveObject (Normal Kiel), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
-
-        , (Zone (Normal Kiel), (align Army France, SomeResolved (MoveObject (Normal Berlin), Just (Move2Cycle (align Army Germany)))))
-        , (Zone (Normal Munich), (align Army France, SomeResolved (SupportObject (Army, Normal Kiel) (Normal Berlin), Nothing)))
-        , (Zone (Normal Silesia), (align Army France, SomeResolved (SupportObject (Army, Normal Kiel) (Normal Berlin), Nothing)))
-
-        , (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Kiel), Just (Move2Cycle (align Army France)))))
-        , (Zone (Normal Denmark), (align Fleet Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Kiel), Nothing)))
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Kiel), Nothing)))
-
-        , (Zone (Normal BalticSea), (align Fleet Russia, SomeResolved (SupportObject (Army, Normal Prussia) (Normal Berlin), Nothing)))
-        , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Kiel) France) VNil) [])))))
-        ]
-
 -- 6.C.3. TEST CASE, A DISRUPTED THREE ARMY CIRCULAR MOVEMENT
 --
 -- When one of the units bounces, the whole circular movement will hold.
@@ -524,3 +467,97 @@ sixC5 = (expectedResolution == resolution) ~? "6.C.5"
         , (Zone (Normal Naples), (align Fleet Italy, SomeResolved (MoveObject (Normal IonianSea), Nothing)))
         , (Zone (Normal Tunis), (align Fleet Italy, SomeResolved (SupportObject (Fleet, Normal Naples) (Normal IonianSea), Nothing)))
         ]
+
+-- 6.C.6. TEST CASE, TWO ARMIES WITH TWO CONVOYS
+--
+-- Two armies can swap places even when they are not adjacent.
+--
+-- England: 
+-- F North Sea Convoys A London - Belgium
+-- A London - Belgium
+--
+-- France: 
+-- F English Channel Convoys A Belgium - London
+-- A Belgium - London
+--
+-- Both convoys should succeed. 
+sixC6 = (expectedResolution == resolution) ~? "6.C.6"
+  where
+
+    resolution = typicalResolution orders
+
+    orders = M.fromList [
+          (Zone (Normal NorthSea), (align Fleet England, SomeOrderObject (ConvoyObject (Army, Normal London) (Normal Belgium))))
+        , (Zone (Normal London), (align Army England, SomeOrderObject (MoveObject (Normal Belgium))))
+
+        , (Zone (Normal EnglishChannel), (align Fleet France, SomeOrderObject (ConvoyObject (Army, Normal Belgium) (Normal London))))
+        , (Zone (Normal Belgium), (align Army France, SomeOrderObject (MoveObject (Normal London))))
+        ]
+
+    expectedResolution = M.fromList [
+          (Zone (Normal NorthSea), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal London) (Normal Belgium), Nothing)))
+        , (Zone (Normal London), (align Army England, SomeResolved (MoveObject (Normal Belgium), Nothing)))
+
+        , (Zone (Normal EnglishChannel), (align Fleet France, SomeResolved (ConvoyObject (Army, Normal Belgium) (Normal London), Nothing)))
+        , (Zone (Normal Belgium), (align Army France, SomeResolved (MoveObject (Normal London), Nothing)))
+        ]
+
+-- The friendly head-to-head battle.
+--
+-- England:
+--   F Holland Supports A Ruhr - Kiel
+--   A Ruhr - Kiel
+--
+-- France:
+--   A Kiel - Berlin
+--   A Munich Supports A Kiel - Berlin
+--   A Silesia Supports A Kiel - Berlin
+--
+-- Germany:
+--   A Berlin - Kiel
+--   F Denmark Supports A Berlin - Kiel
+--   F Helgoland Bight Supports A Berlin - Kiel
+--
+-- Russia:
+--   F Baltic Sea Supports A Prussia - Berlin
+--   A Prussia - Berlin
+--
+-- No moves succeed.
+sixE15 = (expectedResolution == resolution) ~? "6.E.15"
+  where
+
+    resolution = typicalResolution orders
+
+    orders = M.fromList [
+          (Zone (Normal Holland), (align Fleet England, SomeOrderObject (SupportObject (Army, Normal Ruhr) (Normal Kiel))))
+        , (Zone (Normal Ruhr), (align Army England, SomeOrderObject (MoveObject (Normal Kiel))))
+
+        , (Zone (Normal Kiel), (align Army France, SomeOrderObject (MoveObject (Normal Berlin))))
+        , (Zone (Normal Munich), (align Army France, SomeOrderObject (SupportObject (Army, Normal Kiel) (Normal Berlin))))
+        , (Zone (Normal Silesia), (align Army France, SomeOrderObject (SupportObject (Army, Normal Kiel) (Normal Berlin))))
+
+        , (Zone (Normal Berlin), (align Army Germany, SomeOrderObject (MoveObject (Normal Kiel))))
+        , (Zone (Normal Denmark), (align Fleet Germany, SomeOrderObject (SupportObject (Army, Normal Berlin) (Normal Kiel))))
+        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeOrderObject (SupportObject (Army, Normal Berlin) (Normal Kiel))))
+
+        , (Zone (Normal BalticSea), (align Fleet Russia, SomeOrderObject (SupportObject (Army, Normal Prussia) (Normal Berlin))))
+        , (Zone (Normal Prussia), (align Army Russia, SomeOrderObject (MoveObject (Normal Berlin))))
+        ]
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Holland), (align Fleet England, SomeResolved (SupportObject (Army, Normal Ruhr) (Normal Kiel), Nothing)))
+        , (Zone (Normal Ruhr), (align Army England, SomeResolved (MoveObject (Normal Kiel), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
+
+        , (Zone (Normal Kiel), (align Army France, SomeResolved (MoveObject (Normal Berlin), Just (Move2Cycle (align Army Germany)))))
+        , (Zone (Normal Munich), (align Army France, SomeResolved (SupportObject (Army, Normal Kiel) (Normal Berlin), Nothing)))
+        , (Zone (Normal Silesia), (align Army France, SomeResolved (SupportObject (Army, Normal Kiel) (Normal Berlin), Nothing)))
+
+        , (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Kiel), Just (Move2Cycle (align Army France)))))
+        , (Zone (Normal Denmark), (align Fleet Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Kiel), Nothing)))
+        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Kiel), Nothing)))
+
+        , (Zone (Normal BalticSea), (align Fleet Russia, SomeResolved (SupportObject (Army, Normal Prussia) (Normal Berlin), Nothing)))
+        , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Kiel) France) VNil) [])))))
+        ]
+
+
