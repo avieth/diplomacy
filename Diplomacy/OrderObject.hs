@@ -1,6 +1,6 @@
 {-|
 Module      : Diplomacy.OrderObject
-Description : 
+Description : Definition of OrderObject, which describes what a Subject is to do.
 Copyright   : (c) Alexander Vieth, 2015
 Licence     : BSD3
 Maintainer  : aovieth@gmail.com
