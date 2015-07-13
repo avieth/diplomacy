@@ -71,7 +71,7 @@ import Diplomacy.GreatPower
 data Province
   = Bohemia
   | Budapest
-  | Galacia
+  | Galicia
   | Trieste
   | Tyrolia
   | Vienna
@@ -154,7 +154,7 @@ data ProvinceType = Inland | Water | Coastal
 provinceType :: Province -> ProvinceType
 provinceType Bohemia = Inland
 provinceType Budapest = Inland
-provinceType Galacia = Inland
+provinceType Galicia = Inland
 provinceType Trieste = Coastal
 provinceType Tyrolia = Inland
 provinceType Vienna = Inland
@@ -232,12 +232,12 @@ provinceType WesternMediterranean = Water
 --   TODO verify; I'm confused about the adjacency surrounding
 --   Denmark.
 adjacency :: Province -> [Province]
-adjacency Bohemia = [Munich, Tyrolia, Vienna, Silesia, Galacia]
-adjacency Budapest = [Vienna, Galacia, Rumania, Serbia, Trieste]
-adjacency Galacia = [Warsaw, Silesia, Ukraine, Rumania, Budapest, Vienna, Bohemia]
+adjacency Bohemia = [Munich, Tyrolia, Vienna, Silesia, Galicia]
+adjacency Budapest = [Vienna, Galicia, Rumania, Serbia, Trieste]
+adjacency Galicia = [Warsaw, Silesia, Ukraine, Rumania, Budapest, Vienna, Bohemia]
 adjacency Trieste = [AdriaticSea, Venice, Tyrolia, Vienna, Budapest, Serbia, Albania]
 adjacency Tyrolia = [Piedmont, Munich, Bohemia, Vienna, Trieste, Venice]
-adjacency Vienna = [Trieste, Tyrolia, Bohemia, Galacia, Budapest]
+adjacency Vienna = [Trieste, Tyrolia, Bohemia, Galicia, Budapest]
 adjacency Clyde = [NorthAtlanticOcean, NorwegianSea, Edinburgh, Liverpool]
 adjacency Edinburgh = [Clyde, NorwegianSea, NorthSea, Yorkshire, Liverpool]
 adjacency Liverpool = [NorthAtlanticOcean, IrishSea, Clyde, Edinburgh, Yorkshire, Wales]
@@ -256,7 +256,7 @@ adjacency Kiel = [HelgolandBright, Berlin, Munich, Ruhr, Holland, Denmark, Balti
 adjacency Munich = [Ruhr, Kiel, Berlin, Silesia, Bohemia, Tyrolia, Burgundy]
 adjacency Prussia = [BalticSea, Livonia, Warsaw, Silesia, Berlin]
 adjacency Ruhr = [Belgium, Holland, Kiel, Munich, Burgundy]
-adjacency Silesia = [Munich, Berlin, Prussia, Warsaw, Galacia, Bohemia]
+adjacency Silesia = [Munich, Berlin, Prussia, Warsaw, Galicia, Bohemia]
 adjacency Apulia = [AdriaticSea, IonianSea, Naples, Rome, Venice]
 adjacency Naples = [IonianSea, TyrrhenianSea, Apulia, Rome]
 adjacency Piedmont = [Marseilles, Tyrolia, GulfOfLyon, Venice, Tuscany]
@@ -267,8 +267,8 @@ adjacency Livonia = [BalticSea, GulfOfBothnia, StPetersburg, Moscow, Warsaw, Pru
 adjacency Moscow = [StPetersburg, Sevastopol, Ukraine, Warsaw, Livonia]
 adjacency Sevastopol = [Armenia, BlackSea, Rumania, Ukraine, Moscow]
 adjacency StPetersburg = [BarentsSea, Moscow, Livonia, GulfOfBothnia, Finland]
-adjacency Ukraine = [Moscow, Sevastopol, Rumania, Galacia, Warsaw]
-adjacency Warsaw = [Prussia, Livonia, Moscow, Ukraine, Galacia, Silesia]
+adjacency Ukraine = [Moscow, Sevastopol, Rumania, Galicia, Warsaw]
+adjacency Warsaw = [Prussia, Livonia, Moscow, Ukraine, Galicia, Silesia]
 adjacency Ankara = [BlackSea, Armenia, Smyrna, Constantinople]
 adjacency Armenia = [BlackSea, Sevastopol, Syria, Ankara, Smyrna]
 adjacency Constantinople = [BlackSea, Ankara, Smyrna, Bulgaria, AegeanSea]
@@ -283,7 +283,7 @@ adjacency Holland = [Belgium, NorthSea, Kiel, Ruhr, HelgolandBright]
 adjacency Norway = [NorwegianSea, NorthSea, Sweden, Finland, Skagerrak, BarentsSea]
 adjacency NorthAfrica = [MidAtlanticOcean, WesternMediterranean, Tunis]
 adjacency Portugal = [MidAtlanticOcean, Spain]
-adjacency Rumania = [BlackSea, Bulgaria, Serbia, Budapest, Galacia, Ukraine, Sevastopol]
+adjacency Rumania = [BlackSea, Bulgaria, Serbia, Budapest, Galicia, Ukraine, Sevastopol]
 adjacency Serbia = [Trieste, Budapest, Rumania, Bulgaria, Greece, Albania]
 adjacency Spain = [Portugal, MidAtlanticOcean, Gascony, GulfOfLyon, WesternMediterranean, Marseilles]
 adjacency Sweden = [GulfOfBothnia, Finland, Norway, BalticSea, Skagerrak, Denmark]
@@ -387,7 +387,7 @@ supplyCentres = filter supplyCentre [minBound..maxBound]
 country :: Province -> Maybe GreatPower
 country Bohemia = Just Austria
 country Budapest = Just Austria
-country Galacia = Just Austria
+country Galicia = Just Austria
 country Trieste = Just Austria
 country Tyrolia = Just Austria
 country Vienna = Just Austria
