@@ -263,7 +263,7 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
             folder zone' (aunit, SomeResolved (object, _)) b =
                 if    zone' == zone  -- Must rule out including this move.
                    || destination /= Zone (movingTo)
-                   || isUnconvoyedMove zone' object
+                   || isConvoyMoveWithNoConvoyRoute zone' object
                 then b
                 else (align (alignedThing aunit, zoneProvinceTarget zone') (alignedGreatPower aunit)) : b
               where
@@ -271,8 +271,8 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                     MoveObject pt -> Zone pt
                     _ -> zone'
 
-        isUnconvoyedMove :: Zone -> OrderObject Typical order -> Bool
-        isUnconvoyedMove zone object = case object of
+        isConvoyMoveWithNoConvoyRoute :: Zone -> OrderObject Typical order -> Bool
+        isConvoyMoveWithNoConvoyRoute zone object = case object of
             -- No good; these functions are local and thus not quite
             -- so reusable (zone is captured).
             -- Could free it up... or maybe put it into the resolution
@@ -515,11 +515,14 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
             :: OrderObject Typical Support
             -> Maybe (FailureReason Typical Support)
         supportCut (SupportObject supportingSubject supportingTo) =
-            case offendingMoves of
+            case filter issuedByOtherGreatPower offendingMoves of
                 [] -> Nothing
                 x : xs -> Just (SupportCut (AtLeast (VCons x VNil) xs))
 
           where
+
+            issuedByOtherGreatPower :: Aligned Subject -> Bool
+            issuedByOtherGreatPower x = alignedGreatPower aunit /= alignedGreatPower x
 
             supportingFrom :: Zone
             supportingFrom = zone
@@ -531,13 +534,13 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                 :: Zone
                 -> (Aligned Unit, SomeResolved OrderObject Typical)
                 -> Maybe (Aligned Subject)
-            pickOffendingMove zone (aunit, SomeResolved (object, _)) =
+            pickOffendingMove zone (aunit', SomeResolved (object, _)) =
                 case object of
                     MoveObject movingTo ->
                         if    Zone movingTo == supportingFrom
                            && Zone supportingTo /= zone
-                           && not (isUnconvoyedMove zone object)
-                        then Just $ align (alignedThing aunit, zoneProvinceTarget zone) (alignedGreatPower aunit)
+                           && not (isConvoyMoveWithNoConvoyRoute zone object)
+                        then Just $ align (alignedThing aunit', zoneProvinceTarget zone) (alignedGreatPower aunit')
                         else Nothing
                     _ -> Nothing
 
