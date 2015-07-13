@@ -231,6 +231,8 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
         -- If Just asubj then there was either
         --   1. a failed move from the target of the input move
         --   2. a support or convoy at the target of the input move
+        --   3. a hold (whether successful or unsucessful) at the target of the
+        --      input move
         -- where the aligned subject determines the issuing power,
         -- the unit which would have moved, and the place to which it would have
         -- moved.
@@ -244,6 +246,10 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                 movingTo' = case object of
                     MoveObject pt -> pt
                     _ -> movingTo
+            Just (aunit, SomeResolved (MoveObject movingTo', Nothing)) ->
+                if Zone movingTo == Zone movingTo'
+                then Just $ align (alignedThing aunit, movingTo') (alignedGreatPower aunit)
+                else Nothing
             _ -> Nothing
 
         competingOrders :: OrderObject Typical Move -> [Aligned Subject]
@@ -299,7 +305,8 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
         moveOverpowered moveObject = case sortedSupportedCompetingOrders moveObject of
             [] -> Nothing
             (x : xs) ->
-                if snd x > localSupport moveObject
+                if    snd x > localSupport moveObject
+                   && alignedGreatPower (fst x) /= alignedGreatPower aunit
                 then Just (MoveOverpowered (AtLeast (VCons (fst x) VNil) (fmap fst xs)))
                 else Nothing
 
@@ -328,7 +335,7 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
         moveSelfDislodge moveObject = case failedExodus moveObject of
             Just alignedSubj ->
                 if   alignedGreatPower alignedSubj == alignedGreatPower aunit
-                then Just (MoveSelfDislodge (alignedThing alignedSubj))
+                then Just (MoveSelfDislodge (subjectUnit (alignedThing alignedSubj)))
                 else Nothing
             _ -> Nothing
 
@@ -907,7 +914,7 @@ data FailureReason (phase :: Phase) (order :: OrderType) where
     Move2Cycle :: Aligned Unit -> FailureReason Typical Move
 
     -- | The move would dislodge the player's own unit.
-    MoveSelfDislodge :: Subject -> FailureReason Typical Move
+    MoveSelfDislodge :: Unit -> FailureReason Typical Move
 
     MoveNoConvoy :: FailureReason Typical Move
 
