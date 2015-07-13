@@ -62,8 +62,26 @@ tests = TestList [
     , sixD2
     , sixD3
     , sixD4
+    , sixD5
+    , sixD6
+    , sixD7
+    , sixD8
+    , sixD9
+    , sixD10
     , sixE15
     ]
+
+-- | A helper for testing typical phase resolutions. Give the orders and their
+--   expected resolutions once, and get back the actual resolution of those
+--   orders.
+testResolution
+    :: TypicalResolution 
+    -> TypicalResolution
+testResolution expectedRes = actualRes
+  where
+    actualRes = typicalResolution orders
+    orders = M.map mapper expectedRes
+    mapper (aunit, SomeResolved (object, _)) = (aunit, SomeOrderObject object)
 
 isValid :: Either (InvalidReason phase order) t -> Bool
 isValid = isRight
@@ -749,6 +767,165 @@ sixD4 = (expectedResolution == resolution) ~? "6.D.4"
 
         , (Zone (Normal BalticSea), (align Fleet Russia, SomeResolved (SupportObject (Army, Normal Prussia) (Normal Berlin), Nothing)))
         , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
+        ]
+
+-- 6.D.5. TEST CASE, SUPPORT TO HOLD ON UNIT SUPPORTING A MOVE ALLOWED
+--
+-- A unit that is supporting a move, can receive a hold support.
+--
+-- Germany: 
+-- A Berlin Supports A Munich - Silesia
+-- F Kiel Supports A Berlin
+-- A Munich - Silesia
+--
+-- Russia: 
+-- F Baltic Sea Supports A Prussia - Berlin
+-- A Prussia - Berlin
+--
+-- The Russian move from Prussia to Berlin fails. (German move to Silesia
+-- succeeds).
+sixD5 = (expectedResolution == resolution) ~? "6.D.5"
+  where
+
+    resolution = typicalResolution orders
+
+    orders = M.fromList [
+          (Zone (Normal Berlin), (align Army Germany, SomeOrderObject (SupportObject (Army, Normal Munich) (Normal Silesia))))
+        , (Zone (Normal Kiel), (align Fleet Germany, SomeOrderObject (SupportObject (Army, Normal Berlin) (Normal Berlin))))
+        , (Zone (Normal Munich), (align Army Germany, SomeOrderObject (MoveObject (Normal Silesia))))
+
+        , (Zone (Normal BalticSea), (align Fleet Russia, SomeOrderObject (SupportObject (Army, Normal Prussia) (Normal Berlin))))
+        , (Zone (Normal Prussia), (align Army Russia, SomeOrderObject (MoveObject (Normal Berlin))))
+        ]
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Berlin), (align Army Germany, SomeResolved (SupportObject (Army, Normal Munich) (Normal Silesia), Just (SupportCut (AtLeast (VCons (align (Army, Normal Prussia) Russia) VNil) [])))))
+        , (Zone (Normal Kiel), (align Fleet Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Berlin), Nothing)))
+        , (Zone (Normal Munich), (align Army Germany, SomeResolved (MoveObject (Normal Silesia), Nothing)))
+
+        , (Zone (Normal BalticSea), (align Fleet Russia, SomeResolved (SupportObject (Army, Normal Prussia) (Normal Berlin), Nothing)))
+        , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
+        ]
+
+-- 6.D.6. TEST CASE, SUPPORT TO HOLD ON CONVOYING UNIT ALLOWED
+--
+-- A unit that is convoying, can receive a hold support.
+--
+-- Germany: 
+-- A Berlin - Sweden
+-- F Baltic Sea Convoys A Berlin - Sweden
+-- F Prussia Supports F Baltic Sea
+--
+-- Russia: 
+-- F Livonia - Baltic Sea
+-- F Gulf of Bothnia Supports F Livonia - Baltic Sea
+--
+-- The Russian move from Livonia to the Baltic Sea fails. The convoy from Berlin to Sweden succeeds. 
+sixD6 = (expectedResolution == testResolution expectedResolution) ~? "6.D.6"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Sweden), Nothing)))
+        , (Zone (Normal BalticSea), (align Fleet Germany, SomeResolved (ConvoyObject (Army, Normal Berlin) (Normal Sweden), Nothing)))
+        , (Zone (Normal Prussia), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal BalticSea) (Normal BalticSea), Nothing)))
+
+        , (Zone (Normal Livonia), (align Fleet Russia, SomeResolved (MoveObject (Normal BalticSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal BalticSea) Germany) VNil) [])))))
+        , (Zone (Normal GulfOfBothnia), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal Livonia) (Normal BalticSea), Nothing)))
+        ]
+
+-- 6.D.7. TEST CASE, SUPPORT TO HOLD ON MOVING UNIT NOT ALLOWED
+--
+-- A unit that is moving, can not receive a hold support for the situation that the move fails.
+--
+-- Germany: 
+-- F Baltic Sea - Sweden
+-- F Prussia Supports F Baltic Sea
+--
+-- Russia: 
+-- F Livonia - Baltic Sea
+-- F Gulf of Bothnia Supports F Livonia - Baltic Sea
+-- A Finland - Sweden
+--
+-- The support of the fleet in Prussia fails. The fleet in Baltic Sea will bounce on the Russian army in Finland and will be dislodged by the Russian fleet from Livonia when it returns to the Baltic Sea. 
+sixD7 = (expectedResolution == testResolution expectedResolution) ~? "6.D.7"
+  where
+    
+    expectedResolution = M.fromList [
+          (Zone (Normal BalticSea), (align Fleet Germany, SomeResolved (MoveObject (Normal Sweden), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Finland) Russia) VNil) [])))))
+        , (Zone (Normal Prussia), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal BalticSea) (Normal BalticSea), Just SupportVoid)))
+
+        , (Zone (Normal Livonia), (align Fleet Russia, SomeResolved (MoveObject (Normal BalticSea), Nothing)))
+        , (Zone (Normal GulfOfBothnia), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal Livonia) (Normal BalticSea), Nothing)))
+        , (Zone (Normal Finland), (align Army Russia, SomeResolved (MoveObject (Normal Sweden), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal BalticSea) Germany) VNil) [])))))
+        ]
+
+-- 6.D.8. TEST CASE, FAILED CONVOY CAN NOT RECEIVE HOLD SUPPORT
+--
+-- If a convoy fails because of disruption of the convoy or when the right convoy orders are not given, then the army to be convoyed can not receive support in hold, since it still tried to move.
+--
+-- Austria: 
+-- F Ionian Sea Hold
+-- A Serbia Supports A Albania - Greece
+-- A Albania - Greece
+--
+-- Turkey: 
+-- A Greece - Naples
+-- A Bulgaria Supports A Greece
+--
+-- There was a possible convoy from Greece to Naples, before the orders were made public (via the Ionian Sea). This means that the order of Greece to Naples should never be treated as illegal order and be changed in a hold order able to receive hold support (see also issue VI.A). Therefore, the support in Bulgaria fails and the army in Greece is dislodged by the army in Albania. 
+sixD8 = (expectedResolution == testResolution expectedResolution) ~? "6.D.8"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal IonianSea), (align Fleet Austria, SomeResolved (MoveObject (Normal IonianSea), Nothing)))
+        , (Zone (Normal Serbia), (align Army Austria, SomeResolved (SupportObject (Army, Normal Albania) (Normal Greece), Nothing)))
+        , (Zone (Normal Albania), (align Army Austria, SomeResolved (MoveObject (Normal Greece), Nothing)))
+
+        , (Zone (Normal Greece), (align Army Turkey, SomeResolved (MoveObject (Normal Naples), Just MoveNoConvoy)))
+        , (Zone (Normal Bulgaria), (align Army Turkey, SomeResolved (SupportObject (Army, Normal Greece) (Normal Greece), Just SupportVoid)))
+        ]
+
+-- 6.D.9. TEST CASE, SUPPORT TO MOVE ON HOLDING UNIT NOT ALLOWED
+--
+-- A unit that is holding can not receive a support in moving.
+--
+-- Italy: 
+-- A Venice - Trieste
+-- A Tyrolia Supports A Venice - Trieste
+--
+-- Austria: 
+-- A Albania Supports A Trieste - Serbia
+-- A Trieste Hold
+--
+-- The support of the army in Albania fails and the army in Trieste is dislodged by the army from Venice. 
+sixD9 = (expectedResolution == testResolution expectedResolution) ~? "6.D.9"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Venice), (align Army Italy, SomeResolved (MoveObject (Normal Trieste), Nothing)))
+        , (Zone (Normal Tyrolia), (align Army Italy, SomeResolved (SupportObject (Army, Normal Venice) (Normal Trieste), Nothing)))
+
+        , (Zone (Normal Albania), (align Army Austria, SomeResolved (SupportObject (Army, Normal Trieste) (Normal Serbia), Just SupportVoid)))
+        , (Zone (Normal Trieste), (align Army Austria, SomeResolved (MoveObject (Normal Trieste), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Venice) Italy) VNil) [])))))
+        ]
+
+-- 6.D.10. TEST CASE, SELF DISLODGMENT PROHIBITED
+--
+-- A unit may not dislodge a unit of the same great power.
+--
+-- Germany: 
+-- A Berlin Hold
+-- F Kiel - Berlin
+-- A Munich Supports F Kiel - Berlin
+--
+-- Move to Berlin fails. 
+sixD10 = (expectedResolution == testResolution expectedResolution) ~? "6.D.10"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Berlin), Nothing)))
+        , (Zone (Normal Kiel), (align Fleet Germany, SomeResolved (MoveObject (Normal Berlin), Just (MoveSelfDislodge Army))))
+        , (Zone (Normal Munich), (align Army Germany, SomeResolved (SupportObject (Fleet, Normal Kiel) (Normal Berlin), Nothing)))
         ]
 
 -- The friendly head-to-head battle.
