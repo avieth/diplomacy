@@ -69,6 +69,20 @@ tests = TestList [
     , sixD9
     , sixD10
     , sixD11
+    , sixD12
+    , sixD13
+    , sixD14
+    , sixD15
+    , sixD16
+    , sixD17
+    , sixD18
+    , sixD19
+    , sixD20
+    , sixD21
+    , sixD22
+    , sixD23
+    , sixD24
+    , sixD25
     , sixE15
     ]
 
@@ -964,7 +978,7 @@ sixD11 = (expectedResolution == testResolution expectedResolution) ~? "6.D.11"
 -- A Venice - Trieste
 --
 -- No dislodgment of fleet in Trieste. 
-sixD12 = (expectedResolution, testResolution expectedResolution)
+sixD12 = (expectedResolution == testResolution expectedResolution) ~? "6.D.12"
   where
 
     expectedResolution = M.fromList [
@@ -972,6 +986,351 @@ sixD12 = (expectedResolution, testResolution expectedResolution)
         , (Zone (Normal Vienna), (align Army Austria, SomeResolved (SupportObject (Army, Normal Venice) (Normal Trieste), Nothing)))
 
         , (Zone (Normal Venice), (align Army Italy, SomeResolved (MoveObject (Normal Trieste), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Trieste) Austria) VNil) [])))))
+        ]
+
+-- 6.D.13. TEST CASE, SUPPORTING A FOREIGN UNIT TO DISLODGE A RETURNING OWN UNIT PROHIBITED
+--
+-- Idem.
+--
+-- Austria: 
+-- F Trieste - Adriatic Sea
+-- A Vienna Supports A Venice - Trieste
+--
+-- Italy: 
+-- A Venice - Trieste
+-- F Apulia - Adriatic Sea
+--
+-- No dislodgment of fleet in Trieste. 
+sixD13 = (expectedResolution == testResolution expectedResolution) ~? "6.D.13"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Trieste), (align Fleet Austria, SomeResolved (MoveObject (Normal AdriaticSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Apulia) Italy) VNil) [])))))
+        , (Zone (Normal Vienna), (align Army Austria, SomeResolved (SupportObject (Army, Normal Venice) (Normal Trieste), Nothing)))
+
+        , (Zone (Normal Venice), (align Army Italy, SomeResolved (MoveObject (Normal Trieste), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Trieste) Austria) VNil) [])))))
+        , (Zone (Normal Apulia), (align Fleet Italy, SomeResolved (MoveObject (Normal AdriaticSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Trieste) Austria) VNil) [])))))
+        ]
+
+-- 6.D.14. TEST CASE, SUPPORTING A FOREIGN UNIT IS NOT ENOUGH TO PREVENT DISLODGEMENT
+--
+-- If a foreign unit has enough support to dislodge your unit, you may not prevent that dislodgement by supporting the attack.
+--
+-- Austria:
+-- F Trieste Hold
+-- A Vienna Supports A Venice - Trieste
+--
+-- Italy:
+-- A Venice - Trieste
+-- A Tyrolia Supports A Venice - Trieste
+-- F Adriatic Sea Supports A Venice - Trieste
+--
+-- The fleet in Trieste is dislodged. 
+sixD14 = (expectedResolution == testResolution expectedResolution) ~? "6.D.14"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Trieste), (align Fleet Austria, SomeResolved (MoveObject (Normal Trieste), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Venice) Italy) VNil) [])))))
+        , (Zone (Normal Vienna), (align Army Austria, SomeResolved (SupportObject (Army, Normal Venice) (Normal Trieste), Nothing)))
+
+        , (Zone (Normal Venice), (align Army Italy, SomeResolved (MoveObject (Normal Trieste), Nothing)))
+        , (Zone (Normal Tyrolia), (align Army Italy, SomeResolved (SupportObject (Army, Normal Venice) (Normal Trieste), Nothing)))
+        -- NB this final order really is superfluous, but nevertheless I follow
+        -- the test cases as they're given.
+        , (Zone (Normal AdriaticSea), (align Fleet Italy, SomeResolved (SupportObject (Army, Normal Venice) (Normal Trieste), Nothing)))
+        ]
+
+-- 6.D.15. TEST CASE, DEFENDER CAN NOT CUT SUPPORT FOR ATTACK ON ITSELF
+--
+-- A unit that is attacked by a supported unit can not prevent dislodgement by guessing which of the units will do the support.
+--
+-- Russia: 
+-- F Constantinople Supports F Black Sea - Ankara
+-- F Black Sea - Ankara
+--
+-- Turkey: 
+-- F Ankara - Constantinople
+--
+-- The support of Constantinople is not cut and the fleet in Ankara is dislodged by the fleet in the Black Sea.
+sixD15 = (expectedResolution == testResolution expectedResolution) ~? "6.D.15"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Constantinople), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal BlackSea) (Normal Ankara), Nothing)))
+        , (Zone (Normal BlackSea), (align Fleet Russia, SomeResolved (MoveObject (Normal Ankara), Nothing)))
+
+        , (Zone (Normal Ankara), (align Fleet Turkey, SomeResolved (MoveObject (Normal Constantinople), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Constantinople) Russia) VNil) [])))))
+        ]
+
+-- 6.D.16. TEST CASE, CONVOYING A UNIT DISLODGING A UNIT OF SAME POWER IS ALLOWED
+--
+-- It is allowed to convoy a foreign unit that dislodges your own unit is allowed.
+--
+-- England: 
+-- A London Hold
+-- F North Sea Convoys A Belgium - London
+--
+-- France: 
+-- F English Channel Supports A Belgium - London
+-- A Belgium - London
+--
+-- The English army in London is dislodged by the French army coming from Belgium. 
+sixD16 = (expectedResolution == testResolution expectedResolution) ~? "6.D.16"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal London), (align Army England, SomeResolved (MoveObject (Normal London), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Belgium) France) VNil) [])))))
+        , (Zone (Normal NorthSea), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal Belgium) (Normal London), Nothing)))
+
+        , (Zone (Normal EnglishChannel), (align Fleet France, SomeResolved (SupportObject (Army, Normal Belgium) (Normal London), Nothing)))
+        , (Zone (Normal Belgium), (align Army France, SomeResolved (MoveObject (Normal London), Nothing)))
+        ]
+
+-- 6.D.17. TEST CASE, DISLODGEMENT CUTS SUPPORTS
+--
+-- The famous dislodge rule.
+--
+-- Russia: 
+-- F Constantinople Supports F Black Sea - Ankara
+-- F Black Sea - Ankara
+--
+-- Turkey: 
+-- F Ankara - Constantinople
+-- A Smyrna Supports F Ankara - Constantinople
+-- A Armenia - Ankara
+--
+-- The Russian fleet in Constantinople is dislodged. This cuts the support to from Black Sea to Ankara. Black Sea will bounce with the army from Armenia. 
+sixD17 = (expectedResolution == testResolution expectedResolution) ~? "6.D.17"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Constantinople), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal BlackSea) (Normal Ankara), Just (SupportDislodged (align (Fleet, Normal Ankara) Turkey)))))
+        , (Zone (Normal BlackSea), (align Fleet Russia, SomeResolved (MoveObject (Normal Ankara), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Armenia) Turkey) VNil) [])))))
+
+        , (Zone (Normal Ankara), (align Fleet Turkey, SomeResolved (MoveObject (Normal Constantinople), Nothing)))
+        , (Zone (Normal Smyrna), (align Army Turkey, SomeResolved (SupportObject (Fleet, Normal Ankara) (Normal Constantinople), Nothing)))
+        , (Zone (Normal Armenia), (align Army Turkey, SomeResolved (MoveObject (Normal Ankara), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal BlackSea) Russia) VNil) [])))))
+        ]
+
+-- 6.D.18. TEST CASE, A SURVIVING UNIT WILL SUSTAIN SUPPORT
+--
+-- Idem. But now with an additional hold that prevents dislodgement.
+--
+-- Russia: 
+-- F Constantinople Supports F Black Sea - Ankara
+-- F Black Sea - Ankara
+-- A Bulgaria Supports F Constantinople
+--
+-- Turkey: 
+-- F Ankara - Constantinople
+-- A Smyrna Supports F Ankara - Constantinople
+-- A Armenia - Ankara
+--
+-- The Russian fleet in the Black Sea will dislodge the Turkish fleet in Ankara. 
+sixD18 = (expectedResolution == testResolution expectedResolution) ~? "6.D.18"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Constantinople), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal BlackSea) (Normal Ankara), Nothing)))
+        , (Zone (Normal BlackSea), (align Fleet Russia, SomeResolved (MoveObject (Normal Ankara), Nothing)))
+        , (Zone (Normal Bulgaria), (align Army Russia, SomeResolved (SupportObject (Fleet, Normal Constantinople) (Normal Constantinople), Nothing)))
+
+        , (Zone (Normal Ankara), (align Fleet Turkey, SomeResolved (MoveObject (Normal Constantinople), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Constantinople) Russia) VNil) [])))))
+        , (Zone (Normal Smyrna), (align Army Turkey, SomeResolved (SupportObject (Fleet, Normal Ankara) (Normal Constantinople), Nothing)))
+        , (Zone (Normal Armenia), (align Army Turkey, SomeResolved (MoveObject (Normal Ankara), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal BlackSea) Russia) VNil) [])))))
+        ]
+
+-- 6.D.19. TEST CASE, EVEN WHEN SURVIVING IS IN ALTERNATIVE WAY
+--
+-- Now, the dislodgement is prevented because the supports comes from a Russian army:
+--
+-- Russia: 
+-- F Constantinople Supports F Black Sea - Ankara
+-- F Black Sea - Ankara
+-- A Smyrna Supports F Ankara - Constantinople
+--
+-- Turkey: 
+-- F Ankara - Constantinople
+--
+-- The Russian fleet in Constantinople is not dislodged, because one of the support is of Russian origin. The support from Black Sea to Ankara will sustain and the fleet in Ankara will be dislodged. 
+sixD19 = (expectedResolution == testResolution expectedResolution) ~? "6.D.19"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Constantinople), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal BlackSea) (Normal Ankara), Nothing)))
+        , (Zone (Normal BlackSea), (align Fleet Russia, SomeResolved (MoveObject (Normal Ankara), Nothing)))
+        , (Zone (Normal Smyrna), (align Army Russia, SomeResolved (SupportObject (Fleet, Normal Ankara) (Normal Constantinople), Nothing)))
+
+        , (Zone (Normal Ankara), (align Fleet Turkey, SomeResolved (MoveObject (Normal Constantinople), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Constantinople) Russia) VNil) [])))))
+        ]
+
+-- 6.D.20. TEST CASE, UNIT CAN NOT CUT SUPPORT OF ITS OWN COUNTRY
+--
+-- Although this is not mentioned in all rulebooks, it is generally accepted that when a unit attacks another unit of the same Great Power, it will not cut support.
+--
+-- England: 
+-- F London Supports F North Sea - English Channel
+-- F North Sea - English Channel
+-- A Yorkshire - London
+--
+-- France: 
+-- F English Channel Hold
+--
+-- The army in York does not cut support. This means that the fleet in the English Channel is dislodged by the fleet in the North Sea. 
+sixD20 = (expectedResolution == testResolution expectedResolution) ~? "6.D.20"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal London), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal NorthSea) (Normal EnglishChannel), Nothing)))
+        , (Zone (Normal NorthSea), (align Fleet England, SomeResolved (MoveObject (Normal EnglishChannel), Nothing)))
+        , (Zone (Normal Yorkshire), (align Army England, SomeResolved (MoveObject (Normal London), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal London) England) VNil) [])))))
+
+        , (Zone (Normal EnglishChannel), (align Fleet France, SomeResolved (MoveObject (Normal EnglishChannel), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal NorthSea) England) VNil) [])))))
+        ]
+
+-- 6.D.21. TEST CASE, DISLODGING DOES NOT CANCEL A SUPPORT CUT
+--
+-- Sometimes there is the question whether a dislodged moving unit does not cut support (similar to the dislodge rule). This is not the case.
+--
+-- Austria: 
+-- F Trieste Hold
+--  
+-- Italy: 
+-- A Venice - Trieste
+-- A Tyrolia Supports A Venice - Trieste
+--         
+-- Germany: 
+-- A Munich - Tyrolia
+--
+-- Russia: 
+-- A Silesia - Munich
+-- A Berlin Supports A Silesia - Munich
+--
+-- Although the German army is dislodged, it still cuts the Italian support. That means that the Austrian Fleet is not dislodged. 
+sixD21 = (expectedResolution == testResolution expectedResolution) ~? "6.D.21"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Trieste), (align Fleet Austria, SomeResolved (MoveObject (Normal Trieste), Nothing)))
+
+        , (Zone (Normal Venice), (align Army Italy, SomeResolved (MoveObject (Normal Trieste), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Trieste) Austria) VNil) [])))))
+        , (Zone (Normal Tyrolia), (align Army Italy, SomeResolved (SupportObject (Army, Normal Venice) (Normal Trieste), Just (SupportCut (AtLeast (VCons (align (Army, Normal Munich) Germany) VNil) [])))))
+
+        , (Zone (Normal Munich), (align Army Germany, SomeResolved (MoveObject (Normal Tyrolia), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Tyrolia) Italy) VNil) [])))))
+
+        , (Zone (Normal Silesia), (align Army Russia, SomeResolved (MoveObject (Normal Munich), Nothing)))
+        , (Zone (Normal Berlin), (align Army Russia, SomeResolved (SupportObject (Army, Normal Silesia) (Normal Munich), Nothing)))
+        ]
+
+-- 6.D.22. TEST CASE, IMPOSSIBLE FLEET MOVE CAN NOT BE SUPPORTED
+--
+-- If a fleet tries moves to a land area it seems pointless to support the fleet, since the move will fail anyway. However, in such case, the support is also invalid for defense purposes.
+--
+-- Germany: 
+-- F Kiel - Munich
+-- A Burgundy Supports F Kiel - Munich
+--
+-- Russia: 
+-- A Munich - Kiel
+-- A Berlin Supports A Munich - Kiel
+--
+-- The German move from Kiel to Munich is illegal (fleets can not go to Munich). Therefore, the support from Burgundy fails and the Russian army in Munich will dislodge the fleet in Kiel. Note that the failing of the support is not explicitly mentioned in the rulebooks (the DPTG is more clear about this point). If you take the rulebooks very literally, you might conclude that the fleet in Munich is not dislodged, but this is an incorrect interpretation.
+--
+-- Note: this case does not test our resolver, but our verifier. It deals
+-- with orders which make no sense even in a vacuum, rather than with valid
+-- orders which may fail depending upon the other orders given.
+-- You can give these orders to the resolver, and there will be a standoff, but
+-- that's not a failure of the resolver.
+sixD22 = (validation == Just (SupportedCouldNotDoMove MoveImpossible)) ~? "6.D.22"
+  where
+
+    validation = validateSupport occupation supportOrder
+    supportOrder = Order (align ((Army, Normal Burgundy), SupportObject (Fleet, Normal Kiel) (Normal Munich)) Germany)
+    occupation =
+          occupy (Normal Burgundy) (Just (align Army Germany))
+        . occupy (Normal Kiel) (Just (align Fleet Germany))
+        $ emptyOccupation
+
+-- 6.D.23. TEST CASE, IMPOSSIBLE COAST MOVE CAN NOT BE SUPPORTED
+--
+-- Comparable with the previous test case, but now the fleet move is impossible for coastal reasons.
+--
+-- Italy: 
+-- F Gulf of Lyon - Spain(sc)
+-- F Western Mediterranean Supports F Gulf of Lyon - Spain(sc)
+--
+-- France: 
+-- F Spain(nc) - Gulf of Lyon
+-- F Marseilles Supports F Spain(nc) - Gulf of Lyon
+--
+-- The French move from Spain North Coast to Gulf of Lyon is illegal (wrong coast). Therefore, the support from Marseilles fails and the fleet in Spain is dislodged. 
+--
+-- Note: see 6.D.22; this one is also a test of the verifier, not resolver.
+sixD23 = (validation == Just (SupportedCouldNotDoMove MoveImpossible)) ~? "6.D.23"
+  where
+
+    validation = validateSupport occupation supportOrder
+    supportOrder = Order (align ((Fleet, Normal Marseilles), SupportObject (Fleet, Special SpainNorth) (Normal GulfOfLyon)) France)
+    occupation =
+          occupy (Normal Marseilles) (Just (align Fleet France))
+        . occupy (Special SpainNorth) (Just (align Fleet France))
+        $ emptyOccupation
+
+-- 6.D.24. TEST CASE, IMPOSSIBLE ARMY MOVE CAN NOT BE SUPPORTED
+--
+-- Comparable with the previous test case, but now an army tries to move into sea and the support is used in a beleaguered garrison.
+--
+-- France: 
+-- A Marseilles - Gulf of Lyon
+-- F Spain(sc) Supports A Marseilles - Gulf of Lyon
+--
+-- Italy: 
+-- F Gulf of Lyon Hold
+--
+-- Turkey: 
+-- F Tyrrhenian Sea Supports F Western Mediterranean - Gulf of Lyon
+-- F Western Mediterranean - Gulf of Lyon
+--
+-- The French move from Marseilles to Gulf of Lyon is illegal (an army can not go to sea). Therefore, the support from Spain fails and there is no beleaguered garrison. The fleet in the Gulf of Lyon is dislodged by the Turkish fleet in the Western Mediterranean. 
+--
+-- Note: see 6.D.23, 6.D.22; this is also a test of the verifier, not the
+-- resolver.
+sixD24 = (validation == Just (SupportedCouldNotDoMove MoveImpossible)) ~? "6.D.24"
+  where
+
+    validation = validateSupport occupation supportOrder
+    supportOrder = Order (align ((Fleet, Special SpainSouth), SupportObject (Army, Normal Marseilles) (Normal GulfOfLyon)) France)
+    occupation =
+          occupy (Normal Marseilles) (Just (align Army France))
+        . occupy (Special SpainSouth) (Just (align Fleet France))
+        $ emptyOccupation
+
+-- 6.D.25. TEST CASE, FAILING HOLD SUPPORT CAN BE SUPPORTED
+--
+-- If an adjudicator fails on one of the previous three test cases, then the bug should be removed with care. A failing move can not be supported, but a failing hold support, because of some preconditions (unmatching order) can still be supported.
+--
+-- Germany: 
+-- A Berlin Supports A Prussia
+-- F Kiel Supports A Berlin
+--
+-- Russia: 
+-- F Baltic Sea Supports A Prussia - Berlin
+-- A Prussia - Berlin
+--
+-- Although the support of Berlin on Prussia fails (because of unmatching orders), the support of Kiel on Berlin is still valid. So, Berlin will not be dislodged. 
+--
+-- Note: this one mentions the previous three cases, which test the verifier;
+-- yet, this one tests the resolver! All orders in this case are indeed
+-- valid.
+sixD25 = (expectedResolution == testResolution expectedResolution) ~? "6.D.25"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Berlin), (align Army Germany, SomeResolved (SupportObject (Army, Normal Prussia) (Normal Prussia), Just SupportVoid)))
+        , (Zone (Normal Kiel), (align Fleet Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Berlin), Nothing)))
+
+        , (Zone (Normal BalticSea), (align Fleet Russia, SomeResolved (SupportObject (Army, Normal Prussia) (Normal Berlin), Nothing)))
+        , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
         ]
 
 -- The friendly head-to-head battle.
