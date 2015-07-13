@@ -83,6 +83,13 @@ tests = TestList [
     , sixD23
     , sixD24
     , sixD25
+    , sixD26
+    , sixD27
+    , sixD28
+    , sixD29
+    , sixD30
+    , sixD33
+    , sixD34
     , sixE15
     ]
 
@@ -1332,6 +1339,238 @@ sixD25 = (expectedResolution == testResolution expectedResolution) ~? "6.D.25"
         , (Zone (Normal BalticSea), (align Fleet Russia, SomeResolved (SupportObject (Army, Normal Prussia) (Normal Berlin), Nothing)))
         , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
         ]
+
+-- 6.D.26. TEST CASE, FAILING MOVE SUPPORT CAN BE SUPPORTED
+--
+-- Similar as the previous test case, but now with an unmatched support to move.
+--
+-- Germany: 
+-- A Berlin Supports A Prussia - Silesia
+-- F Kiel Supports A Berlin
+--
+-- Russia: 
+-- F Baltic Sea Supports A Prussia - Berlin
+-- A Prussia - Berlin
+--
+-- Again, Berlin will not be dislodged. 
+sixD26 = (expectedResolution == testResolution expectedResolution) ~? "6.D.26"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Berlin), (align Army Germany, SomeResolved (SupportObject (Army, Normal Prussia) (Normal Silesia), Just SupportVoid)))
+        , (Zone (Normal Kiel), (align Fleet Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Berlin), Nothing)))
+
+        , (Zone (Normal BalticSea), (align Fleet Russia, SomeResolved (SupportObject (Army, Normal Prussia) (Normal Berlin), Nothing)))
+        , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
+        ]
+
+-- 6.D.27. TEST CASE, FAILING CONVOY CAN BE SUPPORTED
+--
+-- Similar as the previous test case, but now with an unmatched convoy.
+--
+-- England: 
+-- F Sweden - Baltic Sea
+-- F Denmark Supports F Sweden - Baltic Sea
+--
+-- Germany: 
+-- A Berlin Hold
+--
+-- Russia: 
+-- F Baltic Sea Convoys A Berlin - Livonia
+-- F Prussia Supports F Baltic Sea
+--
+-- The convoy order in the Baltic Sea is unmatched and fails. However, the support of Prussia on the Baltic Sea is still valid and the fleet in the Baltic Sea is not dislodged. 
+sixD27 = (expectedResolution == testResolution expectedResolution) ~? "6.D.27"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Sweden), (align Fleet England, SomeResolved (MoveObject (Normal BalticSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal BalticSea) Russia) VNil) [])))))
+        , (Zone (Normal Denmark), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal Sweden) (Normal BalticSea), Nothing)))
+
+        , (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Berlin), Nothing)))
+
+        , (Zone (Normal BalticSea), (align Fleet Russia, SomeResolved (ConvoyObject (Army, Normal Berlin) (Normal Livonia), Just ConvoyVoid)))
+        , (Zone (Normal Prussia), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal BalticSea) (Normal BalticSea), Nothing)))
+        ]
+
+-- 6.D.28. TEST CASE, IMPOSSIBLE MOVE AND SUPPORT
+--
+-- If a move is impossible then it can be treated as "illegal", which makes a hold support possible.
+--
+-- Austria: 
+-- A Budapest Supports F Rumania
+--
+-- Russia: 
+-- F Rumania - Holland
+--
+-- Turkey: 
+-- F Black Sea - Rumania
+-- A Bulgaria Supports F Black Sea - Rumania
+--
+-- The move of the Russian fleet is impossible. But the question is, whether it is "illegal" (see issue 4.E.1). If the move is "illegal" it must be ignored and that makes the hold support of the army in Budapest valid and the fleet in Rumania will not be dislodged. 
+--
+-- Note: here we go way off track and just guarantee that the invalid move
+-- is indeed recognized as invalid, without doing any resolution. The resolver,
+-- in this case (with the invalid move order) would recognize the Austrian
+-- support as void and the Russian fleet would successfully move from Rumania
+-- to Holland. That's not a bug, though; the resolver does not demand valid
+-- orders.
+sixD28 = (validation == Just MoveImpossible) ~? "6.D.28"
+  where
+
+    validation = validateMove occupation moveOrder
+    moveOrder = Order (align ((Fleet, Normal Rumania), MoveObject (Normal Holland)) Russia)
+    occupation =
+          occupy (Normal Rumania) (Just (align Fleet Russia))
+        $ emptyOccupation
+
+-- 6.D.29. TEST CASE, MOVE TO IMPOSSIBLE COAST AND SUPPORT
+--
+-- Similar to the previous test case, but now the move can be "illegal" because of the wrong coast.
+--
+-- Austria: 
+-- A Budapest Supports F Rumania
+--
+-- Russia: 
+-- F Rumania - Bulgaria(sc)
+--
+-- Turkey: 
+-- F Black Sea - Rumania
+-- A Bulgaria Supports F Black Sea - Rumania
+--
+-- Again the move of the Russian fleet is impossible. However, some people might correct the coast (see issue 4.B.3). If the coast is not corrected, again the question is whether it is "illegal" (see issue 4.E.1). If the move is "illegal" it must be ignored and that makes the hold support of the army in Budapest valid and the fleet in Rumania will not be dislodged. 
+--
+-- Note: again we decimate a test case, ignoring resolutions and testing
+-- validations instead.
+sixD29 = (validation == Just MoveImpossible) ~? "6.D.29"
+  where
+
+    validation = validateMove occupation moveOrder
+    moveOrder = Order (align ((Fleet, Normal Rumania), MoveObject (Special BulgariaSouth)) Russia)
+    occupation =
+          occupy (Normal Rumania) (Just (align Fleet Russia))
+        $ emptyOccupation
+
+-- 6.D.30. TEST CASE, MOVE WITHOUT COAST AND SUPPORT
+--
+-- Similar to the previous test case, but now the move can be "illegal" because of missing coast.
+--
+-- Italy: 
+-- F Aegean Sea Supports F Constantinople
+--
+-- Russia: 
+-- F Constantinople - Bulgaria
+--
+-- Turkey: 
+-- F Black Sea - Constantinople
+-- A Bulgaria Supports F Black Sea - Constantinople
+--
+-- Again the order to the Russian fleet is with problems, because it does not specify the coast, while both coasts of Bulgaria are possible. If no default coast is taken (see issue 4.B.1), then also here it must be decided whether the order is "illegal" (see issue 4.E.1). If the move is "illegal" it must be ignored and that makes the hold support of the fleet in the Aegean Sea valid and the Russian fleet will not be dislodged. 
+sixD30 = (validation == Just MoveImpossible) ~? "6.D.30"
+  where
+
+    validation = validateMove occupation moveOrder
+    moveOrder = Order (align ((Fleet, Normal Rumania), MoveObject (Normal Bulgaria)) Russia)
+    occupation =
+          occupy (Normal Rumania) (Just (align Fleet Russia))
+        $ emptyOccupation
+
+-- 6.D.31. TEST CASE, A TRICKY IMPOSSIBLE SUPPORT
+--
+-- A support order can be impossible for complex reasons.
+--
+-- Austria: 
+-- A Rumania - Armenia
+--
+-- Turkey: 
+-- F Black Sea Supports A Rumania - Armenia
+--
+-- Although the army in Rumania can move to Armenia and the fleet in the Black Sea can also go to Armenia, the support is still not possible. The reason is that the only possible convoy is through the Black Sea and a fleet can not convoy and support at the same time.
+--
+-- This is relevant for computer programs that show only the possible orders. In the list of possible orders, the support as given to the fleet in the Black Sea, should not be listed. Furthermore, if the fleet in the Black Sea gets a second order, then this may fail, because of double orders (although it can also be ruled differently, see issue 4.D.3). However, when the support order is considered "illegal" (see issue 4.E.1), then this impossible support must be ignored and the second order must be carried out. 
+--
+-- Note: I take issue with this one. In my opinion the support is just fine.
+-- Sure, the move it supports will always fail due to lack of a convoy route
+-- (assuming all convoy orders are valid), but so what?
+
+-- 6.D.32. TEST CASE, A MISSING FLEET
+--
+-- The previous test cases contained an order that was impossible even when some other pieces on the board where changed. In this test case, the order is impossible, but only for that situation.
+--
+-- England: 
+-- F Edinburgh Supports A Liverpool - Yorkshire
+-- A Liverpool - Yorkshire
+--
+-- France: 
+-- F London Supports A Yorkshire
+--
+-- Germany: 
+-- A Yorkshire - Holland
+--
+-- The German order to Yorkshire can not be executed, because there is no fleet in the North Sea. In other situations (where there is a fleet in the North Sea), the exact same order would be possible. It should be determined whether this is "illegal" (see issue 4.E.1) or not. If it is illegal, then the order should be ignored and the support of the French fleet in London succeeds. This means that the army in Yorkshire is not dislodged. 
+--
+-- Note: I take issue with this one as well. I believe everything here is
+-- valid. The German move will fail due to lack of a convoy and then the
+-- English move will dislodge the German army which returns to Yorkshire.
+
+-- 6.D.33. TEST CASE, UNWANTED SUPPORT ALLOWED
+--
+-- A self stand-off can be broken by an unwanted support.
+--
+-- Austria: 
+-- A Serbia - Budapest
+-- A Vienna - Budapest
+--
+-- Russia: 
+-- A Galicia Supports A Serbia - Budapest
+--
+-- Turkey: 
+-- A Bulgaria - Serbia
+--
+-- Due to the Russian support, the army in Serbia advances to Budapest. This enables Turkey to capture Serbia with the army in Bulgaria. 
+sixD33 = (expectedResolution == testResolution expectedResolution) ~? "6.D.33"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Serbia), (align Army Austria, SomeResolved (MoveObject (Normal Budapest), Nothing)))
+        , (Zone (Normal Vienna), (align Army Austria, SomeResolved (MoveObject (Normal Budapest), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Serbia) Austria) VNil) [])))))
+
+        , (Zone (Normal Galicia), (align Army Russia, SomeResolved (SupportObject (Army, Normal Serbia) (Normal Budapest), Nothing)))
+
+        , (Zone (Normal Bulgaria), (align Army Turkey, SomeResolved (MoveObject (Normal Serbia), Nothing)))
+        ]
+
+-- 6.D.34. TEST CASE, SUPPORT TARGETING OWN AREA NOT ALLOWED
+-- Support targeting the area where the supporting unit is standing, is illegal.
+--
+-- Germany:
+-- A Berlin - Prussia
+-- A Silesia Supports A Berlin - Prussia
+-- F Baltic Sea Supports A Berlin - Prussia
+--
+-- Italy:
+-- A Prussia Supports Livonia - Prussia
+--
+-- Russia:
+-- A Warsaw Supports A Livonia - Prussia
+-- A Livonia - Prussia
+--
+-- Russia and Italy wanted to get rid of the Italian army in Prussia (to build an Italian fleet somewhere else). However, they didn't want a possible German attack on Prussia to succeed. They invented this odd order of Italy. It was intended that the attack of the army in Livonia would have strength three, so it would be capable to prevent the possible German attack to succeed. However, the order of Italy is illegal, because a unit may only support to an area where the unit can go by itself. A unit can't go to the area it is already standing, so the Italian order is illegal and the German move from Berlin succeeds. Even if it would be legal, the German move from Berlin would still succeed, because the support of Prussia is cut by Livonia and Berlin. 
+--
+-- Note: this is validation, not resolution, since the resolver does not make
+-- an effort to default bogus orders.
+sixD34 = (validation == Just SupportSelf) ~? "6.D.34"
+  where
+
+    validation = validateSupport occupation supportOrder
+    supportOrder = Order (align ((Army, Normal Prussia), SupportObject (Army, Normal Livonia) (Normal Prussia)) Italy)
+    occupation =
+          occupy (Normal Prussia) (Just (align Army Italy))
+        $ emptyOccupation
+
+
+
+
 
 -- The friendly head-to-head battle.
 --
