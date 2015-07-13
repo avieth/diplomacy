@@ -183,28 +183,29 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
             <|> moveConvoyParadox zone moveObject
             <|> move2Cycle zone moveObject
             <|> moveOverpowered moveObject
-            <|> moveBounced moveObject
-            <|> moveSelfDislodge moveObject
+            -- <|> moveBounced moveObject
+            <|> moveFriendlyDislodge moveObject
 
         isHold :: OrderObject Typical Move -> Bool
         isHold (MoveObject movingTo) = Zone movingTo == zone
 
-        -- Number of successful non-void supports of a Subject into a given
-        -- Zone.
-        calculateSupport :: Zone -> Subject -> Int
-        calculateSupport zone subject = M.fold folder 0 res
+        -- Successful non-void supports of a Subject into a given Zone.
+        -- length (calculateSupport zone subject) is the support count.
+        calculateSupport :: Zone -> Subject -> [Aligned Subject]
+        calculateSupport zone subject = M.foldWithKey folder [] res
           where
             folder
-              :: (Aligned Unit, SomeResolved OrderObject Typical)
-              -> Int
-              -> Int
-            folder (_, SomeResolved (object, resolution)) b = case object of
+              :: Zone
+              -> (Aligned Unit, SomeResolved OrderObject Typical)
+              -> [Aligned Subject]
+              -> [Aligned Subject]
+            folder zone' (aunit', SomeResolved (object, resolution)) b = case object of
                 SupportObject supportSubject supportTo ->
                     if    supportSubject /= subject
                        || Zone supportTo /= zone
                     then b
                     else case resolution of
-                             Nothing -> b + 1
+                             Nothing -> align (alignedThing aunit', zoneProvinceTarget zone') (alignedGreatPower aunit') : b
                              _ -> b
                 _ -> b
 
@@ -252,8 +253,26 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                 else Nothing
             _ -> Nothing
 
+        -- A successful move away from the target of this move.
+        successfulExodus
+            :: OrderObject Typical Move
+            -> Maybe (Aligned Subject)
+        successfulExodus (MoveObject movingTo) = case M.lookup (Zone movingTo) resWithoutThis of
+            Just (aunit, SomeResolved (MoveObject movingTo', Nothing)) ->
+                if Zone movingTo == Zone movingTo'
+                then Nothing
+                else Just (align (alignedThing aunit, movingTo') (alignedGreatPower aunit))
+            _ -> Nothing
+
+
+        -- A competing order is one which, if successful, would have its subject
+        -- unit occupy the target of this move, which has a successful convoy
+        -- route if necessary, and which is not dislodged by a move FROM the
+        -- target of this move. That's just to say that it's a move which stands
+        -- a chance against this one; a move which would succeed to occupy the
+        -- target of this move if there were no other moves into that target.
         competingOrders :: OrderObject Typical Move -> [Aligned Subject]
-        competingOrders (MoveObject movingTo) = M.foldWithKey folder [] res
+        competingOrders moveObject@(MoveObject movingTo) = M.foldWithKey folder [] res
           where
             folder
                 :: Zone
@@ -264,12 +283,19 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                 if    zone' == zone  -- Must rule out including this move.
                    || destination /= Zone (movingTo)
                    || isConvoyMoveWithNoConvoyRoute zone' object
+                   || isDislodgedFrom destination
                 then b
                 else (align (alignedThing aunit, zoneProvinceTarget zone') (alignedGreatPower aunit)) : b
               where
                 destination = case object of
                     MoveObject pt -> Zone pt
                     _ -> zone'
+
+                isDislodgedFrom :: Zone -> Bool
+                isDislodgedFrom zone = case successfulExodus moveObject of
+                    Just alignedSubj ->
+                        Zone (subjectProvinceTarget (alignedThing alignedSubj)) == zone
+                    _ -> False
 
         isConvoyMoveWithNoConvoyRoute :: Zone -> OrderObject Typical order -> Bool
         isConvoyMoveWithNoConvoyRoute zone object = case object of
@@ -280,64 +306,165 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
             MoveObject _ -> isJust (moveNoConvoy zone object <|> moveConvoyParadox zone object)
             _ -> False
 
-        supportedCompetingOrders :: OrderObject Typical Move -> [(Aligned Subject, Int)]
+        -- First component is the competing unit, its owner, and its current place.
+        -- Second component is a list of supporters; elements determine the
+        -- support's unit, owner and place.
+        --
+        -- If there is a failed move out of the move object's target, then that
+        -- is included in here, and it looks like a 0-support hold.
+        supportedCompetingOrders
+            :: OrderObject Typical Move
+            -> [(Aligned Subject, [Aligned Subject])]
         supportedCompetingOrders moveObject =
             let zone = Zone (moveTarget moveObject)
                 xs = competingOrders moveObject
                 ys = fmap (calculateSupport zone . alignedThing) xs
-            in xs `zip` ys
+                zs = xs `zip` ys
+                ws = case failedExodus moveObject of
+                    Just alignedSubject -> (alignedSubject', []) : zs
+                      where
+                        -- alignedSubject's ProvinceTarget is the destination
+                        -- of the failed move; we replace it with the origin.
+                        alignedSubject' = fmap (\(u, pt) -> (u, moveTarget moveObject)) alignedSubject
+                    Nothing -> zs
+            in ws
 
-        sortedSupportedCompetingOrders :: OrderObject Typical Move -> [(Aligned Subject, Int)]
+        sortedSupportedCompetingOrders
+            :: OrderObject Typical Move
+            -> [(Aligned Subject, [Aligned Subject])]
         sortedSupportedCompetingOrders =
             sortBy comparator . supportedCompetingOrders
           where
-            comparator x y = compare (Down . snd $ x) (Down . snd $ y)
+            comparator x y = compare (Down . length . snd $ x) (Down . length . snd $ y)
 
-        localSupport :: OrderObject Typical Move -> Int
+        localSupport :: OrderObject Typical Move -> [Aligned Subject]
         localSupport moveObject =
             let zone' = Zone (moveTarget moveObject)
                 subj = (alignedThing aunit, zoneProvinceTarget zone)
             in  calculateSupport zone' subj
 
+        -- A move is overpowered precisely when either
+        --
+        --   1. it's not a hold and there is some other move into its target
+        --      of strictly greater support (if that move is a hold, then we
+        --      are careful to eliminate friendly support).
+        --   2. it's a hold and there is some other move into its territory
+        --      with strictly greater support from other great powers.
+        --
+        -- But is this complete? What about the offending move overpowered by
+        -- a hold because it has only friendly support?
+        -- Ok, that's setteld by filtering the local support appropriately.
+        --
+        -- Now, to unify with MoveBounced?? It's bounced when the incumbant
+        -- (failed exodus or hold) has equal support.
+        -- Would it make sense to place a failed exodus with 0 supports at the
+        -- head of supportedCompetingOrders?!? No, we wouldn't be able to
+        -- distinguish it from an attack. Aha, we could make it look like a
+        -- 0-support hold!
         moveOverpowered
             :: OrderObject Typical Move
             -> Maybe (FailureReason Typical Move)
         moveOverpowered moveObject = case sortedSupportedCompetingOrders moveObject of
             [] -> Nothing
             (x : xs) ->
-                if    snd x > localSupport moveObject
-                   && alignedGreatPower (fst x) /= alignedGreatPower aunit
+                if   length competingSupports > length localSupports
                 then Just (MoveOverpowered (AtLeast (VCons (fst x) VNil) (fmap fst xs)))
+                else if not (isHold moveObject) && length competingSupports == length localSupports
+                then Just (MoveBounced (AtLeast (VCons (fst x) VNil) (fmap fst xs)))
                 else Nothing
+              where
+                competingSupports =
+                    -- If this move is a hold then we eliminate the friendly
+                    -- supports from the top competing attacker (x).
+                    if isHold moveObject
+                    then filter (\y -> alignedGreatPower y /= alignedGreatPower aunit) (snd x)
+                    else snd x
+                localSupports =
+                    -- If the top competing attacker (x) is a hold then we
+                    -- remove the friendly supports from the local supports
+                    if Zone (subjectProvinceTarget (alignedThing (fst x))) == Zone (moveTarget moveObject)
+                    then filter (\y -> alignedGreatPower y /= alignedGreatPower (fst x)) (localSupport moveObject)
+                    else localSupport moveObject
 
-        moveBounced
+        -- This identifies whether a non-bounced, non-overpowered move would
+        -- dislodge a friendly unit. That is, it fires precisely when
+        -- this move is NOT a hold and either
+        --
+        --   1. a MOVE of a friendly unit FROM the target of this move failed.
+        --   2. a HOLD, SUPPORT, OR CONVOY by a friendly unit AT the target of
+        --      this move is present in the order set.
+        moveFriendlyDislodge
             :: OrderObject Typical Move
             -> Maybe (FailureReason Typical Move)
-        moveBounced moveObject = case sortedSupportedCompetingOrders moveObject of
-            [] -> case failedExodus moveObject of
-                      Just alignedSubj ->
-                          if localSupport moveObject == 0
-                          then Just (MoveBounced (AtLeast (VCons alignedSubj VNil) []))
-                          else Nothing
-                      Nothing -> Nothing
-            -- Note in this case, failedExodus doesn't matter, since the local
-            -- support is at least 0. If it doesn't coincide with that of x,
-            -- then it must be 1 at least, meaning it overcomes the incumbant.
-            (x : xs) ->
-                if    snd x == localSupport moveObject
-                   && not (isHold moveObject)
-                then Just (MoveBounced (AtLeast (VCons (fst x) VNil) (fmap fst (filter ((==) (localSupport moveObject) . snd) xs))))
-                else Nothing
+        moveFriendlyDislodge moveObject@(MoveObject movingTo) =
+            if isHold moveObject
+            then Nothing
+            else case failedExodus moveObject of
+                Just alignedSubj ->
+                    if   alignedGreatPower aunit == alignedGreatPower alignedSubj
+                    then Just (MoveFriendlyDislodge (subjectUnit (alignedThing alignedSubj)))
+                    else Nothing
+                _ -> case M.lookup (Zone movingTo) res of
+                    Just (aunit', SomeResolved (object, _)) ->
+                        if    alignedGreatPower aunit == alignedGreatPower aunit'
+                           && Zone movingTo == Zone movingTo'
+                        then Just (MoveFriendlyDislodge (alignedThing aunit'))
+                        else Nothing
+                      where
+                        movingTo' = case object of
+                            MoveObject pt -> pt
+                            _ -> movingTo
+                    _ -> Nothing
 
-        moveSelfDislodge
+        -- Although any great power can support another great power's units,
+        -- even if that support is directed against a friendly order, that
+        -- great power's support cannot be the deciding factor in the
+        -- dislodgement of a friendly unit. That's to say, if a move would not
+        -- dislodge that great power's unit without that great power's
+        -- support(s), then it won't dislodge it even with those supports. The
+        -- supports still succeed and are effective in bouncing other moves.
+        --
+        -- So, in detail, this is relevant to failed exoduses and holds.
+        -- If, at the target, we have a failed exodus or a hold by great power P
+        -- then we must check whether this move has enough support from other
+        -- great powers. If it's a failed exodus, must have at least 1 support
+        -- from others; if it's a hold, must have more support than the hold.
+        -- How to shim this in?
+        --
+        -- This one assumes it's not overpowered or bounced.
+        --
+        -- Note that this allows a case in which a hold is overpowered by a
+        -- move, but that move does not succeed. Do we want this? Shouldn't
+        -- the hold succeed? Yes, we must add that to the overpowered case TODO.
+        --
+        -- Also, do we need a new FailureReason? Should just use MoveOverpowered
+        -- or MoveBounced
+        --
+        {-
+        moveFriendlySupport
             :: OrderObject Typical Move
             -> Maybe (FailureReason Typical Move)
-        moveSelfDislodge moveObject = case failedExodus moveObject of
-            Just alignedSubj ->
-                if   alignedGreatPower alignedSubj == alignedGreatPower aunit
-                then Just (MoveSelfDislodge (subjectUnit (alignedThing alignedSubj)))
-                else Nothing
-            _ -> Nothing
+        moveFriendlySupport moveObject@(MoveObject movingTo) =
+            if isHold moveObject
+            then Nothing
+            else case failedExodus moveObject of
+                Just alignedSubj ->
+                    if   alignedGreatPower aunit /= alignedGreatPower alignedSubj
+                    then Nothing -- Check for at least one suitable support.
+                    else Nothing
+                _ -> case M.lookup (Zone movingTo) res of
+                    Just (aunit', SomeResolved (object, _)) ->
+                        if    alignedGreatPower aunit /= alignedGreatPower aunit'
+                           && Zone movingTo == Zone movingTo'
+                        then Nothing -- Check for more suitable supports than the
+                             -- hold.
+                        else Nothing
+                      where
+                        movingTo' = case object of
+                            MoveObject pt -> pt
+                            _ -> movingTo
+                    _ -> Nothing
+        -}
 
         paradoxInducingSupport
             :: OrderObject Typical Move
@@ -409,6 +536,27 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
             then Just MoveConvoyParadox
             else Nothing
 
+        -- TODO this should only fire in case both units are equally supported,
+        -- i.e. neither dominates the other... Indeed, what we want to say is
+        --   If this move is dislodged BY THE UNIT IN ITS TARGET PROVINCE
+        --   then it fails.
+        --   Must also use this notion when calculating support, since a move
+        --   with this property does not count as an offending move (cannot
+        --   cause a standoff in a province from which it was dislodged!).
+        --   But how to code that up without looping? Check if there's a move
+        --   from the contested zone to the supporting zone and then check its
+        --   resolution? Yeah, successfulExodus!
+        -- Yeah, and then we can leave 2-cycle where it is I think... hm, no
+        -- we still have to check supports. If one has more support, the other
+        -- fails and will be dislodged. Yes, the weaker one fails with 2-cycle,
+        -- but the stronged one succeeds!
+        -- Ok, so the rule is: if this is not a hold and lies in a 2-cycle with
+        -- a move of greater or equal support, then 2Cycle failure.
+        --
+        -- Note, in case one of the moves is bounced, 2-cycle won't fire on it
+        -- or its partner (partner will bounce off of it unless supported).
+        -- Yes, the only conditions under which 2-cycle fires is when each
+        -- move would succeed in absence of the other
         move2Cycle
             :: Zone
             -> OrderObject Typical Move
@@ -917,7 +1065,7 @@ data FailureReason (phase :: Phase) (order :: OrderType) where
     Move2Cycle :: Aligned Unit -> FailureReason Typical Move
 
     -- | The move would dislodge the player's own unit.
-    MoveSelfDislodge :: Unit -> FailureReason Typical Move
+    MoveFriendlyDislodge :: Unit -> FailureReason Typical Move
 
     MoveNoConvoy :: FailureReason Typical Move
 
@@ -958,7 +1106,7 @@ failureReasonEqual r1 r2 = case (r1, r2) of
     (MoveOverpowered x, MoveOverpowered y) -> x == y
     (MoveBounced x, MoveBounced y) -> x == y
     (Move2Cycle x, Move2Cycle y) -> x == y
-    (MoveSelfDislodge x, MoveSelfDislodge y) -> x == y
+    (MoveFriendlyDislodge x, MoveFriendlyDislodge y) -> x == y
     (MoveNoConvoy, MoveNoConvoy) -> True
     (MoveConvoyParadox, MoveConvoyParadox) -> True
     (SupportVoid, SupportVoid) -> True

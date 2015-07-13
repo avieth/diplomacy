@@ -68,6 +68,7 @@ tests = TestList [
     , sixD8
     , sixD9
     , sixD10
+    , sixD11
     , sixE15
     ]
 
@@ -445,12 +446,8 @@ sixC3 = (expectedResolution == resolution) ~? "6.C.3"
 
     expectedResolution = M.fromList [
           (Zone (Normal Ankara), (align Fleet Turkey, SomeResolved (MoveObject (Normal Constantinople), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Bulgaria) Turkey) VNil) [])))))
-        -- Note the potentially confusing failure reason: the subject is
-        -- a Turkish army in Ankara... could mean this was bounced by a move
-        -- from Ankara to Smyrna, but in fact it means bounced by a failed move
-        -- FROM Smyrna to Ankara.
-        , (Zone (Normal Constantinople), (align Army Turkey, SomeResolved (MoveObject (Normal Smyrna), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Ankara) Turkey) VNil) [])))))
-        , (Zone (Normal Smyrna), (align Army Turkey, SomeResolved (MoveObject (Normal Ankara), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Constantinople) Turkey) VNil) [])))))
+        , (Zone (Normal Constantinople), (align Army Turkey, SomeResolved (MoveObject (Normal Smyrna), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Smyrna) Turkey) VNil) [])))))
+        , (Zone (Normal Smyrna), (align Army Turkey, SomeResolved (MoveObject (Normal Ankara), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Ankara) Turkey) VNil) [])))))
         , (Zone (Normal Bulgaria), (align Army Turkey, SomeResolved (MoveObject (Normal Constantinople), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Ankara) Turkey) VNil) [])))))
         ]
 
@@ -541,8 +538,8 @@ sixC5 = (expectedResolution == resolution) ~? "6.C.5"
         ]
 
     expectedResolution = M.fromList [
-          (Zone (Normal Trieste), (align Army Austria, SomeResolved (MoveObject (Normal Serbia), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Bulgaria) Austria) VNil) [])))))
-        , (Zone (Normal Serbia), (align Army Austria, SomeResolved (MoveObject (Normal Bulgaria), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Trieste) Turkey) VNil) [])))))
+          (Zone (Normal Trieste), (align Army Austria, SomeResolved (MoveObject (Normal Serbia), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Serbia) Austria) VNil) [])))))
+        , (Zone (Normal Serbia), (align Army Austria, SomeResolved (MoveObject (Normal Bulgaria), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Bulgaria) Turkey) VNil) [])))))
 
         , (Zone (Normal Bulgaria), (align Army Turkey, SomeResolved (MoveObject (Normal Trieste), Just (MoveNoConvoy))))
         , (Zone (Normal AegeanSea), (align Fleet Turkey, SomeResolved (ConvoyObject (Army, Normal Bulgaria) (Normal Trieste), Just (ConvoyRouteCut [(Zone (Normal IonianSea), align (Fleet, Normal Naples) Italy)]))))
@@ -623,9 +620,7 @@ sixC7 = (expectedResolution == resolution) ~? "6.C.7"
         , (Zone (Normal London), (align Army England, SomeResolved (MoveObject (Normal Belgium), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Burgundy) France) VNil) [])))))
 
         , (Zone (Normal EnglishChannel), (align Fleet France, SomeResolved (ConvoyObject (Army, Normal Belgium) (Normal London), Nothing)))
-        -- Warning: potentially confusing failure reason... it means the English
-        -- army which was trying to move to Belgium causes this one to fail.
-        , (Zone (Normal Belgium), (align Army France, SomeResolved (MoveObject (Normal London), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Belgium) England) VNil) [])))))
+        , (Zone (Normal Belgium), (align Army France, SomeResolved (MoveObject (Normal London), Just (MoveBounced (AtLeast (VCons (align (Army, Normal London) England) VNil) [])))))
         , (Zone (Normal Burgundy), (align Army France, SomeResolved (MoveObject (Normal Belgium), Just (MoveBounced (AtLeast (VCons (align (Army, Normal London) England) VNil) [])))))
         ]
 
@@ -924,8 +919,59 @@ sixD10 = (expectedResolution == testResolution expectedResolution) ~? "6.D.10"
 
     expectedResolution = M.fromList [
           (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Berlin), Nothing)))
-        , (Zone (Normal Kiel), (align Fleet Germany, SomeResolved (MoveObject (Normal Berlin), Just (MoveSelfDislodge Army))))
+        -- NB this is not a friendly dislodge; it's actually bounced, because
+        -- friendly support does not count against a holder.
+        , (Zone (Normal Kiel), (align Fleet Germany, SomeResolved (MoveObject (Normal Berlin), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
         , (Zone (Normal Munich), (align Army Germany, SomeResolved (SupportObject (Fleet, Normal Kiel) (Normal Berlin), Nothing)))
+        ]
+
+-- 6.D.11. TEST CASE, NO SELF DISLODGMENT OF RETURNING UNIT
+--
+-- Idem.
+--
+-- Germany: 
+-- A Berlin - Prussia
+-- F Kiel - Berlin
+-- A Munich Supports F Kiel - Berlin
+--
+-- Russia: 
+-- A Warsaw - Prussia
+--
+-- Army in Berlin bounces, but is not dislodged by own unit. 
+sixD11 = (expectedResolution == testResolution expectedResolution) ~? "6.D.11"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Prussia), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Warsaw) Russia) VNil) [])))))
+        -- NB does not fail due to a friendly dislodge! It's really a bounce,
+        -- since its support from Germany cannot be tallied against the
+        -- returning German unit.
+        , (Zone (Normal Kiel), (align Fleet Germany, SomeResolved (MoveObject (Normal Berlin), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
+        , (Zone (Normal Munich), (align Army Germany, SomeResolved (SupportObject (Fleet, Normal Kiel) (Normal Berlin), Nothing)))
+
+        , (Zone (Normal Warsaw), (align Army Russia, SomeResolved (MoveObject (Normal Prussia), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
+        ]
+
+-- 6.D.12. TEST CASE, SUPPORTING A FOREIGN UNIT TO DISLODGE OWN UNIT PROHIBITED
+--
+-- You may not help another power in dislodging your own unit.
+--
+-- Austria: 
+-- F Trieste Hold
+-- A Vienna Supports A Venice - Trieste
+--
+-- Italy: 
+-- A Venice - Trieste
+--
+-- No dislodgment of fleet in Trieste. 
+sixD12 = (expectedResolution, testResolution expectedResolution)
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Trieste), (align Fleet Austria, SomeResolved (MoveObject (Normal Trieste), Nothing)))
+        , (Zone (Normal Vienna), (align Army Austria, SomeResolved (SupportObject (Army, Normal Venice) (Normal Trieste), Nothing)))
+
+        , (Zone (Normal Venice), (align Army Italy, SomeResolved (MoveObject (Normal Trieste), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Trieste) Austria) VNil) [])))))
         ]
 
 -- The friendly head-to-head battle.

@@ -103,6 +103,7 @@ data InvalidReason (phase :: Phase) (order :: OrderType) where
       -> InvalidReason Typical Support
 
     -- | The supporting unit could not attack the target of support.
+    --   This eliminates support through convoys.
     SupporterCouldNotDoMove
       :: InvalidReason Typical Support
 
