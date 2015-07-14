@@ -224,7 +224,7 @@ isMoveDislodgedFromAttackedZone resolution zoneFrom (aunit, object) = case thisC
         --
         -- Should abstract this later, as I'm sure it will come up
         -- again!
-        ComplementaryMove asubj target ->
+        ComplementaryMove WouldSucceed asubj target ->
             let opposingSupports = foreignSupport resolution (alignedGreatPower aunit) (alignedThing asubj) target
                 thisSupports = support resolution (alignedThing aunit, zoneProvinceTarget zoneFrom) (zoneProvinceTarget zoneTo)
             in     alignedGreatPower aunit /= alignedGreatPower asubj
@@ -285,13 +285,24 @@ assume zone v = typicalResolution . (M.alter (const v) zone) . retract
             (aunit, SomeOrderObject object)
           )
 
+data WouldSucceed
+    = WouldSucceed
+    | WouldNotSucceed
+    deriving (Show)
+
 data Incumbant
-    = ComplementaryMove (Aligned Subject) ProvinceTarget
+    = ComplementaryMove WouldSucceed (Aligned Subject) ProvinceTarget
     -- ^ Only if the move succeeds in the absence of its complement.
     --   The ProvinceTarget in the subject is from where the complement moves,
     --   and the other ProvinceTarget is to where the complementary move
     --   wishes to go. These are necessary due to the coarseness of Zone
     --   Eq.
+    --
+    --   This notion is useful because in the case of complementary moves,
+    --   support of both moves must be compared against each-other, as though
+    --   one unit must advance through the opposite advance of the other.
+    --   Compare at returning moves, in which the returning unit cannot have
+    --   any support for its return.
     | ReturningMove (Aligned Subject)
     -- ^ Only if the move fails (could be complementary).
     | Stationary (Aligned Subject)
@@ -339,8 +350,9 @@ incumbant resolution zoneFrom zoneTo = case lookupWithKey zoneTo (assume zoneFro
             -- actual resolution of the move at zoneFrom may change this
             -- outcome! If it fails, we'll just treat it like a returning move.
             then case resolved of
-                Nothing -> ComplementaryMove (align (alignedThing aunit, zoneProvinceTarget zoneTo') (alignedGreatPower aunit)) pt
-                Just _ -> ReturningMove (align (alignedThing aunit, pt) (alignedGreatPower aunit))
+                Nothing -> ComplementaryMove WouldSucceed (align (alignedThing aunit, zoneProvinceTarget zoneTo') (alignedGreatPower aunit)) pt
+                Just _ -> ComplementaryMove WouldNotSucceed (align (alignedThing aunit, zoneProvinceTarget zoneTo') (alignedGreatPower aunit)) pt
+                --Just _ -> ReturningMove (align (alignedThing aunit, pt) (alignedGreatPower aunit))
             else case resolved of
                 Nothing -> NoIncumbant
                 Just _ -> ReturningMove (align (alignedThing aunit, pt) (alignedGreatPower aunit))
@@ -576,9 +588,11 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
             NotHold requiresConvoy theseConvoyRoutes theseCompetingMoves thisIncumbant ->
                 case (checkConvoy, checkCompeting, checkIncumbant) of
                     -- We play with the order here, so that a move overpowered
-                    -- by a complementary move always shows up regardless of
-                    -- the competing moves (it may also have bounced).
-                    (Nothing, x, y@(Just (MoveOverpowered _))) -> y
+                    -- is always preferred over a move bounced.
+                    (Nothing, x@(Just (MoveBounced _)), y@(Just (MoveOverpowered _))) -> y
+                    (Nothing, x@(Just (MoveBounced _)), y@(Just (MoveBounced _))) -> y
+                    (Nothing, x@(Just (MoveOverpowered _)), y@(Just (MoveBounced _))) -> x
+                    (Nothing, x@(Just (MoveOverpowered _)), y@(Just (MoveOverpowered _))) -> y
                     (x, y, z) -> x <|> y <|> z
               where
 
@@ -654,10 +668,36 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                         opposingPower = alignedGreatPower asubj
                         thisPower = alignedGreatPower aunit
 
-                    -- Complementary: fail iff that move is not foreign (2cycle),
-                    -- or if that move has strictly more foreign support than
-                    -- this move has support (Overpowered).
-                    ComplementaryMove asubj target ->
+                    -- Complementary where the other would not succeed even
+                    -- without this one. Here the Move2Cycle cannot arise.
+                    ComplementaryMove WouldNotSucceed asubj target ->
+                        if length opposingSupports > length thisSupports && opposingPower /= thisPower
+                        then Just (MoveOverpowered (AtLeast (VCons asubj VNil) []))
+                        else if length thisSupports > length opposingSupports && opposingPower == thisPower
+                        then Just (MoveFriendlyDislodge opposingUnit)
+                        else if length opposingSupports == length thisSupports
+                        then Just (MoveBounced (AtLeast (VCons asubj VNil) []))
+                        else Nothing
+                      where
+                        opposingSupports :: Supports
+                        opposingSupports = foreignSupport res thisPower opposingSubject target
+                        thisSupports :: Supports
+                        thisSupports = foreignSupport res opposingPower (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
+                        opposingSuccessfulConvoyRoutes :: [ConvoyRoute]
+                        opposingSuccessfulConvoyRoutes = successfulConvoyRoutes opposingConvoyRoutes
+                        thisSuccessfulConvoyRoutes :: [ConvoyRoute]
+                        thisSuccessfulConvoyRoutes = successfulConvoyRoutes theseConvoyRoutes
+                        opposingConvoyRoutes :: ConvoyRoutes
+                        opposingConvoyRoutes = convoyRoutes res opposingSubject target
+                        opposingPower = alignedGreatPower asubj
+                        opposingSubject = alignedThing asubj
+                        opposingUnit = subjectUnit opposingSubject
+                        thisPower = alignedGreatPower aunit
+
+
+                    -- Complementary where the other would succeed without
+                    -- this one.
+                    ComplementaryMove WouldSucceed asubj target ->
                         if length opposingSupports > length thisSupports && opposingPower /= thisPower
                         then Just (MoveOverpowered (AtLeast (VCons asubj VNil) []))
                         else if length thisSupports > length opposingSupports && opposingPower == thisPower
@@ -1019,29 +1059,6 @@ test10 = M.fromList [
     , (Zone (Normal Belgium), (align Fleet Germany, SomeOrderObject (MoveObject (Normal EnglishChannel))))
     , (Zone (Normal NorthSea), (align Fleet Germany, SomeOrderObject (SupportObject (Fleet, Normal Belgium) (Normal EnglishChannel))))
     ]
-
-
--- Just for testing of convoyRoutes.
-convoys :: TypicalResolution
-convoys = M.fromList [
-    --  (Zone (Normal NorthSea), (align Fleet England, firstConvoy))
-    --, (Zone (Normal HelgolandBright), (align Fleet England, firstConvoy))
-    --, (Zone (Normal NorwegianSea), (align Fleet England, secondConvoy))
-    --, (Zone (Normal BarentsSea), (align Fleet England, thirdConvoy))
-      (Zone (Normal EnglishChannel), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal London) (Normal Portugal), undefined)))
-    , (Zone (Normal MidAtlanticOcean), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal London) (Normal Portugal), undefined)))
-    , (Zone (Normal London), (align Army France, SomeResolved (MoveObject (Normal Portugal), undefined)))
-    , (Zone (Normal Spain), (align Fleet France, SomeResolved (SupportObject (Army, Normal London) (Normal Portugal), undefined)))
-    , (Zone (Normal Portugal), (align Army Italy, SomeResolved (MoveObject (Normal Spain), undefined)))
-    , (Zone (Normal Spain), (align Army Italy, SomeResolved (MoveObject (Normal Portugal), undefined)))
-    ]
-  where
-    firstConvoy = SomeResolved (ConvoyObject (Army, Normal Holland) (Normal StPetersburg), undefined)
-    secondConvoy = firstConvoy
-    thirdConvoy = firstConvoy
-
-convoys' = fmap (\(x, SomeResolved (order, _)) -> (x, SomeOrderObject order)) convoys
-
 
 {-
 -- | Retreat phase resolution groups all withdraws by target, and fails elements
