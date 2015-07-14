@@ -33,6 +33,8 @@ module Diplomacy.OrderResolution (
   , TypicalResolution
   , typicalResolution
 
+  , classify
+
   ) where
 
 import Data.Typeable
@@ -45,6 +47,7 @@ import Data.TypeNat.Nat
 import Data.TypeNat.Vect
 import Data.Functor.Identity
 import Data.Traversable (sequenceA)
+import qualified Data.Set as S
 import qualified Data.Map as M
 import Control.Monad
 import Control.Applicative
@@ -129,13 +132,7 @@ import Debug.Trace
 --
 --   Build:
 
--- | Enumeration of reasons why order resolution could not proceed.
-data ResolutionError (phase :: Phase) where
-    InvalidOrder :: ResolutionError phase
---    InvalidOrder :: Invalid Order phase order -> ResolutionError phase
-
-type TypicalResolution
-    = M.Map Zone (Aligned Unit, SomeResolved OrderObject Typical)
+type TypicalResolution = M.Map Zone (Aligned Unit, SomeResolved OrderObject Typical)
 
 typicalResolution
     :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
@@ -143,6 +140,370 @@ typicalResolution
 typicalResolution input =
     let res = M.mapWithKey (resolveSomeOrderTypical res) input
     in  res
+
+data RequiresConvoy
+    = RequiresConvoy
+    | DoesNotRequireConvoy
+    deriving (Show)
+
+type ConvoyRoute = [(Zone, Maybe (Aligned Subject))]
+
+data ConvoyRoutes = ConvoyRoutes {
+      convoyRoutesParadox :: [ConvoyRoute]
+    , convoyRoutesNonParadox :: [ConvoyRoute]
+    }
+    deriving (Show)
+
+-- | Any move between non-adjacent provinces is deemed to require a
+--   convoy, even if both provinces are inland. Order validation rules
+--   out those cases though.
+moveRequiresConvoy :: ProvinceTarget -> ProvinceTarget -> Bool
+moveRequiresConvoy ptFrom ptTo = not (isSameOrAdjacent movingTo movingFrom)
+  where
+    movingTo = ptProvince ptFrom
+    movingFrom = ptProvince ptTo
+
+isConvoyMoveWithNoConvoyRoute :: MoveClassification -> Bool
+isConvoyMoveWithNoConvoyRoute thisClassification = case thisClassification of
+    NotHold RequiresConvoy theseConvoyRoutes _ _ -> null (successfulConvoyRoutes theseConvoyRoutes)
+    _ -> False
+
+-- | Description of an order's support (that order is unfortunately not a part
+--   of this type or its values). Each entry in the list means a unit belonging
+--   to some power at some place supports that implicit order.
+type Supports = [Aligned Subject]
+
+-- | Given a Subject and a ProvinceTarget, meaning Subject attempting to move to
+--   that ProvinceTarget (or support/convoy/hold in case it's the same as the
+--   Subject's), calculate the supporters of that order.
+support :: TypicalResolution -> Subject -> ProvinceTarget -> Supports
+support resolution subject goingTo = M.foldWithKey selector [] resolution
+  where
+    selector
+        :: Zone
+        -> (Aligned Unit, SomeResolved OrderObject Typical)
+        -> [Aligned Subject]
+        -> [Aligned Subject]
+    selector zone (aunit, SomeResolved (object, thisResolution)) b = case object of
+        SupportObject supportSubject supportTo ->
+            if    supportSubject /= subject
+               || supportTo /= goingTo
+            then b
+            else case thisResolution of
+                Nothing -> align (alignedThing aunit, zoneProvinceTarget zone) (alignedGreatPower aunit) : b
+                _ -> b
+        _ -> b
+
+foreignSupport
+    :: TypicalResolution
+    -> GreatPower
+    -> Subject
+    -> ProvinceTarget
+    -> Supports
+foreignSupport resolution power subject goingTo =
+    filter isForeignSupport (support resolution subject goingTo)
+  where
+    isForeignSupport asubj = alignedGreatPower asubj /= power
+
+-- TODO should be able to do this with only the classification, no? The issue
+-- is that the classification doesn't contain the zone or great power for which
+-- it's relevant :(
+isMoveDislodgedFromAttackedZone
+    :: TypicalResolution
+    -> Zone
+    -> (Aligned Unit, OrderObject Typical Move)
+    -> Bool
+isMoveDislodgedFromAttackedZone resolution zoneFrom (aunit, object) = case thisClassification of
+    Hold _ -> False
+    NotHold _ _ _ thisIncumbant -> case thisIncumbant of
+        -- How to decide this? It strikes me as a little complex...
+        -- It must be
+        --
+        --   1. a foreign order (no self-dislodge).
+        --   2. a have more foreign support than this order.
+        --
+        -- Should abstract this later, as I'm sure it will come up
+        -- again!
+        ComplementaryMove asubj target ->
+            let opposingSupports = foreignSupport resolution (alignedGreatPower aunit) (alignedThing asubj) target
+                thisSupports = support resolution (alignedThing aunit, zoneProvinceTarget zoneFrom) (zoneProvinceTarget zoneTo)
+            in     alignedGreatPower aunit /= alignedGreatPower asubj
+                && length opposingSupports > length thisSupports
+        _ -> False
+  where
+    thisClassification = classify resolution zoneFrom (aunit, object)
+    zoneTo = Zone (moveTarget object)
+
+
+-- | Relative to a Zone (given only by context, unfortunately). Each entry means
+--   there is a move from that zone by that unit belonging to that great power
+--   against the implicit Zone.
+type CompetingMoves = [Aligned Subject]
+
+-- | Get the competing moves (enough information to reconstruct them) against
+--   a move from one zone to another. Yes, they're only moves; a hold, support,
+--   or convoy at the target zone is not included.
+competingMoves
+    :: TypicalResolution
+    -> Zone
+    -> Zone
+    -> CompetingMoves
+competingMoves resolution zoneFrom zoneTo = M.foldWithKey selector [] resolution
+  where
+    selector
+        :: Zone
+        -> (Aligned Unit, SomeResolved OrderObject Typical)
+        -> [Aligned Subject]
+        -> [Aligned Subject]
+    selector zone (aunit, SomeResolved (object, _)) b = case object of
+        MoveObject movingTo ->
+            if    zone == zoneFrom
+               || Zone movingTo /= zoneTo
+               || isConvoyMoveWithNoConvoyRoute thisClassification
+               -- A dislodged unit cannot cause a standoff in the province
+               -- from which it was dislodged.
+               || isMoveDislodgedFromAttackedZone resolution zone (aunit, object)
+            then b
+            else (align (alignedThing aunit, zoneProvinceTarget zone) (alignedGreatPower aunit)) : b
+          where
+            thisClassification = classify resolution zone (aunit, object)
+        _ -> b
+
+assume
+    :: Zone
+    -> Maybe (Aligned Unit, SomeOrderObject Typical)
+    -> TypicalResolution
+    -> TypicalResolution
+assume zone v = typicalResolution . (M.alter (const v) zone) . retract
+  where
+    retract
+        :: TypicalResolution
+        -> M.Map Zone (Aligned Unit, SomeOrderObject Typical)
+    retract =
+        M.map
+          (\(aunit, SomeResolved (object, _)) ->
+            (aunit, SomeOrderObject object)
+          )
+
+data Incumbant
+    = ComplementaryMove (Aligned Subject) ProvinceTarget
+    -- ^ Only if the move succeeds in the absence of its complement.
+    --   The ProvinceTarget in the subject is from where the complement moves,
+    --   and the other ProvinceTarget is to where the complementary move
+    --   wishes to go. These are necessary due to the coarseness of Zone
+    --   Eq.
+    | ReturningMove (Aligned Subject)
+    -- ^ Only if the move fails (could be complementary).
+    | Stationary (Aligned Subject)
+    -- ^ Here we give a subject because the ProvinceTarget is NOT implicit.
+    --   For instance, if we know that Zone (Special SpainSouth) is stationary,
+    --   we don't know whether that thing is stationary at
+    --       Special SpainSouth
+    --       Special SpainNorth
+    --       Normal Spain
+    --   It could be any of these.
+    | NoIncumbant
+    deriving (Show)
+
+-- | Lookup a key in a map and get back the actual key as well. Useful when
+--   the key Eq instance is not quite so sharp.
+lookupWithKey
+    :: Ord k
+    => k
+    -> M.Map k v
+    -> Maybe (k, v)
+lookupWithKey k m =
+    let v = M.lookup k m
+        keys = M.keysSet m
+        -- keys `S.intersection` S.singleton k is empty iff v is Nothing, so
+        -- this won't be undefined.
+        k' = Data.List.head (S.elems (keys `S.intersection` S.singleton k))
+    in fmap (\x -> (k', x)) v
+
+incumbant
+    :: TypicalResolution
+    -> Zone
+    -> Zone
+    -> Incumbant
+incumbant resolution zoneFrom zoneTo = case lookupWithKey zoneTo (assume zoneFrom Nothing resolution) of
+    -- We lookupWithKey because the actual ProvinceTarget where the incumbant
+    -- lies may not be ProvinceTarget-equal with the ProvinceTarget in the
+    -- Zone which we used to index the map!
+    Just (zoneTo', (aunit, SomeResolved (object, resolved))) -> case object of
+        MoveObject pt ->
+            if Zone pt == zoneTo
+            then Stationary (align (alignedThing aunit, zoneProvinceTarget zoneTo') (alignedGreatPower aunit))
+            else if Zone pt == zoneFrom
+            -- It's a move back against zoneFrom. If it succeeds (in the absence
+            -- of any move at zoneFrom) then we call it complementary; the
+            -- actual resolution of the move at zoneFrom may change this
+            -- outcome! If it fails, we'll just treat it like a returning move.
+            then case resolved of
+                Nothing -> ComplementaryMove (align (alignedThing aunit, zoneProvinceTarget zoneTo') (alignedGreatPower aunit)) pt
+                Just _ -> ReturningMove (align (alignedThing aunit, pt) (alignedGreatPower aunit))
+            else case resolved of
+                Nothing -> NoIncumbant
+                Just _ -> ReturningMove (align (alignedThing aunit, pt) (alignedGreatPower aunit))
+        _ -> Stationary (align (alignedThing aunit, zoneProvinceTarget zoneTo') (alignedGreatPower aunit))
+    _ -> NoIncumbant
+
+data MoveClassification
+    = Hold CompetingMoves
+    | NotHold RequiresConvoy ConvoyRoutes CompetingMoves Incumbant
+    deriving (Show)
+
+classify
+    :: TypicalResolution
+    -> Zone
+    -> (Aligned Unit, OrderObject Typical Move)
+    -> MoveClassification
+classify resolution zone (aunit, MoveObject movingTo) =
+    if zone == Zone movingTo
+    then Hold (holdCompetingMoves resolution zone (Zone movingTo))
+    else let power = alignedGreatPower aunit
+             unit = alignedThing aunit
+             pt = zoneProvinceTarget zone
+             asubject = align (unit, pt) power
+         in  classifyNonHold resolution asubject movingTo
+  where
+
+    -- TBD should we here calculate supports of the competing move, using the
+    -- alignment to eliminate non-foreign support and non-foreign moves?!
+    -- Yeah, why not?
+    -- In non hold we would do this for competing moves, but for the incumbant
+    -- if there is one.
+    holdCompetingMoves
+        :: TypicalResolution
+        -> Zone
+        -> Zone
+        -> CompetingMoves
+    holdCompetingMoves resolution zoneFrom zoneTo = theseCompetingMoves
+      where
+        theseCompetingMoves = competingMoves resolution zoneFrom zoneTo
+
+    classifyNonHold
+        :: TypicalResolution
+        -> Aligned Subject
+        -> ProvinceTarget
+        -> MoveClassification
+    classifyNonHold resolution asubject pt =
+        NotHold thisRequiresConvoy theseConvoyRoutes theseCompetingMoves thisIncumbant
+      where
+        thisRequiresConvoy =
+            if moveRequiresConvoy (zoneProvinceTarget zoneFrom) (zoneProvinceTarget zoneTo)
+            then RequiresConvoy
+            else DoesNotRequireConvoy
+        theseConvoyRoutes = convoyRoutes resolution (alignedThing asubject) pt 
+        -- TODO Tuesday: compute the competing moves, here and in the
+        -- Hold case. This will involve gathering them from the resolution,
+        -- classifying them, and using the convoy routes and incumbant fields
+        -- in order to determine whether they take part in the list (no
+        -- convoy routes but requies a convoy means it's out; a complementary
+        -- incumbant which dislodges it means it's out)
+        theseCompetingMoves = competingMoves resolution zoneFrom zoneTo
+        thisIncumbant = incumbant resolution zoneFrom zoneTo
+        zoneFrom = Zone (subjectProvinceTarget (alignedThing asubject))
+        zoneTo = Zone pt
+
+-- | All convoy routes which connect the subject to the given ProvinceTarget.
+--   Each element of a route gives its zone (zone of the convoying fleet which
+--   composese the route) as well as an indication of whether it was
+--   dislodged (Just means it was dislodged by that subject).
+rawConvoyRoutes
+    :: TypicalResolution
+    -> Subject
+    -> ProvinceTarget
+    -> [ConvoyRoute]
+rawConvoyRoutes resolution (unit, ptFrom) ptTo = do
+    let pool = viableConvoyZones
+    let starters = filter isStarter pool
+    s <- starters
+    let routes = paths pool ptTo s
+    (fmap . fmap) tagWithChange routes
+
+  where
+
+    tagWithChange :: Zone -> (Zone, Maybe (Aligned Subject))
+    tagWithChange zone = (zone, change resolution zone)
+
+    viableConvoyZones :: [Zone]
+    viableConvoyZones = M.keys (M.filter isViableConvoy resolution)
+
+    isViableConvoy
+        :: (Aligned Unit, SomeResolved OrderObject Typical)
+        -> Bool
+    isViableConvoy (aunit, SomeResolved (object, _)) = case object of
+        ConvoyObject (unit', convoyingFrom) convoyingTo ->
+               unit == unit'
+            && ptFrom == convoyingFrom
+            && ptTo == convoyingTo
+        _ -> False
+
+    isStarter :: Zone -> Bool
+    isStarter zone = adjacent (ptProvince (zoneProvinceTarget zone)) (ptProvince ptFrom)
+
+    paths
+        :: [Zone]
+        -> ProvinceTarget
+        -> Zone
+        -> [[Zone]]
+    paths pool target zone =
+        case adjacent (ptProvince (zoneProvinceTarget zone)) (ptProvince target) of
+            True -> [[zone]]
+            False -> do
+                let shrunkenPool = pool \\ [zone]
+                let neighbourZones = fmap Zone (neighbours (zoneProvinceTarget zone))
+                n <- neighbourZones `intersect` shrunkenPool
+                fmap ((:) zone) (paths shrunkenPool target n)
+
+convoyRoutes
+    :: TypicalResolution
+    -> Subject
+    -> ProvinceTarget
+    -> ConvoyRoutes
+convoyRoutes resolution subject pt =
+    let routes = rawConvoyRoutes resolution subject pt
+        (paradox, nonParadox) = partition (isParadoxRoute resolution pt) routes
+    in  ConvoyRoutes paradox nonParadox
+
+-- | Identify convoy routes which are paradox-inducing; those routes whose
+--   success is contingent upon the success of the move which they convoy!
+isParadoxRoute
+    :: TypicalResolution
+    -> ProvinceTarget -- ^ The destination of the route.
+    -> [(Zone, Maybe (Aligned Subject))]
+    -> Bool
+isParadoxRoute resolution destination =
+    any (\(z, _) -> Just z == paradoxInducingConvoyZone resolution (Zone destination))
+
+-- | Initial characterization of a support order which cannot be cut by a
+--   convoyed move to the given Zone. That's to say, if there is any such
+--   support, it will turn up in this. However it must also support an attack
+--   against a convoying fleet in some route.
+paradoxInducingSupport
+    :: TypicalResolution
+    -> Zone -- ^ The destination of a convoy route.
+    -> Maybe (OrderObject Typical Support)
+paradoxInducingSupport resolution zone =
+    case M.lookup zone resolution of
+        Just (aunit, SomeResolved (s@(SupportObject _ _), _)) -> Just s
+        _ -> Nothing
+
+-- | If Just, then any convoy route which includes this Zone is a paradox route
+paradoxInducingConvoyZone
+    :: TypicalResolution
+    -> Zone -- ^ Destination of convoy.
+    -> Maybe Zone
+paradoxInducingConvoyZone resolution =
+    fmap (Zone . supportTarget) . paradoxInducingSupport resolution
+
+-- | These are always non-paradox routes.
+successfulConvoyRoutes :: ConvoyRoutes -> [ConvoyRoute]
+successfulConvoyRoutes =
+    filter isSuccessful . convoyRoutesNonParadox
+  where
+    isSuccessful = all (isNothing . snd)
+
 
 resolveSomeOrderTypical
     :: TypicalResolution
@@ -175,425 +536,152 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
         --   MoveBounced : this move is not a hold, and it is not a dominator
         --   at its target.
         --   MoveFriendlyDislodge : the move would dislodge a friendly unit.
-        resolveMove
-            :: OrderObject Typical Move
-            -> Maybe (FailureReason Typical Move)
-        resolveMove moveObject =
-                moveNoConvoy zone moveObject
-            <|> moveConvoyParadox zone moveObject
-            <|> move2Cycle zone moveObject
-            <|> moveOverpowered moveObject
-            <|> moveFriendlyDislodge moveObject
+        resolveMove :: OrderObject Typical Move -> Maybe (FailureReason Typical Move)
+        resolveMove moveObject = case classify res zone (aunit, moveObject) of
 
-        isHold :: OrderObject Typical Move -> Bool
-        isHold (MoveObject movingTo) = Zone movingTo == zone
-
-        -- Successful non-void supports of a Subject into a given Zone.
-        -- length (calculateSupport zone subject) is the support count.
-        calculateSupport :: Zone -> Subject -> [Aligned Subject]
-        calculateSupport zone subject = M.foldWithKey folder [] res
-          where
-            folder
-              :: Zone
-              -> (Aligned Unit, SomeResolved OrderObject Typical)
-              -> [Aligned Subject]
-              -> [Aligned Subject]
-            folder zone' (aunit', SomeResolved (object, resolution)) b = case object of
-                SupportObject supportSubject supportTo ->
-                    if    supportSubject /= subject
-                       || Zone supportTo /= zone
-                    then b
-                    else case resolution of
-                             Nothing -> align (alignedThing aunit', zoneProvinceTarget zone') (alignedGreatPower aunit') : b
-                             _ -> b
-                _ -> b
-
-        -- Must incorporate the move OUT of here.
-        -- If it does not or exist or it succeeds, no change.
-        -- If it exists and fails, then
-        --     if it's a friendly unit, always fail with self dislodge.
-        --     if it's not friendly, fail iff this move has <= 1 support.
-        --
-        -- To do this, we'll need to be able to get the resolutions assuming
-        -- this move was not issued.
-        retract
-            :: TypicalResolution
-            -> M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-        retract =
-            M.map
-              (\(aunit, SomeResolved (object, _)) ->
-                (aunit, SomeOrderObject object)
-              )
-
-        assume
-            :: Zone
-            -> (Aligned Unit, SomeOrderObject Typical)
-            -> M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-            -> M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-        assume k v = M.alter (const (Just v)) k
-
-        resAssuming
-            :: Zone
-            -> (Aligned Unit, SomeOrderObject Typical)
-            -> TypicalResolution
-            -> TypicalResolution
-        resAssuming k v = typicalResolution . (assume k v) . retract
-
-        resWithoutZone :: Zone -> TypicalResolution
-        resWithoutZone zone = typicalResolution . (M.delete zone) . retract $ res
-
-        resWithoutThis :: TypicalResolution
-        resWithoutThis = resWithoutZone zone
-
-        -- If Just asubj then there was either
-        --   1. a failed move from the target of the input move
-        --   2. a support or convoy at the target of the input move
-        --   3. a hold (whether successful or unsucessful) at the target of the
-        --      input move
-        -- where the aligned subject determines the issuing power,
-        -- the unit which would have moved, and the place to which it would have
-        -- moved.
-        failedExodus
-            :: OrderObject Typical Move
-            -> Maybe (Aligned Subject)
-        failedExodus (MoveObject movingTo) = case M.lookup (Zone movingTo) resWithoutThis of
-            Just (aunit, SomeResolved (object, Just _)) -> Just $
-                align (alignedThing aunit, movingTo') (alignedGreatPower aunit)
-              where
-                movingTo' = case object of
-                    MoveObject pt -> pt
-                    _ -> movingTo
-            Just (aunit, SomeResolved (MoveObject movingTo', Nothing)) ->
-                if Zone movingTo == Zone movingTo'
-                then Just $ align (alignedThing aunit, movingTo') (alignedGreatPower aunit)
-                else Nothing
-            _ -> Nothing
-
-        -- A successful move away from the target of this move.
-        successfulExodus
-            :: OrderObject Typical Move
-            -> Maybe (Aligned Subject)
-        successfulExodus (MoveObject movingTo) = case M.lookup (Zone movingTo) resWithoutThis of
-            Just (aunit, SomeResolved (MoveObject movingTo', Nothing)) ->
-                -- This is to exclude holds.
-                if Zone movingTo == Zone movingTo'
-                then Nothing
-                else Just (align (alignedThing aunit, movingTo') (alignedGreatPower aunit))
-            _ -> Nothing
-
-        -- A competing order is one which, if successful, would have its subject
-        -- unit occupy the target of this move, which has a successful convoy
-        -- route if necessary, and which is not dislodged by a move FROM the
-        -- target of this move. That's just to say that it's a move which stands
-        -- a chance against this one; a move which would succeed to occupy the
-        -- target of this move if there were no other moves into that target.
-        competingOrders :: OrderObject Typical Move -> [Aligned Subject]
-        competingOrders moveObject@(MoveObject movingTo) = M.foldWithKey folder [] res
-          where
-            folder
-                :: Zone
-                -> (Aligned Unit, SomeResolved OrderObject Typical)
-                -> [Aligned Subject]
-                -> [Aligned Subject]
-            folder zone' (aunit, SomeResolved (object, _)) b =
-                if    zone' == zone  -- Must rule out including this move.
-                   || destination /= Zone (movingTo)
-                   || isConvoyMoveWithNoConvoyRoute zone' object
-                   -- A dislodged unit cannot cause a standoff in the province
-                   -- from which it was dislodged.
-                   || isMoveDislodgedFromAttackedZone
-                then b
-                else (align (alignedThing aunit, zoneProvinceTarget zone') (alignedGreatPower aunit)) : b
-              where
-                destination = case object of
-                    MoveObject pt -> Zone pt
-                    _ -> zone'
-
-                -- Decide whether the move in question (in this fold function)
-                -- is a move which was dislodged from the zone it attacks.
-                -- Can't we just use successfulExodus???
-                -- No, we can't; we need more information. We remove this order
-                -- and then check whether the incoming order is dislodged from
-                -- here.
-                isMoveDislodgedFromAttackedZone :: Bool
-                isMoveDislodgedFromAttackedZone = case object of
-                    MoveObject pt ->
-                        -- It's a hold; couldn't possibly be dislodged from the
-                        -- attacking zone.
-                        if Zone pt == zone'
-                        then False
-                        else case M.lookup zone' resWithoutThis of
-                            Just (aunit', SomeResolved (MoveObject _, Just (MoveOverpowered overpowerers))) ->
-                                any (\x -> Zone (subjectProvinceTarget (alignedThing x)) == destination) (toList overpowerers)
-                            _ -> False
-                    _ -> False
-
-        isConvoyMoveWithNoConvoyRoute :: Zone -> OrderObject Typical order -> Bool
-        isConvoyMoveWithNoConvoyRoute zone object = case object of
-            MoveObject _ -> isJust (moveNoConvoy zone object <|> moveConvoyParadox zone object)
-            _ -> False
-
-        -- First component is the competing unit, its owner, and its current place.
-        -- Second component is a list of supporters; elements determine the
-        -- support's unit, owner and place.
-        --
-        -- If there is a failed move out of the move object's target, then that
-        -- is included in here, and it looks like a 0-support hold.
-        supportedCompetingOrders
-            :: OrderObject Typical Move
-            -> [(Aligned Subject, [Aligned Subject])]
-        supportedCompetingOrders moveObject =
-            let zone = Zone (moveTarget moveObject)
-                xs = competingOrders moveObject
-                ys = fmap (calculateSupport zone . alignedThing) xs
-                zs = xs `zip` ys
-                ws = case failedExodus moveObject of
-                    Just alignedSubject -> (alignedSubject', []) : zs
-                      where
-                        -- alignedSubject's ProvinceTarget is the destination
-                        -- of the failed move; we replace it with the origin.
-                        alignedSubject' = fmap (\(u, pt) -> (u, moveTarget moveObject)) alignedSubject
-                    Nothing -> zs
-            in ws
-
-        sortedSupportedCompetingOrders
-            :: OrderObject Typical Move
-            -> [(Aligned Subject, [Aligned Subject])]
-        sortedSupportedCompetingOrders =
-            sortBy comparator . supportedCompetingOrders
-          where
-            comparator x y = compare (Down . length . snd $ x) (Down . length . snd $ y)
-
-        localSupport :: OrderObject Typical Move -> [Aligned Subject]
-        localSupport moveObject =
-            let zone' = Zone (moveTarget moveObject)
-                subj = (alignedThing aunit, zoneProvinceTarget zone)
-            in  calculateSupport zone' subj
-
-        move2Cycle
-            :: Zone
-            -> OrderObject Typical Move
-            -> Maybe (FailureReason Typical Move)
-        move2Cycle zone moveObject@(MoveObject movingTo) =
-            if isHold moveObject
-            then Nothing
-            -- This move order goes from A to B where A /= B. We lookup the
-            -- resolutions at A assuming there is a hold order at B, and B
-            -- assuming there is a hold order at A.
-            -- If the actual (not assumed) order at B is a move which forms a
-            -- cycle with this one, then we check the resolutions in our
-            -- hypothetical cases in which the other move is a hold:
-            --   1. both successful -> 2 cycle failure unless convoyed
-            --   2. precisely one successful -> other is overpowered
-            --   3. both fail -> carry on
-            else case (M.lookup (Zone movingTo) resWhereIHold) of
-                Just (aunit1, SomeResolved (mo1@(MoveObject movingTo'), res1)) ->
-                    if Zone movingTo' /= zone
+            -- A hold is easy: it fails iff there is a foreign move with more
+            -- foreign support than it.
+            Hold theseCompetingMoves -> case dominator of
+                Nothing -> Nothing
+                Just (x, ss) ->
+                    if length ss <= length thisSupports
                     then Nothing
-                    else case M.lookup zone resWhereTheyHold of
-                        Just (aunit2, SomeResolved (mo2@(MoveObject _), res2)) ->
-                            case (res1, res2) of
-                                (Nothing, Nothing) ->
-                                    if    not (null (moveSuccessfulConvoyRoutes (Zone movingTo) mo1))
-                                       || not (null (moveSuccessfulConvoyRoutes (Zone movingTo') mo2))
-                                    then Nothing
-                                    else Just (Move2Cycle aunit1)
-                                (Nothing, Just _) -> Nothing
-                                -- Other move of the 2-cycle succeeds, so the subject
-                                -- of this order would be dislodged; we just use
-                                -- MoveOverpowered.
-                                (Just _, Nothing) -> Just (MoveOverpowered (AtLeast (VCons (align (alignedThing aunit1, movingTo) (alignedGreatPower aunit1)) VNil) []))
-                                _ -> Nothing
-                        Nothing -> Nothing
-                      where
-                        resWhereTheyHold = resAssuming (Zone movingTo) (aunit1, SomeOrderObject (MoveObject movingTo)) res
-                _ -> Nothing
-          where
-            resWhereIHold = resAssuming zone (aunit, SomeOrderObject (MoveObject (zoneProvinceTarget zone))) res
-
-
-        -- A move is overpowered precisely when any of
-        --
-        --   1. it's not a hold and there is some other move into its target
-        --      of strictly greater support (if that move is a hold, then we
-        --      are careful to eliminate friendly support).
-        --   2. it's a hold and there is some other move into its territory
-        --      with strictly greater support from other great powers.
-        moveOverpowered
-            :: OrderObject Typical Move
-            -> Maybe (FailureReason Typical Move)
-        moveOverpowered moveObject = case sortedSupportedCompetingOrders moveObject of
-            [] -> Nothing
-            (x : xs) ->
-                if   length competingSupports > length localSupports
-                then Just (MoveOverpowered (AtLeast (VCons (fst x) VNil) (fmap fst xs)))
-                else if not (isHold moveObject) && length competingSupports == length localSupports
-                then Just (MoveBounced (AtLeast (VCons (fst x) VNil) (fmap fst xs)))
-                else Nothing
+                    -- TBD HoldOverpowered failure reason?
+                    else Just (MoveOverpowered (AtLeast (VCons x VNil) []))
               where
-                competingSupports =
-                    -- If this move is a hold then we eliminate the friendly
-                    -- supports from the top competing attacker (x).
-                    if isHold moveObject
-                    then filter (\y -> alignedGreatPower y /= alignedGreatPower aunit) (snd x)
-                    else snd x
-                localSupports =
-                    -- If the top competing attacker (x) is a hold then we
-                    -- remove the friendly supports from the local supports
-                    if Zone (subjectProvinceTarget (alignedThing (fst x))) == Zone (moveTarget moveObject)
-                    then filter (\y -> alignedGreatPower y /= alignedGreatPower (fst x)) (localSupport moveObject)
-                    else localSupport moveObject
+                dominator = case sortedOpposingSupports of
+                    [] -> Nothing
+                    [x] -> Just x
+                    x : y : _ -> if snd x > snd y
+                                 then Just x
+                                 else Nothing
+                sortedOpposingSupports = sortBy comparator opposingSupports
+                comparator :: (Aligned Subject, Supports) -> (Aligned Subject, Supports) -> Ordering
+                comparator (_, xs) (_, ys) = Down (length xs) `compare` Down (length ys)
+                opposingSupports :: [(Aligned Subject, Supports)]
+                opposingSupports = fmap (\x -> (x, calculateOpposingSupports x)) foreignCompetingMoves
+                calculateOpposingSupports :: (Aligned Subject) -> Supports
+                calculateOpposingSupports asubj = foreignSupport res (alignedGreatPower aunit) (alignedThing asubj) (zoneProvinceTarget zone)
+                foreignCompetingMoves :: CompetingMoves
+                foreignCompetingMoves = filter (\asubj -> alignedGreatPower asubj /= alignedGreatPower aunit) theseCompetingMoves
+                thisSupports :: Supports
+                thisSupports = support res (alignedThing aunit, zoneProvinceTarget zone) (zoneProvinceTarget zone)
 
-        -- This identifies whether a non-bounced, non-overpowered move would
-        -- dislodge a friendly unit. That is, it fires precisely when
-        -- this move is NOT a hold and either
-        --
-        --   1. a MOVE of a friendly unit FROM the target of this move failed.
-        --   2. a HOLD, SUPPORT, OR CONVOY by a friendly unit AT the target of
-        --      this move is present in the order set.
-        moveFriendlyDislodge
-            :: OrderObject Typical Move
-            -> Maybe (FailureReason Typical Move)
-        moveFriendlyDislodge moveObject@(MoveObject movingTo) =
-            if isHold moveObject
-            then Nothing
-            else case failedExodus moveObject of
-                Just alignedSubj ->
-                    if   alignedGreatPower aunit == alignedGreatPower alignedSubj
-                    then Just (MoveFriendlyDislodge (subjectUnit (alignedThing alignedSubj)))
-                    else Nothing
-                _ -> case M.lookup (Zone movingTo) res of
-                    Just (aunit', SomeResolved (object, _)) ->
-                        if    alignedGreatPower aunit == alignedGreatPower aunit'
-                           && Zone movingTo == Zone movingTo'
-                        then Just (MoveFriendlyDislodge (alignedThing aunit'))
+
+            -- For a non hold:
+            --
+            --   1. check if it doesn't have the required convoy.
+            --   2. check if it bounces off/is overpowered by the competing moves.
+            --   3. check if it bounces off/is overpowered by the incumbant.
+            NotHold requiresConvoy theseConvoyRoutes theseCompetingMoves thisIncumbant ->
+                case (checkConvoy, checkCompeting, checkIncumbant) of
+                    -- We play with the order here, so that a move overpowered
+                    -- by a complementary move always shows up regardless of
+                    -- the competing moves (it may also have bounced).
+                    (Nothing, x, y@(Just (MoveOverpowered _))) -> y
+                    (x, y, z) -> x <|> y <|> z
+              where
+
+                checkConvoy = case requiresConvoy of
+                    RequiresConvoy ->
+                        if    null (successfulConvoyRoutes theseConvoyRoutes)
+                        then if null (convoyRoutesParadox theseConvoyRoutes)
+                             then Just MoveNoConvoy
+                             else Just MoveConvoyParadox
                         else Nothing
-                      where
-                        movingTo' = case object of
-                            MoveObject pt -> pt
-                            _ -> movingTo
                     _ -> Nothing
 
-        -- Although any great power can support another great power's units,
-        -- even if that support is directed against a friendly order, that
-        -- great power's support cannot be the deciding factor in the
-        -- dislodgement of a friendly unit. That's to say, if a move would not
-        -- dislodge that great power's unit without that great power's
-        -- support(s), then it won't dislodge it even with those supports. The
-        -- supports still succeed and are effective in bouncing other moves.
-        --
-        -- So, in detail, this is relevant to failed exoduses and holds.
-        -- If, at the target, we have a failed exodus or a hold by great power P
-        -- then we must check whether this move has enough support from other
-        -- great powers. If it's a failed exodus, must have at least 1 support
-        -- from others; if it's a hold, must have more support than the hold.
-        -- How to shim this in?
-        --
-        -- This one assumes it's not overpowered or bounced.
-        --
-        -- Note that this allows a case in which a hold is overpowered by a
-        -- move, but that move does not succeed. Do we want this? Shouldn't
-        -- the hold succeed? Yes, we must add that to the overpowered case TODO.
-        --
-        -- Also, do we need a new FailureReason? Should just use MoveOverpowered
-        -- or MoveBounced
-        --
-        {-
-        moveFriendlySupport
-            :: OrderObject Typical Move
-            -> Maybe (FailureReason Typical Move)
-        moveFriendlySupport moveObject@(MoveObject movingTo) =
-            if isHold moveObject
-            then Nothing
-            else case failedExodus moveObject of
-                Just alignedSubj ->
-                    if   alignedGreatPower aunit /= alignedGreatPower alignedSubj
-                    then Nothing -- Check for at least one suitable support.
-                    else Nothing
-                _ -> case M.lookup (Zone movingTo) res of
-                    Just (aunit', SomeResolved (object, _)) ->
-                        if    alignedGreatPower aunit /= alignedGreatPower aunit'
-                           && Zone movingTo == Zone movingTo'
-                        then Nothing -- Check for more suitable supports than the
-                             -- hold.
+                -- For competing moves here, we don't care about foriegn orders
+                -- or supports, it's all the same.
+                checkCompeting = case sortedOpposingSupports of
+                    [] -> Nothing
+                    ((x, ss) : xs) ->
+                        if length ss == length thisSupports
+                        then Just (MoveBounced (AtLeast (VCons x VNil) equallySupported))
+                        else if length ss > length thisSupports
+                        then Just (MoveOverpowered (AtLeast (VCons x VNil) equallySupported))
                         else Nothing
                       where
-                        movingTo' = case object of
-                            MoveObject pt -> pt
-                            _ -> movingTo
-                    _ -> Nothing
-        -}
+                        equallySupported = fmap fst (filter (\(x, ss') -> length ss' == length ss) xs)
+                  where
+                    sortedOpposingSupports = sortBy comparator opposingSupports
+                    comparator :: (Aligned Subject, Supports) -> (Aligned Subject, Supports) -> Ordering
+                    comparator (_, xs) (_, ys) = Down (length xs) `compare` Down (length ys)
+                    opposingSupports :: [(Aligned Subject, Supports)]
+                    opposingSupports = fmap (\x -> (x, calculateOpposingSupports x)) theseCompetingMoves
+                    calculateOpposingSupports :: Aligned Subject -> Supports
+                    calculateOpposingSupports asubj = support res (alignedThing asubj) (moveTarget moveObject)
+                    thisSupports :: Supports
+                    thisSupports = support res (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
 
-        paradoxInducingSupport
-            :: OrderObject Typical Move
-            -> Maybe (OrderObject Typical Support)
-        paradoxInducingSupport (MoveObject movingTo) = case M.lookup (Zone movingTo) res of
-            Just (aunit, SomeResolved (s@(SupportObject _ _), _)) -> Just s
-            _ -> Nothing
 
-        paradoxInducingConvoyZone
-            :: OrderObject Typical Move
-            -> Maybe Zone
-        paradoxInducingConvoyZone = fmap (Zone . supportTarget) . paradoxInducingSupport
+                checkIncumbant = case thisIncumbant of
 
-        -- Any move between non-adjacent provinces is deemed to require a
-        -- convoy, even if both provinces are inland. Order validation rules
-        -- out those cases though.
-        moveRequiresConvoy :: Zone -> OrderObject Typical Move -> Bool
-        moveRequiresConvoy zone (MoveObject movingTo) =
-            not (isSameOrAdjacent (ptProvince movingTo) (ptProvince (zoneProvinceTarget zone)))
+                    NoIncumbant -> Nothing
 
-        moveConvoyRoutes
-            :: Zone
-            -> OrderObject Typical Move
-            -> [[(Zone, Maybe (Aligned Subject))]]
-        moveConvoyRoutes zone (MoveObject movingTo) =
-            convoyRoutes (alignedThing aunit, zoneProvinceTarget zone) movingTo res
+                    -- Stationary: fail iff that unit is not foreign, or if
+                    -- this move has insufficient foreign support.
+                    Stationary asubj ->
+                        if length opposingSupports == length thisSupports
+                        then Just (MoveBounced (AtLeast (VCons asubj VNil) []))
+                        else if length opposingSupports > length thisSupports
+                        then Just (MoveOverpowered (AtLeast (VCons asubj VNil) []))
+                        else if opposingPower == thisPower
+                        then Just (MoveFriendlyDislodge (alignedThing aunit))
+                        else Nothing
+                      where
+                        opposingSupports :: Supports
+                        opposingSupports = support res opposingSubject (moveTarget moveObject)
+                        thisSupports :: Supports
+                        thisSupports = foreignSupport res opposingPower (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
+                        opposingSubject = alignedThing asubj
+                        opposingPower = alignedGreatPower asubj
+                        thisPower = alignedGreatPower aunit
 
-        isParadoxRoute
-            :: OrderObject Typical Move
-            -> [(Zone, Maybe (Aligned Subject))]
-            -> Bool
-        isParadoxRoute moveObject =
-            any (\(z, _) -> Just z == paradoxInducingConvoyZone moveObject)
+                    -- Returning: fail iff that unit is not foreign, or if
+                    -- this move has 0 foreign support.
+                    ReturningMove asubj ->
+                        if length thisSupports == 0
+                        then Just (MoveBounced (AtLeast (VCons (align (opposingUnit, moveTarget moveObject) (alignedGreatPower asubj)) VNil) []))
+                        else if opposingPower == thisPower
+                        then Just (MoveFriendlyDislodge (subjectUnit (alignedThing asubj)))
+                        else Nothing
+                      where
+                        thisSupports :: Supports
+                        thisSupports = foreignSupport res (alignedGreatPower asubj) (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
+                        opposingSubject = alignedThing asubj
+                        opposingUnit = subjectUnit opposingSubject
+                        opposingPower = alignedGreatPower asubj
+                        thisPower = alignedGreatPower aunit
 
-        moveParadoxConvoyRoutes zone moveObject =
-            filter (isParadoxRoute moveObject) (moveConvoyRoutes zone moveObject)
-
-        moveNonParadoxConvoyRoutes zone moveObject =
-            filter (not . (isParadoxRoute moveObject)) (moveConvoyRoutes zone moveObject)
-
-        moveSuccessfulConvoyRoutes
-            :: Zone
-            -> OrderObject Typical Move
-            -> [[(Zone, Maybe (Aligned Subject))]]
-        moveSuccessfulConvoyRoutes zone =
-            filter isSuccessful . moveNonParadoxConvoyRoutes zone
-          where
-            isSuccessful = all (isNothing . snd)
-
-        moveNoConvoy
-            :: Zone
-            -> OrderObject Typical Move
-            -> Maybe (FailureReason Typical Move)
-        moveNoConvoy zone moveObject =
-            if    moveRequiresConvoy zone moveObject
-               && null (moveSuccessfulConvoyRoutes zone moveObject)
-               && null (moveParadoxConvoyRoutes zone moveObject)
-            then Just MoveNoConvoy
-            else Nothing
-
-        moveConvoyParadox
-            :: Zone
-            -> OrderObject Typical Move
-            -> Maybe (FailureReason Typical Move)
-        moveConvoyParadox zone moveObject =
-            if    moveRequiresConvoy zone moveObject
-               && null (moveSuccessfulConvoyRoutes zone moveObject)
-               && not (null (moveParadoxConvoyRoutes zone moveObject))
-            then Just MoveConvoyParadox
-            else Nothing
-
+                    -- Complementary: fail iff that move is not foreign (2cycle),
+                    -- or if that move has strictly more foreign support than
+                    -- this move has support (Overpowered).
+                    ComplementaryMove asubj target ->
+                        if length opposingSupports > length thisSupports && opposingPower /= thisPower
+                        then Just (MoveOverpowered (AtLeast (VCons asubj VNil) []))
+                        else if length thisSupports > length opposingSupports && opposingPower == thisPower
+                        then Just (MoveFriendlyDislodge opposingUnit)
+                        else if    length opposingSupports == length thisSupports
+                                && null (opposingSuccessfulConvoyRoutes)
+                                && null (thisSuccessfulConvoyRoutes)
+                        then Just (Move2Cycle (fmap fst asubj))
+                        else Nothing
+                      where
+                        opposingSupports :: Supports
+                        opposingSupports = foreignSupport res thisPower opposingSubject target
+                        thisSupports :: Supports
+                        thisSupports = foreignSupport res opposingPower (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
+                        opposingSuccessfulConvoyRoutes :: [ConvoyRoute]
+                        opposingSuccessfulConvoyRoutes = successfulConvoyRoutes opposingConvoyRoutes
+                        thisSuccessfulConvoyRoutes :: [ConvoyRoute]
+                        thisSuccessfulConvoyRoutes = successfulConvoyRoutes theseConvoyRoutes
+                        opposingConvoyRoutes :: ConvoyRoutes
+                        opposingConvoyRoutes = convoyRoutes res opposingSubject target
+                        opposingPower = alignedGreatPower asubj
+                        opposingSubject = alignedThing asubj
+                        opposingUnit = subjectUnit opposingSubject
+                        thisPower = alignedGreatPower aunit
 
         -- *******
         -- SUPPORT
@@ -707,9 +795,11 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                     MoveObject movingTo ->
                         if    Zone movingTo == supportingFrom
                            && Zone supportingTo /= zone
-                           && not (isConvoyMoveWithNoConvoyRoute zone object)
+                           && not (isConvoyMoveWithNoConvoyRoute thisClassification)
                         then Just $ align (alignedThing aunit', zoneProvinceTarget zone) (alignedGreatPower aunit')
                         else Nothing
+                      where
+                        thisClassification = classify res zone (aunit', object)
                     _ -> Nothing
 
         supportDislodged
@@ -773,7 +863,7 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
           where
 
             routes :: [[(Zone, Maybe (Aligned Subject))]]
-            routes = convoyRoutes convoyingSubject convoyingTo res
+            routes = rawConvoyRoutes res convoyingSubject convoyingTo
 
             cuttingSet :: Maybe [(Zone, Aligned Subject)]
             cuttingSet | length cutRoutes == length routes = Just (nub (concat cutRoutes))
@@ -952,56 +1042,6 @@ convoys = M.fromList [
 
 convoys' = fmap (\(x, SomeResolved (order, _)) -> (x, SomeOrderObject order)) convoys
 
--- | All convoy routes which connect the subject to the given ProvinceTarget.
---   Each element of a route gives its zone (zone of the convoying fleet which
---   composese the route) as well as an indication of whether it was
---   dislodged.
-convoyRoutes
-    :: Subject
-    -> ProvinceTarget
-    -> TypicalResolution
-    -> [[(Zone, Maybe (Aligned Subject))]]
-convoyRoutes (unit, ptFrom) ptTo res = do
-    let pool = viableConvoyZones
-    let starters = filter isStarter pool
-    s <- starters
-    let routes = paths pool ptTo s
-    (fmap . fmap) tagWithChange routes
-
-  where
-
-    tagWithChange :: Zone -> (Zone, Maybe (Aligned Subject))
-    tagWithChange zone = (zone, change res zone)
-
-    viableConvoyZones :: [Zone]
-    viableConvoyZones = M.keys (M.filter isViableConvoy res)
-
-    isViableConvoy
-        :: (Aligned Unit, SomeResolved OrderObject Typical)
-        -> Bool
-    isViableConvoy (aunit, SomeResolved (object, _)) = case object of
-        ConvoyObject (unit', convoyingFrom) convoyingTo ->
-               unit == unit'
-            && ptFrom == convoyingFrom
-            && ptTo == convoyingTo
-        _ -> False
-
-    isStarter :: Zone -> Bool
-    isStarter zone = adjacent (ptProvince (zoneProvinceTarget zone)) (ptProvince ptFrom)
-
-    paths
-        :: [Zone]
-        -> ProvinceTarget
-        -> Zone
-        -> [[Zone]]
-    paths pool target zone =
-        case adjacent (ptProvince (zoneProvinceTarget zone)) (ptProvince target) of
-            True -> [[zone]]
-            False -> do
-                let shrunkenPool = pool \\ [zone]
-                let neighbourZones = fmap Zone (neighbours (zoneProvinceTarget zone))
-                n <- neighbourZones `intersect` shrunkenPool
-                fmap ((:) zone) (paths shrunkenPool target n)
 
 {-
 -- | Retreat phase resolution groups all withdraws by target, and fails elements

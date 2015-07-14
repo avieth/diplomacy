@@ -90,6 +90,8 @@ tests = TestList [
     , sixD30
     , sixD33
     , sixD34
+    , sixE1
+    , sixE2
     , sixE15
     ]
 
@@ -323,7 +325,7 @@ sixB5 = isSupporterCouldNotDoMove validation ~? "6.B.5"
   where
 
     validation = validateSupport occupation support
-  
+ 
     support =
         Order (align ((Fleet, Special SpainNorth), SupportObject (Fleet, Normal Marseilles) (Normal GulfOfLyon)) France)
 
@@ -1581,8 +1583,7 @@ sixD34 = (validation == Just SupportSelf) ~? "6.D.34"
 -- A Prussia - Berlin
 --
 -- The army in Kiel will move to Berlin. 
---sixE1 = (expectedResolution == testResolution expectedResolution) ~? "6.E.1"
-sixE1 = (expectedResolution, testResolution expectedResolution)
+sixE1 = (expectedResolution == testResolution expectedResolution) ~? "6.E.1"
   where
 
     expectedResolution = M.fromList [
@@ -1590,10 +1591,29 @@ sixE1 = (expectedResolution, testResolution expectedResolution)
         , (Zone (Normal Kiel), (align Fleet Germany, SomeResolved (MoveObject (Normal Berlin), Nothing)))
         , (Zone (Normal Silesia), (align Army Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Prussia), Nothing)))
 
-        , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Prussia) Germany) VNil) [])))))
+        , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
         ]
 
+-- 6.E.2. TEST CASE, NO SELF DISLODGEMENT IN HEAD TO HEAD BATTLE
+--
+-- Self dislodgement is not allowed. This also counts for head to head battles.
+--
+-- Germany: 
+-- A Berlin - Kiel
+-- F Kiel - Berlin
+-- A Munich Supports A Berlin - Kiel
+--
+-- No unit will move. 
+sixE2 = (expectedResolution == testResolution expectedResolution) ~? "6.E.2"
+  where
 
+    expectedResolution = M.fromList [
+          -- NB these fail with 2-cycle because the friendly support does
+          -- not count.
+          (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Kiel), Just (Move2Cycle (align Fleet Germany)))))
+        , (Zone (Normal Kiel), (align Fleet Germany, SomeResolved (MoveObject (Normal Berlin), Just (Move2Cycle (align Army Germany)))))
+        , (Zone (Normal Munich), (align Army Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Kiel), Nothing)))
+        ]
 
 -- The friendly head-to-head battle.
 --
