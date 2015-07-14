@@ -1568,7 +1568,30 @@ sixD34 = (validation == Just SupportSelf) ~? "6.D.34"
           occupy (Normal Prussia) (Just (align Army Italy))
         $ emptyOccupation
 
+-- 6.E.1. TEST CASE, DISLODGED UNIT HAS NO EFFECT ON ATTACKERS AREA
+--
+-- An army can follow.
+--
+-- Germany: 
+-- A Berlin - Prussia
+-- F Kiel - Berlin
+-- A Silesia Supports A Berlin - Prussia
+--
+-- Russia: 
+-- A Prussia - Berlin
+--
+-- The army in Kiel will move to Berlin. 
+--sixE1 = (expectedResolution == testResolution expectedResolution) ~? "6.E.1"
+sixE1 = (expectedResolution, testResolution expectedResolution)
+  where
 
+    expectedResolution = M.fromList [
+          (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Prussia), Nothing)))
+        , (Zone (Normal Kiel), (align Fleet Germany, SomeResolved (MoveObject (Normal Berlin), Nothing)))
+        , (Zone (Normal Silesia), (align Army Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Prussia), Nothing)))
+
+        , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Prussia) Germany) VNil) [])))))
+        ]
 
 
 
