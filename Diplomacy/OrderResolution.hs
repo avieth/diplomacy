@@ -183,7 +183,6 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
             <|> moveConvoyParadox zone moveObject
             <|> move2Cycle zone moveObject
             <|> moveOverpowered moveObject
-            -- <|> moveBounced moveObject
             <|> moveFriendlyDislodge moveObject
 
         isHold :: OrderObject Typical Move -> Bool
@@ -226,8 +225,25 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                 (aunit, SomeOrderObject object)
               )
 
+        assume
+            :: Zone
+            -> (Aligned Unit, SomeOrderObject Typical)
+            -> M.Map Zone (Aligned Unit, SomeOrderObject Typical)
+            -> M.Map Zone (Aligned Unit, SomeOrderObject Typical)
+        assume k v = M.alter (const (Just v)) k
+
+        resAssuming
+            :: Zone
+            -> (Aligned Unit, SomeOrderObject Typical)
+            -> TypicalResolution
+            -> TypicalResolution
+        resAssuming k v = typicalResolution . (assume k v) . retract
+
+        resWithoutZone :: Zone -> TypicalResolution
+        resWithoutZone zone = typicalResolution . (M.delete zone) . retract $ res
+
         resWithoutThis :: TypicalResolution
-        resWithoutThis = typicalResolution . (M.delete zone) . retract $ res
+        resWithoutThis = resWithoutZone zone
 
         -- If Just asubj then there was either
         --   1. a failed move from the target of the input move
@@ -259,11 +275,11 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
             -> Maybe (Aligned Subject)
         successfulExodus (MoveObject movingTo) = case M.lookup (Zone movingTo) resWithoutThis of
             Just (aunit, SomeResolved (MoveObject movingTo', Nothing)) ->
+                -- This is to exclude holds.
                 if Zone movingTo == Zone movingTo'
                 then Nothing
                 else Just (align (alignedThing aunit, movingTo') (alignedGreatPower aunit))
             _ -> Nothing
-
 
         -- A competing order is one which, if successful, would have its subject
         -- unit occupy the target of this move, which has a successful convoy
@@ -283,7 +299,9 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                 if    zone' == zone  -- Must rule out including this move.
                    || destination /= Zone (movingTo)
                    || isConvoyMoveWithNoConvoyRoute zone' object
-                   || isDislodgedFrom destination
+                   -- A dislodged unit cannot cause a standoff in the province
+                   -- from which it was dislodged.
+                   || isMoveDislodgedFromAttackedZone
                 then b
                 else (align (alignedThing aunit, zoneProvinceTarget zone') (alignedGreatPower aunit)) : b
               where
@@ -291,18 +309,27 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                     MoveObject pt -> Zone pt
                     _ -> zone'
 
-                isDislodgedFrom :: Zone -> Bool
-                isDislodgedFrom zone = case successfulExodus moveObject of
-                    Just alignedSubj ->
-                        Zone (subjectProvinceTarget (alignedThing alignedSubj)) == zone
+                -- Decide whether the move in question (in this fold function)
+                -- is a move which was dislodged from the zone it attacks.
+                -- Can't we just use successfulExodus???
+                -- No, we can't; we need more information. We remove this order
+                -- and then check whether the incoming order is dislodged from
+                -- here.
+                isMoveDislodgedFromAttackedZone :: Bool
+                isMoveDislodgedFromAttackedZone = case object of
+                    MoveObject pt ->
+                        -- It's a hold; couldn't possibly be dislodged from the
+                        -- attacking zone.
+                        if Zone pt == zone'
+                        then False
+                        else case M.lookup zone' resWithoutThis of
+                            Just (aunit', SomeResolved (MoveObject _, Just (MoveOverpowered overpowerers))) ->
+                                any (\x -> Zone (subjectProvinceTarget (alignedThing x)) == destination) (toList overpowerers)
+                            _ -> False
                     _ -> False
 
         isConvoyMoveWithNoConvoyRoute :: Zone -> OrderObject Typical order -> Bool
         isConvoyMoveWithNoConvoyRoute zone object = case object of
-            -- No good; these functions are local and thus not quite
-            -- so reusable (zone is captured).
-            -- Could free it up... or maybe put it into the resolution
-            -- map?
             MoveObject _ -> isJust (moveNoConvoy zone object <|> moveConvoyParadox zone object)
             _ -> False
 
@@ -343,24 +370,55 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                 subj = (alignedThing aunit, zoneProvinceTarget zone)
             in  calculateSupport zone' subj
 
-        -- A move is overpowered precisely when either
+        move2Cycle
+            :: Zone
+            -> OrderObject Typical Move
+            -> Maybe (FailureReason Typical Move)
+        move2Cycle zone moveObject@(MoveObject movingTo) =
+            if isHold moveObject
+            then Nothing
+            -- This move order goes from A to B where A /= B. We lookup the
+            -- resolutions at A assuming there is a hold order at B, and B
+            -- assuming there is a hold order at A.
+            -- If the actual (not assumed) order at B is a move which forms a
+            -- cycle with this one, then we check the resolutions in our
+            -- hypothetical cases in which the other move is a hold:
+            --   1. both successful -> 2 cycle failure unless convoyed
+            --   2. precisely one successful -> other is overpowered
+            --   3. both fail -> carry on
+            else case (M.lookup (Zone movingTo) resWhereIHold) of
+                Just (aunit1, SomeResolved (mo1@(MoveObject movingTo'), res1)) ->
+                    if Zone movingTo' /= zone
+                    then Nothing
+                    else case M.lookup zone resWhereTheyHold of
+                        Just (aunit2, SomeResolved (mo2@(MoveObject _), res2)) ->
+                            case (res1, res2) of
+                                (Nothing, Nothing) ->
+                                    if    not (null (moveSuccessfulConvoyRoutes (Zone movingTo) mo1))
+                                       || not (null (moveSuccessfulConvoyRoutes (Zone movingTo') mo2))
+                                    then Nothing
+                                    else Just (Move2Cycle aunit1)
+                                (Nothing, Just _) -> Nothing
+                                -- Other move of the 2-cycle succeeds, so the subject
+                                -- of this order would be dislodged; we just use
+                                -- MoveOverpowered.
+                                (Just _, Nothing) -> Just (MoveOverpowered (AtLeast (VCons (align (alignedThing aunit1, movingTo) (alignedGreatPower aunit1)) VNil) []))
+                                _ -> Nothing
+                        Nothing -> Nothing
+                      where
+                        resWhereTheyHold = resAssuming (Zone movingTo) (aunit1, SomeOrderObject (MoveObject movingTo)) res
+                _ -> Nothing
+          where
+            resWhereIHold = resAssuming zone (aunit, SomeOrderObject (MoveObject (zoneProvinceTarget zone))) res
+
+
+        -- A move is overpowered precisely when any of
         --
         --   1. it's not a hold and there is some other move into its target
         --      of strictly greater support (if that move is a hold, then we
         --      are careful to eliminate friendly support).
         --   2. it's a hold and there is some other move into its territory
         --      with strictly greater support from other great powers.
-        --
-        -- But is this complete? What about the offending move overpowered by
-        -- a hold because it has only friendly support?
-        -- Ok, that's setteld by filtering the local support appropriately.
-        --
-        -- Now, to unify with MoveBounced?? It's bounced when the incumbant
-        -- (failed exodus or hold) has equal support.
-        -- Would it make sense to place a failed exodus with 0 supports at the
-        -- head of supportedCompetingOrders?!? No, we wouldn't be able to
-        -- distinguish it from an attack. Aha, we could make it look like a
-        -- 0-support hold!
         moveOverpowered
             :: OrderObject Typical Move
             -> Maybe (FailureReason Typical Move)
@@ -535,44 +593,6 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                && not (null (moveParadoxConvoyRoutes zone moveObject))
             then Just MoveConvoyParadox
             else Nothing
-
-        -- TODO this should only fire in case both units are equally supported,
-        -- i.e. neither dominates the other... Indeed, what we want to say is
-        --   If this move is dislodged BY THE UNIT IN ITS TARGET PROVINCE
-        --   then it fails.
-        --   Must also use this notion when calculating support, since a move
-        --   with this property does not count as an offending move (cannot
-        --   cause a standoff in a province from which it was dislodged!).
-        --   But how to code that up without looping? Check if there's a move
-        --   from the contested zone to the supporting zone and then check its
-        --   resolution? Yeah, successfulExodus!
-        -- Yeah, and then we can leave 2-cycle where it is I think... hm, no
-        -- we still have to check supports. If one has more support, the other
-        -- fails and will be dislodged. Yes, the weaker one fails with 2-cycle,
-        -- but the stronged one succeeds!
-        -- Ok, so the rule is: if this is not a hold and lies in a 2-cycle with
-        -- a move of greater or equal support, then 2Cycle failure.
-        --
-        -- Note, in case one of the moves is bounced, 2-cycle won't fire on it
-        -- or its partner (partner will bounce off of it unless supported).
-        -- Yes, the only conditions under which 2-cycle fires is when each
-        -- move would succeed in absence of the other
-        move2Cycle
-            :: Zone
-            -> OrderObject Typical Move
-            -> Maybe (FailureReason Typical Move)
-        move2Cycle zone moveObject@(MoveObject movingTo) =
-            if isHold moveObject
-            then Nothing
-            else case M.lookup (Zone movingTo) res of
-                Just (aunit, SomeResolved (moveObject'@(MoveObject movingTo'), _)) ->
-                    if Zone movingTo' /= zone
-                    then Nothing
-                    else if    not (null (moveSuccessfulConvoyRoutes (Zone movingTo) moveObject'))
-                            || not (null (moveSuccessfulConvoyRoutes (Zone movingTo') moveObject))
-                         then Nothing
-                         else Just (Move2Cycle aunit)
-                _ -> Nothing
 
 
         -- *******
