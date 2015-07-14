@@ -96,6 +96,7 @@ tests = TestList [
     , sixE4
     , sixE5
     , sixE6
+    , sixE7
     , sixE15
     ]
 
@@ -1765,6 +1766,43 @@ sixE6 = (expectedResolution == testResolution expectedResolution) ~? "6.E.6"
 
         , (Zone (Normal Kiel), (align Army Austria, SomeResolved (SupportObject (Army, Normal Ruhr) (Normal Holland), Nothing)))
         , (Zone (Normal Ruhr), (align Army Austria, SomeResolved (MoveObject (Normal Holland), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal NorthSea) France) VNil) [])))))
+        ]
+
+-- 6.E.7. TEST CASE, NO SELF DISLODGEMENT WITH BELEAGUERED GARRISON
+--
+-- An attempt to self dislodgement can be combined with a beleaguered garrison. Such self dislodgment is still not possible.
+--
+-- England: 
+-- F North Sea Hold
+-- F Yorkshire Supports F Norway - North Sea
+--
+-- Germany: 
+-- F Holland Supports F Helgoland Bight - North Sea
+-- F Helgoland Bight - North Sea
+--
+-- Russia: 
+-- F Skagerrak Supports F Norway - North Sea
+-- F Norway - North Sea
+--
+-- Although the Russians beat the German attack (with the support of Yorkshire) and the two Russian fleets are enough to dislodge the fleet in the North Sea, the fleet in the North Sea is not dislodged, since it would not be dislodged if the English fleet in Yorkshire would not give support. According to the DPTG the fleet in the North Sea would be dislodged. The DPTG is incorrect in this case. 
+--
+-- Note: this showed a bug in the resolver! When judging a move with stationary
+-- incumbant, we compared foreign supports against the incumbant, but did not
+-- look at the competing moves! We must to ask, in this case, is this move
+-- still a dominator if we remove the stationary unit's friendly supports?
+-- Same goes for the case of a returning unit!
+sixE7 = (expectedResolution == testResolution expectedResolution) ~? "6.E.7"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal NorthSea), (align Fleet England, SomeResolved (MoveObject (Normal NorthSea), Nothing)))
+        , (Zone (Normal Yorkshire), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal Norway) (Normal NorthSea), Nothing)))
+
+        , (Zone (Normal Holland), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal HelgolandBright) (Normal NorthSea), Nothing)))
+        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Norway) Russia) VNil) [])))))
+
+        , (Zone (Normal Skagerrak), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal Norway) (Normal NorthSea), Nothing)))
+        , (Zone (Normal Norway), (align Fleet Russia, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal HelgolandBright) Germany) VNil) [])))))
         ]
 
 -- The friendly head-to-head battle.
