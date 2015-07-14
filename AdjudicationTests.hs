@@ -92,6 +92,10 @@ tests = TestList [
     , sixD34
     , sixE1
     , sixE2
+    , sixE3
+    , sixE4
+    , sixE5
+    , sixE6
     , sixE15
     ]
 
@@ -1584,6 +1588,7 @@ sixD34 = (validation == Just SupportSelf) ~? "6.D.34"
 --
 -- The army in Kiel will move to Berlin. 
 sixE1 = (expectedResolution == testResolution expectedResolution) ~? "6.E.1"
+--sixE1 = (expectedResolution, testResolution expectedResolution)
   where
 
     expectedResolution = M.fromList [
@@ -1613,6 +1618,153 @@ sixE2 = (expectedResolution == testResolution expectedResolution) ~? "6.E.2"
           (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Kiel), Just (Move2Cycle (align Fleet Germany)))))
         , (Zone (Normal Kiel), (align Fleet Germany, SomeResolved (MoveObject (Normal Berlin), Just (Move2Cycle (align Army Germany)))))
         , (Zone (Normal Munich), (align Army Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Kiel), Nothing)))
+        ]
+
+-- 6.E.3. TEST CASE, NO HELP IN DISLODGING OWN UNIT
+--
+-- To help a foreign power to dislodge own unit in head to head battle is not possible.
+--
+-- Germany: 
+-- A Berlin - Kiel
+-- A Munich Supports F Kiel - Berlin
+--
+-- England: 
+-- F Kiel - Berlin
+--
+-- No unit will move. 
+sixE3 = (expectedResolution == testResolution expectedResolution) ~? "6.E.3"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Kiel), Just (Move2Cycle (align Fleet England)))))
+        , (Zone (Normal Munich), (align Army Germany, SomeResolved (SupportObject (Fleet, Normal Kiel) (Normal Berlin), Nothing)))
+
+        , (Zone (Normal Kiel), (align Fleet England, SomeResolved (MoveObject (Normal Berlin), Just (Move2Cycle (align Army Germany)))))
+        ]
+
+-- 6.E.4. TEST CASE, NON-DISLODGED LOSER HAS STILL EFFECT
+--
+-- If in an unbalanced head to head battle the loser is not dislodged, it has still effect on the area of the attacker.
+--
+-- Germany: 
+-- F Holland - North Sea
+-- F Helgoland Bight Supports F Holland - North Sea
+-- F Skagerrak Supports F Holland - North Sea
+--
+-- France: 
+-- F North Sea - Holland
+-- F Belgium Supports F North Sea - Holland
+--
+-- England: 
+-- F Edinburgh Supports F Norwegian Sea - North Sea
+-- F Yorkshire Supports F Norwegian Sea - North Sea
+-- F Norwegian Sea - North Sea
+--
+-- Austria: 
+-- A Kiel Supports A Ruhr - Holland
+-- A Ruhr - Holland
+--
+-- The French fleet in the North Sea is not dislodged due to the beleaguered garrison. Therefore, the Austrian army in Ruhr will not move to Holland. 
+sixE4 = (expectedResolution == testResolution expectedResolution) ~? "6.E.4"
+--sixE4 = (expectedResolution, testResolution expectedResolution)
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Holland), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal NorwegianSea) England) VNil) [])))))
+        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Holland) (Normal NorthSea), Nothing)))
+        , (Zone (Normal Skagerrak), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Holland) (Normal NorthSea), Nothing)))
+
+        -- This is overpowered by the german move in the head-to-head. You
+        -- could also say it bounced off the Austrian army, but the resolver
+        -- always gives an overpowered over a bounced because it is, to put it
+        -- vaguely, more severe than a bounce, i.e. a more compelling reason
+        -- for failure of the move.
+        , (Zone (Normal NorthSea), (align Fleet France, SomeResolved (MoveObject (Normal Holland), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Holland) Germany) VNil) [])))))
+        , (Zone (Normal Belgium), (align Fleet France, SomeResolved (SupportObject (Fleet, Normal NorthSea) (Normal Holland), Nothing)))
+
+        , (Zone (Normal Edinburgh), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal NorwegianSea) (Normal NorthSea), Nothing)))
+        , (Zone (Normal Yorkshire), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal NorwegianSea) (Normal NorthSea), Nothing)))
+        , (Zone (Normal NorwegianSea), (align Fleet England, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Holland) Germany) VNil) [])))))
+
+        , (Zone (Normal Kiel), (align Army Austria, SomeResolved (SupportObject (Army, Normal Ruhr) (Normal Holland), Nothing)))
+        , (Zone (Normal Ruhr), (align Army Austria, SomeResolved (MoveObject (Normal Holland), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal NorthSea) France) VNil) [])))))
+        ]
+
+-- 6.E.5. TEST CASE, LOSER DISLODGED BY ANOTHER ARMY HAS STILL EFFECT
+--
+-- If in an unbalanced head to head battle the loser is dislodged by a unit not part of the head to head battle, the loser has still effect on the place of the winner of the head to head battle.
+--
+-- Germany: 
+-- F Holland - North Sea
+-- F Helgoland Bight Supports F Holland - North Sea
+-- F Skagerrak Supports F Holland - North Sea
+--
+-- France: 
+-- F North Sea - Holland
+-- F Belgium Supports F North Sea - Holland
+--
+-- England: 
+-- F Edinburgh Supports F Norwegian Sea - North Sea
+-- F Yorkshire Supports F Norwegian Sea - North Sea
+-- F Norwegian Sea - North Sea
+-- F London Supports F Norwegian Sea - North Sea
+--
+-- Austria: 
+-- A Kiel Supports A Ruhr - Holland
+-- A Ruhr - Holland
+--
+-- The French fleet in the North Sea is dislodged but not by the German fleet in Holland. Therefore, the French fleet can still prevent that the Austrian army in Ruhr will move to Holland. So, the Austrian move in Ruhr fails and the German fleet in Holland is not dislodged. 
+sixE5 = (expectedResolution == testResolution expectedResolution) ~? "6.E.5"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Holland), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal NorwegianSea) England) VNil) [])))))
+        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Holland) (Normal NorthSea), Nothing)))
+        , (Zone (Normal Skagerrak), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Holland) (Normal NorthSea), Nothing)))
+
+        , (Zone (Normal NorthSea), (align Fleet France, SomeResolved (MoveObject (Normal Holland), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Holland) Germany) VNil) [])))))
+        , (Zone (Normal Belgium), (align Fleet France, SomeResolved (SupportObject (Fleet, Normal NorthSea) (Normal Holland), Nothing)))
+
+        , (Zone (Normal Edinburgh), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal NorwegianSea) (Normal NorthSea), Nothing)))
+        , (Zone (Normal Yorkshire), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal NorwegianSea) (Normal NorthSea), Nothing)))
+        , (Zone (Normal NorwegianSea), (align Fleet England, SomeResolved (MoveObject (Normal NorthSea), Nothing)))
+        , (Zone (Normal London), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal NorwegianSea) (Normal NorthSea), Nothing)))
+
+        , (Zone (Normal Kiel), (align Army Austria, SomeResolved (SupportObject (Army, Normal Ruhr) (Normal Holland), Nothing)))
+        , (Zone (Normal Ruhr), (align Army Austria, SomeResolved (MoveObject (Normal Holland), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal NorthSea) France) VNil) [])))))
+        ]
+
+-- 6.E.6. TEST CASE, NOT DISLODGE BECAUSE OF OWN SUPPORT HAS STILL EFFECT
+--
+-- If in an unbalanced head to head battle the loser is not dislodged because the winner had help of a unit of the loser, the loser has still effect on the area of the winner.
+--
+-- Germany: 
+-- F Holland - North Sea
+-- F Helgoland Bight Supports F Holland - North Sea
+--
+-- France: 
+-- F North Sea - Holland
+-- F Belgium Supports F North Sea - Holland
+-- F English Channel Supports F Holland - North Sea
+--
+-- Austria: 
+-- A Kiel Supports A Ruhr - Holland
+-- A Ruhr - Holland
+--
+-- Although the German force from Holland to North Sea is one larger than the French force from North Sea to Holland, the French fleet in the North Sea is not dislodged, because one of the supports on the German movement is French. Therefore, the Austrian army in Ruhr will not move to Holland. 
+sixE6 = (expectedResolution == testResolution expectedResolution) ~? "6.E.6"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Holland), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal NorthSea) France) VNil) [])))))
+        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Holland) (Normal NorthSea), Nothing)))
+
+        , (Zone (Normal NorthSea), (align Fleet France, SomeResolved (MoveObject (Normal Holland), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Ruhr) Austria) VNil) [])))))
+        , (Zone (Normal Belgium), (align Fleet France, SomeResolved (SupportObject (Fleet, Normal NorthSea) (Normal Holland), Nothing)))
+        , (Zone (Normal EnglishChannel), (align Fleet France, SomeResolved (SupportObject (Fleet, Normal Holland) (Normal NorthSea), Nothing)))
+
+        , (Zone (Normal Kiel), (align Army Austria, SomeResolved (SupportObject (Army, Normal Ruhr) (Normal Holland), Nothing)))
+        , (Zone (Normal Ruhr), (align Army Austria, SomeResolved (MoveObject (Normal Holland), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal NorthSea) France) VNil) [])))))
         ]
 
 -- The friendly head-to-head battle.
