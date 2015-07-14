@@ -238,7 +238,7 @@ isMoveDislodgedFromAttackedZone resolution zoneFrom (aunit, object) = case thisC
 -- | Relative to a Zone (given only by context, unfortunately). Each entry means
 --   there is a move from that zone by that unit belonging to that great power
 --   against the implicit Zone.
-type CompetingMoves = [Aligned Subject]
+type CompetingMoves = [(Aligned Subject, ProvinceTarget)]
 
 -- | Get the competing moves (enough information to reconstruct them) against
 --   a move from one zone to another. Yes, they're only moves; a hold, support,
@@ -253,8 +253,8 @@ competingMoves resolution zoneFrom zoneTo = M.foldWithKey selector [] resolution
     selector
         :: Zone
         -> (Aligned Unit, SomeResolved OrderObject Typical)
-        -> [Aligned Subject]
-        -> [Aligned Subject]
+        -> CompetingMoves
+        -> CompetingMoves
     selector zone (aunit, SomeResolved (object, _)) b = case object of
         MoveObject movingTo ->
             if    zone == zoneFrom
@@ -264,7 +264,9 @@ competingMoves resolution zoneFrom zoneTo = M.foldWithKey selector [] resolution
                -- from which it was dislodged.
                || isMoveDislodgedFromAttackedZone resolution zone (aunit, object)
             then b
-            else (align (alignedThing aunit, zoneProvinceTarget zone) (alignedGreatPower aunit)) : b
+            else let subject = (alignedThing aunit, zoneProvinceTarget zone)
+                     asubject = align subject (alignedGreatPower aunit)
+                 in  (asubject, movingTo) : b
           where
             thisClassification = classify resolution zone (aunit, object)
         _ -> b
@@ -303,7 +305,7 @@ data Incumbant
     --   one unit must advance through the opposite advance of the other.
     --   Compare at returning moves, in which the returning unit cannot have
     --   any support for its return.
-    | ReturningMove (Aligned Subject)
+    | ReturningMove (Aligned Subject) ProvinceTarget
     -- ^ Only if the move fails (could be complementary).
     | Stationary (Aligned Subject)
     -- ^ Here we give a subject because the ProvinceTarget is NOT implicit.
@@ -352,10 +354,9 @@ incumbant resolution zoneFrom zoneTo = case lookupWithKey zoneTo (assume zoneFro
             then case resolved of
                 Nothing -> ComplementaryMove WouldSucceed (align (alignedThing aunit, zoneProvinceTarget zoneTo') (alignedGreatPower aunit)) pt
                 Just _ -> ComplementaryMove WouldNotSucceed (align (alignedThing aunit, zoneProvinceTarget zoneTo') (alignedGreatPower aunit)) pt
-                --Just _ -> ReturningMove (align (alignedThing aunit, pt) (alignedGreatPower aunit))
             else case resolved of
                 Nothing -> NoIncumbant
-                Just _ -> ReturningMove (align (alignedThing aunit, pt) (alignedGreatPower aunit))
+                Just _ -> ReturningMove (align (alignedThing aunit, pt) (alignedGreatPower aunit)) (zoneProvinceTarget zoneTo')
         _ -> Stationary (align (alignedThing aunit, zoneProvinceTarget zoneTo') (alignedGreatPower aunit))
     _ -> NoIncumbant
 
@@ -564,18 +565,18 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                 dominator = case sortedOpposingSupports of
                     [] -> Nothing
                     [x] -> Just x
-                    x : y : _ -> if snd x > snd y
+                    x : y : _ -> if length (snd x) > length (snd y)
                                  then Just x
                                  else Nothing
                 sortedOpposingSupports = sortBy comparator opposingSupports
                 comparator :: (Aligned Subject, Supports) -> (Aligned Subject, Supports) -> Ordering
                 comparator (_, xs) (_, ys) = Down (length xs) `compare` Down (length ys)
                 opposingSupports :: [(Aligned Subject, Supports)]
-                opposingSupports = fmap (\x -> (x, calculateOpposingSupports x)) foreignCompetingMoves
-                calculateOpposingSupports :: (Aligned Subject) -> Supports
-                calculateOpposingSupports asubj = foreignSupport res (alignedGreatPower aunit) (alignedThing asubj) (zoneProvinceTarget zone)
+                opposingSupports = fmap (\x -> (fst x, calculateOpposingSupports x)) foreignCompetingMoves
+                calculateOpposingSupports :: (Aligned Subject, ProvinceTarget) -> Supports
+                calculateOpposingSupports (asubj, pt) = foreignSupport res (alignedGreatPower aunit) (alignedThing asubj) pt
                 foreignCompetingMoves :: CompetingMoves
-                foreignCompetingMoves = filter (\asubj -> alignedGreatPower asubj /= alignedGreatPower aunit) theseCompetingMoves
+                foreignCompetingMoves = filter (\(asubj, _) -> alignedGreatPower asubj /= alignedGreatPower aunit) theseCompetingMoves
                 thisSupports :: Supports
                 thisSupports = support res (alignedThing aunit, zoneProvinceTarget zone) (zoneProvinceTarget zone)
 
@@ -622,9 +623,9 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                     comparator :: (Aligned Subject, Supports) -> (Aligned Subject, Supports) -> Ordering
                     comparator (_, xs) (_, ys) = Down (length xs) `compare` Down (length ys)
                     opposingSupports :: [(Aligned Subject, Supports)]
-                    opposingSupports = fmap (\x -> (x, calculateOpposingSupports x)) theseCompetingMoves
-                    calculateOpposingSupports :: Aligned Subject -> Supports
-                    calculateOpposingSupports asubj = support res (alignedThing asubj) (moveTarget moveObject)
+                    opposingSupports = fmap (\x -> (fst x, calculateOpposingSupports x)) theseCompetingMoves
+                    calculateOpposingSupports :: (Aligned Subject, ProvinceTarget) -> Supports
+                    calculateOpposingSupports (asubj, pt) = support res (alignedThing asubj) pt
                     thisSupports :: Supports
                     thisSupports = support res (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
 
@@ -633,36 +634,70 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
 
                     NoIncumbant -> Nothing
 
-                    -- Stationary: fail iff that unit is not foreign, or if
-                    -- this move has insufficient foreign support.
-                    Stationary asubj ->
-                        if length opposingSupports == length thisSupports
-                        then Just (MoveBounced (AtLeast (VCons asubj VNil) []))
-                        else if length opposingSupports > length thisSupports
-                        then Just (MoveOverpowered (AtLeast (VCons asubj VNil) []))
-                        else if opposingPower == thisPower
-                        then Just (MoveFriendlyDislodge (alignedThing aunit))
-                        else Nothing
+                    -- Stationary: fail if this move (which threatens to
+                    -- dislodge the stationary unit) does not dominate the
+                    -- zone WITHOUT support from the stationary unit's great
+                    -- power, or if that unit is not foreign
+                    -- (MoveFiendlyDislodge).
+                    Stationary asubj -> case sortedOpposingSupports of
+                        [] -> Nothing -- Actually impossible.
+                        ((x, ss) : xs) ->
+                            if length ss == length thisSupports
+                            then Just (MoveBounced (AtLeast (VCons x VNil) equallySupported))
+                            else if length ss > length thisSupports
+                            then Just (MoveOverpowered (AtLeast (VCons x VNil) equallySupported))
+                            else if opposingPower == thisPower
+                            then Just (MoveFriendlyDislodge (alignedThing aunit))
+                            else Nothing
+                          where
+                            equallySupported = fmap fst (filter (\(x, ss') -> length ss' == length ss) xs)
                       where
-                        opposingSupports :: Supports
-                        opposingSupports = support res opposingSubject (moveTarget moveObject)
                         thisSupports :: Supports
                         thisSupports = foreignSupport res opposingPower (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
+                        sortedOpposingSupports = sortBy comparator opposingSupports
+                        comparator :: (Aligned Subject, Supports) -> (Aligned Subject, Supports) -> Ordering
+                        comparator (_, xs) (_, ys) = Down (length xs) `compare` Down (length ys)
+                        opposingSupports :: [(Aligned Subject, Supports)]
+                        opposingSupports = fmap (\x -> (fst x, calculateOpposingSupports x)) theseCompetingMovesWithStationary
+                        calculateOpposingSupports :: (Aligned Subject, ProvinceTarget) -> Supports
+                        calculateOpposingSupports (asubj, pt) = support res (alignedThing asubj) pt
+                        theseCompetingMovesWithStationary = (asubj, subjectProvinceTarget thisSubject) : theseCompetingMoves
                         opposingSubject = alignedThing asubj
                         opposingPower = alignedGreatPower asubj
                         thisPower = alignedGreatPower aunit
+                        thisSubject = alignedThing asubj
 
-                    -- Returning: fail iff that unit is not foreign, or if
-                    -- this move has 0 foreign support.
-                    ReturningMove asubj ->
-                        if length thisSupports == 0
-                        then Just (MoveBounced (AtLeast (VCons (align (opposingUnit, moveTarget moveObject) (alignedGreatPower asubj)) VNil) []))
-                        else if opposingPower == thisPower
-                        then Just (MoveFriendlyDislodge (subjectUnit (alignedThing asubj)))
-                        else Nothing
+                    -- Returning: fail if this move (which threatens to
+                    -- dislodge the returning unit) does not dominate the
+                    -- zone WITHOUT support from the returning unit's great
+                    -- power, or if that unit is not foreign
+                    -- (MoveFiendlyDislodge).
+                    ReturningMove asubj pt -> case sortedOpposingSupports of
+                        [] -> Nothing -- Actually impossible
+                        ((x, ss) : xs) ->
+                            if length ss == length thisSupports
+                            then Just (MoveBounced (AtLeast (VCons x VNil) equallySupported))
+                            else if length ss > length thisSupports
+                            then Just (MoveOverpowered (AtLeast (VCons x VNil) equallySupported))
+                            else if opposingPower == thisPower
+                            then Just (MoveFriendlyDislodge (subjectUnit (alignedThing asubj)))
+                            else Nothing
+                          where
+                            equallySupported = fmap fst (filter (\(x, ss') -> length ss' == length ss) xs)
                       where
                         thisSupports :: Supports
                         thisSupports = foreignSupport res (alignedGreatPower asubj) (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
+                        -- We add the returning move with no supports, making
+                        -- it look like it was a hold, so that if a move bounces
+                        -- off a returning move, it's indicated by the origin
+                        -- of the returning move, rather than its destination.
+                        sortedOpposingSupports = sortBy comparator ((align (opposingUnit, pt) opposingPower, []) : opposingSupports)
+                        comparator :: (Aligned Subject, Supports) -> (Aligned Subject, Supports) -> Ordering
+                        comparator (_, xs) (_, ys) = Down (length xs) `compare` Down (length ys)
+                        opposingSupports :: [(Aligned Subject, Supports)]
+                        opposingSupports = fmap (\x -> (fst x, calculateOpposingSupports x)) theseCompetingMoves
+                        calculateOpposingSupports :: (Aligned Subject, ProvinceTarget) -> Supports
+                        calculateOpposingSupports (asubj, pt) = support res (alignedThing asubj) pt
                         opposingSubject = alignedThing asubj
                         opposingUnit = subjectUnit opposingSubject
                         opposingPower = alignedGreatPower asubj
