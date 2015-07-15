@@ -33,14 +33,13 @@ module Diplomacy.OrderResolution (
   , TypicalResolution
   , typicalResolution
 
-  , classify
-
   ) where
 
 import Data.Typeable
 import Data.Ord
 import Data.List
 import Data.Monoid
+import Data.Either
 import Data.Maybe
 import Data.AtLeast
 import Data.TypeNat.Nat
@@ -134,12 +133,74 @@ import Debug.Trace
 
 type TypicalResolution = M.Map Zone (Aligned Unit, SomeResolved OrderObject Typical)
 
+-- Left means assumed resolution, right means no resolution assumed.
+type TypicalResolutionInput
+    = M.Map Zone (Aligned Unit, Either (SomeResolved OrderObject Typical) (SomeOrderObject Typical))
+
+-- We preserve the tagging of assumptions in the resolution output, to
+-- facilitate the recursive "piling up" of assumptions.
+type TypicalResolutionOutput
+    = M.Map Zone (Aligned Unit, Either (SomeResolved OrderObject Typical) (SomeResolved OrderObject Typical))
+
+-- Use an output as an input by dropping the resolutions of all non-assumptions.
+preserveAssumptions :: TypicalResolutionOutput -> TypicalResolutionInput
+preserveAssumptions = M.map makeInput
+  where
+    makeInput (aunit, x) = case x of
+        Left y -> (aunit, Left y)
+        Right (SomeResolved (x, _)) -> (aunit, Right $ SomeOrderObject x)
+
+dropAssumptionTags :: TypicalResolutionOutput -> TypicalResolution
+dropAssumptionTags = M.map dropTag
+  where
+    dropTag (aunit, x) = case x of
+        Left y -> (aunit, y)
+        Right y -> (aunit, y)
+
+typicalResolutionAssuming
+    :: TypicalResolutionInput
+    -> TypicalResolutionOutput
+typicalResolutionAssuming input =
+    let resolution = M.mapWithKey (resolveOne resolution) input
+    in  resolution
+  where
+    resolveOne
+        :: TypicalResolutionOutput
+        -> Zone
+        -> (Aligned Unit, Either (SomeResolved OrderObject Typical) (SomeOrderObject Typical))
+        -> (Aligned Unit, Either (SomeResolved OrderObject Typical) (SomeResolved OrderObject Typical))
+    resolveOne resolution zone (aunit, x) = case x of
+        Left y -> (aunit, Left y)
+        Right y -> (aunit, Right (resolveSomeOrderTypical resolution zone (aunit, y)))
+
+assumeNoOrder
+    :: Zone
+    -> TypicalResolutionInput
+    -> TypicalResolutionInput
+assumeNoOrder = M.alter (const Nothing)
+
+assumeSucceeds
+    :: Zone
+    -> TypicalResolutionInput
+    -> TypicalResolutionInput
+assumeSucceeds zone = M.adjust makeSucceeds zone
+  where
+    makeSucceeds
+        :: (Aligned Unit, Either (SomeResolved OrderObject Typical) (SomeOrderObject Typical))
+        -> (Aligned Unit, Either (SomeResolved OrderObject Typical) (SomeOrderObject Typical))
+    makeSucceeds (aunit, x) = case x of
+        Left (SomeResolved (x, _)) -> (aunit, Left (SomeResolved (x, Nothing)))
+        Right (SomeOrderObject x) -> (aunit, Left (SomeResolved (x, Nothing)))
+
+noAssumptions
+    :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
+    -> TypicalResolutionInput
+noAssumptions = M.map (\(x, y) -> (x, Right y))
+
 typicalResolution
     :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
     -> TypicalResolution
-typicalResolution input =
-    let res = M.mapWithKey (resolveSomeOrderTypical res) input
-    in  res
+typicalResolution = dropAssumptionTags . typicalResolutionAssuming . noAssumptions
 
 data RequiresConvoy
     = RequiresConvoy
@@ -176,8 +237,8 @@ type Supports = [Aligned Subject]
 -- | Given a Subject and a ProvinceTarget, meaning Subject attempting to move to
 --   that ProvinceTarget (or support/convoy/hold in case it's the same as the
 --   Subject's), calculate the supporters of that order.
-support :: TypicalResolution -> Subject -> ProvinceTarget -> Supports
-support resolution subject goingTo = M.foldWithKey selector [] resolution
+support :: TypicalResolutionOutput -> Subject -> ProvinceTarget -> Supports
+support resolution subject goingTo = M.foldWithKey selector [] (dropAssumptionTags resolution)
   where
     selector
         :: Zone
@@ -195,7 +256,7 @@ support resolution subject goingTo = M.foldWithKey selector [] resolution
         _ -> b
 
 foreignSupport
-    :: TypicalResolution
+    :: TypicalResolutionOutput
     -> GreatPower
     -> Subject
     -> ProvinceTarget
@@ -209,7 +270,7 @@ foreignSupport resolution power subject goingTo =
 -- is that the classification doesn't contain the zone or great power for which
 -- it's relevant :(
 isMoveDislodgedFromAttackedZone
-    :: TypicalResolution
+    :: TypicalResolutionOutput
     -> Zone
     -> (Aligned Unit, OrderObject Typical Move)
     -> Bool
@@ -244,12 +305,25 @@ type CompetingMoves = [(Aligned Subject, ProvinceTarget)]
 --   a move from one zone to another. Yes, they're only moves; a hold, support,
 --   or convoy at the target zone is not included.
 competingMoves
-    :: TypicalResolution
+    :: TypicalResolutionOutput
     -> Zone
     -> Zone
     -> CompetingMoves
-competingMoves resolution zoneFrom zoneTo = M.foldWithKey selector [] resolution
+competingMoves resolution zoneFrom zoneTo = M.foldWithKey selector [] (dropAssumptionTags resolution')
   where
+    -- It is ESSENTIAL that we forget about the order at THIS zone when we
+    -- compute the competing moves. If we don't, the program may not terminate.
+    -- For example:
+    --
+    --   1. F North Sea -> Holland
+    --   2. F Holland -> North Sea
+    --   3. F Norwegian Sea -> North Sea
+    --   4. F Ruhr -> Holland
+    --
+    -- To compute the competing moves for 4, we must classify 1 to get the
+    -- incumbant, so we must resolve 2, which requires classifying 3, which
+    -- in turn demands that we resolve 1, of which 4 is a competing move!
+    resolution' = M.delete zoneFrom resolution
     selector
         :: Zone
         -> (Aligned Unit, SomeResolved OrderObject Typical)
@@ -262,30 +336,14 @@ competingMoves resolution zoneFrom zoneTo = M.foldWithKey selector [] resolution
                || isConvoyMoveWithNoConvoyRoute thisClassification
                -- A dislodged unit cannot cause a standoff in the province
                -- from which it was dislodged.
-               || isMoveDislodgedFromAttackedZone resolution zone (aunit, object)
+               || isMoveDislodgedFromAttackedZone resolution' zone (aunit, object)
             then b
             else let subject = (alignedThing aunit, zoneProvinceTarget zone)
                      asubject = align subject (alignedGreatPower aunit)
                  in  (asubject, movingTo) : b
           where
-            thisClassification = classify resolution zone (aunit, object)
+            thisClassification = classify resolution' zone (aunit, object)
         _ -> b
-
-assume
-    :: Zone
-    -> Maybe (Aligned Unit, SomeOrderObject Typical)
-    -> TypicalResolution
-    -> TypicalResolution
-assume zone v = typicalResolution . (M.alter (const v) zone) . retract
-  where
-    retract
-        :: TypicalResolution
-        -> M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-    retract =
-        M.map
-          (\(aunit, SomeResolved (object, _)) ->
-            (aunit, SomeOrderObject object)
-          )
 
 data WouldSucceed
     = WouldSucceed
@@ -334,15 +392,15 @@ lookupWithKey k m =
     in fmap (\x -> (k', x)) v
 
 incumbant
-    :: TypicalResolution
+    :: TypicalResolutionOutput
     -> Zone
     -> Zone
     -> Incumbant
-incumbant resolution zoneFrom zoneTo = case lookupWithKey zoneTo (assume zoneFrom Nothing resolution) of
+incumbant resolution zoneFrom zoneTo = case lookupWithKey zoneTo resolution' of
     -- We lookupWithKey because the actual ProvinceTarget where the incumbant
     -- lies may not be ProvinceTarget-equal with the ProvinceTarget in the
     -- Zone which we used to index the map!
-    Just (zoneTo', (aunit, SomeResolved (object, resolved))) -> case object of
+    Just (zoneTo', (aunit, SomeResolved (object, res))) -> case object of
         MoveObject pt ->
             if Zone pt == zoneTo
             then Stationary (align (alignedThing aunit, zoneProvinceTarget zoneTo') (alignedGreatPower aunit))
@@ -351,14 +409,17 @@ incumbant resolution zoneFrom zoneTo = case lookupWithKey zoneTo (assume zoneFro
             -- of any move at zoneFrom) then we call it complementary; the
             -- actual resolution of the move at zoneFrom may change this
             -- outcome! If it fails, we'll just treat it like a returning move.
-            then case resolved of
+            then case res of
                 Nothing -> ComplementaryMove WouldSucceed (align (alignedThing aunit, zoneProvinceTarget zoneTo') (alignedGreatPower aunit)) pt
                 Just _ -> ComplementaryMove WouldNotSucceed (align (alignedThing aunit, zoneProvinceTarget zoneTo') (alignedGreatPower aunit)) pt
-            else case resolved of
+            else case res of
                 Nothing -> NoIncumbant
                 Just _ -> ReturningMove (align (alignedThing aunit, pt) (alignedGreatPower aunit)) (zoneProvinceTarget zoneTo')
         _ -> Stationary (align (alignedThing aunit, zoneProvinceTarget zoneTo') (alignedGreatPower aunit))
     _ -> NoIncumbant
+  where
+    resolutionThisSucceeds = typicalResolutionAssuming (assumeSucceeds zoneFrom (preserveAssumptions resolution))
+    resolution' = dropAssumptionTags resolutionThisSucceeds
 
 data MoveClassification
     = Hold CompetingMoves
@@ -366,7 +427,7 @@ data MoveClassification
     deriving (Show)
 
 classify
-    :: TypicalResolution
+    :: TypicalResolutionOutput
     -> Zone
     -> (Aligned Unit, OrderObject Typical Move)
     -> MoveClassification
@@ -386,7 +447,7 @@ classify resolution zone (aunit, MoveObject movingTo) =
     -- In non hold we would do this for competing moves, but for the incumbant
     -- if there is one.
     holdCompetingMoves
-        :: TypicalResolution
+        :: TypicalResolutionOutput
         -> Zone
         -> Zone
         -> CompetingMoves
@@ -395,7 +456,7 @@ classify resolution zone (aunit, MoveObject movingTo) =
         theseCompetingMoves = competingMoves resolution zoneFrom zoneTo
 
     classifyNonHold
-        :: TypicalResolution
+        :: TypicalResolutionOutput
         -> Aligned Subject
         -> ProvinceTarget
         -> MoveClassification
@@ -423,11 +484,11 @@ classify resolution zone (aunit, MoveObject movingTo) =
 --   composese the route) as well as an indication of whether it was
 --   dislodged (Just means it was dislodged by that subject).
 rawConvoyRoutes
-    :: TypicalResolution
+    :: TypicalResolutionOutput
     -> Subject
     -> ProvinceTarget
     -> [ConvoyRoute]
-rawConvoyRoutes resolution (unit, ptFrom) ptTo = do
+rawConvoyRoutes resolution' (unit, ptFrom) ptTo = do
     let pool = viableConvoyZones
     let starters = filter isStarter pool
     s <- starters
@@ -435,6 +496,8 @@ rawConvoyRoutes resolution (unit, ptFrom) ptTo = do
     (fmap . fmap) tagWithChange routes
 
   where
+
+    resolution = dropAssumptionTags resolution'
 
     tagWithChange :: Zone -> (Zone, Maybe (Aligned Subject))
     tagWithChange zone = (zone, change resolution zone)
@@ -470,7 +533,7 @@ rawConvoyRoutes resolution (unit, ptFrom) ptTo = do
                 fmap ((:) zone) (paths shrunkenPool target n)
 
 convoyRoutes
-    :: TypicalResolution
+    :: TypicalResolutionOutput
     -> Subject
     -> ProvinceTarget
     -> ConvoyRoutes
@@ -482,7 +545,7 @@ convoyRoutes resolution subject pt =
 -- | Identify convoy routes which are paradox-inducing; those routes whose
 --   success is contingent upon the success of the move which they convoy!
 isParadoxRoute
-    :: TypicalResolution
+    :: TypicalResolutionOutput
     -> ProvinceTarget -- ^ The destination of the route.
     -> [(Zone, Maybe (Aligned Subject))]
     -> Bool
@@ -494,17 +557,17 @@ isParadoxRoute resolution destination =
 --   support, it will turn up in this. However it must also support an attack
 --   against a convoying fleet in some route.
 paradoxInducingSupport
-    :: TypicalResolution
+    :: TypicalResolutionOutput
     -> Zone -- ^ The destination of a convoy route.
     -> Maybe (OrderObject Typical Support)
 paradoxInducingSupport resolution zone =
-    case M.lookup zone resolution of
+    case M.lookup zone (dropAssumptionTags resolution) of
         Just (aunit, SomeResolved (s@(SupportObject _ _), _)) -> Just s
         _ -> Nothing
 
 -- | If Just, then any convoy route which includes this Zone is a paradox route
 paradoxInducingConvoyZone
-    :: TypicalResolution
+    :: TypicalResolutionOutput
     -> Zone -- ^ Destination of convoy.
     -> Maybe Zone
 paradoxInducingConvoyZone resolution =
@@ -517,16 +580,15 @@ successfulConvoyRoutes =
   where
     isSuccessful = all (isNothing . snd)
 
-
 resolveSomeOrderTypical
-    :: TypicalResolution
+    :: TypicalResolutionOutput
     -> Zone
     -> (Aligned Unit, SomeOrderObject Typical)
-    -> (Aligned Unit, SomeResolved OrderObject Typical)
-resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
+    -> SomeResolved OrderObject Typical
+resolveSomeOrderTypical resolution zone (aunit, SomeOrderObject object) =
 
-    let resolution :: SomeResolved OrderObject Typical
-        resolution = case object of
+    let thisResolution :: SomeResolved OrderObject Typical
+        thisResolution = case object of
             MoveObject _ -> SomeResolved (object, resolveMove object)
             SupportObject _ _ -> SomeResolved (object, resolveSupport object)
             ConvoyObject _ _ -> SomeResolved (object, resolveConvoy object)
@@ -548,7 +610,7 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
         --   at its target.
         --   MoveFriendlyDislodge : the move would dislodge a friendly unit.
         resolveMove :: OrderObject Typical Move -> Maybe (FailureReason Typical Move)
-        resolveMove moveObject = case classify res zone (aunit, moveObject) of
+        resolveMove moveObject = case classify resolution zone (aunit, moveObject) of
 
             -- A hold is easy: it fails iff there is a foreign move with more
             -- foreign support than it.
@@ -572,11 +634,11 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                 opposingSupports :: [(Aligned Subject, Supports)]
                 opposingSupports = fmap (\x -> (fst x, calculateOpposingSupports x)) foreignCompetingMoves
                 calculateOpposingSupports :: (Aligned Subject, ProvinceTarget) -> Supports
-                calculateOpposingSupports (asubj, pt) = foreignSupport res (alignedGreatPower aunit) (alignedThing asubj) pt
+                calculateOpposingSupports (asubj, pt) = foreignSupport resolution (alignedGreatPower aunit) (alignedThing asubj) pt
                 foreignCompetingMoves :: CompetingMoves
                 foreignCompetingMoves = filter (\(asubj, _) -> alignedGreatPower asubj /= alignedGreatPower aunit) theseCompetingMoves
                 thisSupports :: Supports
-                thisSupports = support res (alignedThing aunit, zoneProvinceTarget zone) (zoneProvinceTarget zone)
+                thisSupports = support resolution (alignedThing aunit, zoneProvinceTarget zone) (zoneProvinceTarget zone)
 
 
             -- For a non hold:
@@ -623,9 +685,9 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                     opposingSupports :: [(Aligned Subject, Supports)]
                     opposingSupports = fmap (\x -> (fst x, calculateOpposingSupports x)) theseCompetingMoves
                     calculateOpposingSupports :: (Aligned Subject, ProvinceTarget) -> Supports
-                    calculateOpposingSupports (asubj, pt) = support res (alignedThing asubj) pt
+                    calculateOpposingSupports (asubj, pt) = support resolution (alignedThing asubj) pt
                     thisSupports :: Supports
-                    thisSupports = support res (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
+                    thisSupports = support resolution (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
 
 
                 checkIncumbant = case thisIncumbant of
@@ -651,14 +713,14 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                             equallySupported = fmap fst (filter (\(x, ss') -> length ss' == length ss) xs)
                       where
                         thisSupports :: Supports
-                        thisSupports = foreignSupport res opposingPower (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
+                        thisSupports = foreignSupport resolution opposingPower (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
                         sortedOpposingSupports = sortBy comparator opposingSupports
                         comparator :: (Aligned Subject, Supports) -> (Aligned Subject, Supports) -> Ordering
                         comparator (_, xs) (_, ys) = Down (length xs) `compare` Down (length ys)
                         opposingSupports :: [(Aligned Subject, Supports)]
                         opposingSupports = fmap (\x -> (fst x, calculateOpposingSupports x)) theseCompetingMovesWithStationary
                         calculateOpposingSupports :: (Aligned Subject, ProvinceTarget) -> Supports
-                        calculateOpposingSupports (asubj, pt) = support res (alignedThing asubj) pt
+                        calculateOpposingSupports (asubj, pt) = support resolution (alignedThing asubj) pt
                         theseCompetingMovesWithStationary = (asubj, subjectProvinceTarget thisSubject) : theseCompetingMoves
                         opposingSubject = alignedThing asubj
                         opposingPower = alignedGreatPower asubj
@@ -684,7 +746,7 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                             equallySupported = fmap fst (filter (\(x, ss') -> length ss' == length ss) xs)
                       where
                         thisSupports :: Supports
-                        thisSupports = foreignSupport res (alignedGreatPower asubj) (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
+                        thisSupports = foreignSupport resolution (alignedGreatPower asubj) (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
                         -- We add the returning move with no supports, making
                         -- it look like it was a hold, so that if a move bounces
                         -- off a returning move, it's indicated by the origin
@@ -695,7 +757,7 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                         opposingSupports :: [(Aligned Subject, Supports)]
                         opposingSupports = fmap (\x -> (fst x, calculateOpposingSupports x)) theseCompetingMoves
                         calculateOpposingSupports :: (Aligned Subject, ProvinceTarget) -> Supports
-                        calculateOpposingSupports (asubj, pt) = support res (alignedThing asubj) pt
+                        calculateOpposingSupports (asubj, pt) = support resolution (alignedThing asubj) pt
                         opposingSubject = alignedThing asubj
                         opposingUnit = subjectUnit opposingSubject
                         opposingPower = alignedGreatPower asubj
@@ -724,11 +786,11 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                         opposingSupports :: [(Aligned Subject, Supports)]
                         opposingSupports = fmap (\x -> (fst x, calculateOpposingSupports x)) theseCompetingMoves
                         calculateOpposingSupports :: (Aligned Subject, ProvinceTarget) -> Supports
-                        calculateOpposingSupports (asubj, pt) = support res (alignedThing asubj) pt
+                        calculateOpposingSupports (asubj, pt) = support resolution (alignedThing asubj) pt
                         complementarySupports :: Supports
-                        complementarySupports = foreignSupport res thisPower opposingSubject target
+                        complementarySupports = foreignSupport resolution thisPower opposingSubject target
                         thisSupports :: Supports
-                        thisSupports = foreignSupport res opposingPower (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
+                        thisSupports = foreignSupport resolution opposingPower (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
                         opposingPower = alignedGreatPower asubj
                         opposingSubject = alignedThing asubj
                         opposingUnit = subjectUnit opposingSubject
@@ -760,17 +822,17 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                         opposingSupports :: [(Aligned Subject, Supports)]
                         opposingSupports = fmap (\x -> (fst x, calculateOpposingSupports x)) theseCompetingMoves
                         calculateOpposingSupports :: (Aligned Subject, ProvinceTarget) -> Supports
-                        calculateOpposingSupports (asubj, pt) = support res (alignedThing asubj) pt
+                        calculateOpposingSupports (asubj, pt) = support resolution (alignedThing asubj) pt
                         complementarySupports :: Supports
-                        complementarySupports = foreignSupport res thisPower opposingSubject target
+                        complementarySupports = foreignSupport resolution thisPower opposingSubject target
                         thisSupports :: Supports
-                        thisSupports = foreignSupport res opposingPower (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
+                        thisSupports = foreignSupport resolution opposingPower (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
                         opposingSuccessfulConvoyRoutes :: [ConvoyRoute]
                         opposingSuccessfulConvoyRoutes = successfulConvoyRoutes opposingConvoyRoutes
                         thisSuccessfulConvoyRoutes :: [ConvoyRoute]
                         thisSuccessfulConvoyRoutes = successfulConvoyRoutes theseConvoyRoutes
                         opposingConvoyRoutes :: ConvoyRoutes
-                        opposingConvoyRoutes = convoyRoutes res opposingSubject target
+                        opposingConvoyRoutes = convoyRoutes resolution opposingSubject target
                         opposingPower = alignedGreatPower asubj
                         opposingSubject = alignedThing asubj
                         opposingUnit = subjectUnit opposingSubject
@@ -800,7 +862,7 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
             :: OrderObject Typical Support
             -> Maybe (FailureReason Typical Support)
         supportVoid (SupportObject supportingSubject supportingTo) =
-            case M.lookup supportingFrom res of
+            case M.lookup supportingFrom (dropAssumptionTags resolution) of
                 Nothing -> Just SupportVoid
                 Just (aunit, SomeResolved (object, _)) ->
                     if    supportingUnit == alignedThing aunit
@@ -877,7 +939,7 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
             supportingFrom = zone
 
             offendingMoves :: [Aligned Subject]
-            offendingMoves = M.elems (M.mapMaybeWithKey pickOffendingMove res)
+            offendingMoves = M.elems (M.mapMaybeWithKey pickOffendingMove (dropAssumptionTags resolution))
 
             pickOffendingMove
                 :: Zone
@@ -892,13 +954,13 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                         then Just $ align (alignedThing aunit', zoneProvinceTarget zone) (alignedGreatPower aunit')
                         else Nothing
                       where
-                        thisClassification = classify res zone (aunit', object)
+                        thisClassification = classify resolution zone (aunit', object)
                     _ -> Nothing
 
         supportDislodged
             :: OrderObject Typical Support
             -> Maybe (FailureReason Typical Support)
-        supportDislodged _ = case change res zone of
+        supportDislodged _ = case change (dropAssumptionTags resolution) zone of
             Nothing -> Nothing
             Just dislodger -> Just (SupportDislodged dislodger)
 
@@ -929,7 +991,7 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
             :: OrderObject Typical Convoy
             -> Maybe (FailureReason Typical Convoy)
         convoyVoid (ConvoyObject convoyingSubject convoyingTo) =
-            case M.lookup convoyingFrom res of
+            case M.lookup convoyingFrom (dropAssumptionTags resolution) of
                 Nothing -> Just ConvoyVoid
                 Just (aunit, SomeResolved (MoveObject movingTo, _)) ->
                     if    convoyingUnit == alignedThing aunit
@@ -956,7 +1018,7 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
           where
 
             routes :: [[(Zone, Maybe (Aligned Subject))]]
-            routes = rawConvoyRoutes res convoyingSubject convoyingTo
+            routes = rawConvoyRoutes resolution convoyingSubject convoyingTo
 
             cuttingSet :: Maybe [(Zone, Aligned Subject)]
             cuttingSet | length cutRoutes == length routes = Just (nub (concat cutRoutes))
@@ -975,7 +1037,7 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                 -> Maybe (Zone, Aligned Subject)
             pickCutRoute (z, m) = fmap ((,) z) m
 
-    in  (aunit, resolution)
+    in  thisResolution
 
 -- | Changes to a board as the result of a typical phase.
 --   Nothing means no change, Just means the unit belonging to the great power
