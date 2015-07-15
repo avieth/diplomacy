@@ -98,6 +98,8 @@ tests = TestList [
     , sixE6
     , sixE7
     , sixE8
+    , sixE9
+    , sixE10
     , sixE15
     ]
 
@@ -1840,6 +1842,86 @@ sixE8 = (expectedResolution == testResolution expectedResolution) ~? "6.E.8"
         -- Russian move bounces against the German fleet (English support is
         -- cast out here).
         , (Zone (Normal Norway), (align Fleet Russia, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal HelgolandBright) Germany) VNil) [])))))
+        ]
+
+-- 6.E.9. TEST CASE, ALMOST SELF DISLODGEMENT WITH BELEAGUERED GARRISON
+--
+-- Similar to the previous test case, but now the beleaguered fleet is moving away.
+--
+-- England: 
+-- F North Sea - Norwegian Sea
+-- F Yorkshire Supports F Norway - North Sea
+--
+-- Germany: 
+-- F Holland Supports F Helgoland Bight - North Sea
+-- F Helgoland Bight - North Sea
+--
+-- Russia: 
+-- F Skagerrak Supports F Norway - North Sea
+-- F Norway - North Sea
+--
+-- Both the fleet in the North Sea and the fleet in Norway move. 
+sixE9 = (expectedResolution == testResolution expectedResolution) ~? "6.E.9"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal NorthSea), (align Fleet England, SomeResolved (MoveObject (Normal NorwegianSea), Nothing)))
+        , (Zone (Normal Yorkshire), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal Norway) (Normal NorthSea), Nothing)))
+
+        , (Zone (Normal Holland), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal HelgolandBright) (Normal NorthSea), Nothing)))
+        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Norway) Russia) VNil) [])))))
+
+        , (Zone (Normal Skagerrak), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal Norway) (Normal NorthSea), Nothing)))
+        , (Zone (Normal Norway), (align Fleet Russia, SomeResolved (MoveObject (Normal NorthSea), Nothing)))
+        ] 
+
+-- 6.E.10. TEST CASE, ALMOST CIRCULAR MOVEMENT WITH NO SELF DISLODGEMENT WITH BELEAGUERED GARRISON
+--
+-- Similar to the previous test case, but now the beleaguered fleet is in circular movement with the weaker attacker. So, the circular movement fails.
+--
+-- England: 
+-- F North Sea - Denmark
+-- F Yorkshire Supports F Norway - North Sea
+--
+-- Germany: 
+-- F Holland Supports F Helgoland Bight - North Sea
+-- F Helgoland Bight - North Sea
+-- F Denmark - Helgoland Bight
+--
+-- Russia: 
+-- F Skagerrak Supports F Norway - North Sea
+-- F Norway - North Sea
+--
+-- There is no movement of fleets. 
+--
+-- Note: this reveals a bug in the resolver, as the Russian fleet in Norway
+-- succeeds into the North Sea. Reason: when classifying this move, the resolver
+-- does not find that the English fleet in the North Sea is a returning move, 
+-- because without the Russian move into the North Sea, the German move into
+-- the North Sea succeeds and the 3-cycle goes around unhindered.
+-- We remove the Russian move when calssifying this so that we protect
+-- ourselves from nontermination due to cycles in the move graph, but
+-- apparently this is too drastic.
+-- Solution: commit 1b92936. We compute the incumbant under the assumption
+-- that the current move succeeds, rather than the assumption that the current
+-- move was not given.
+sixE10 = (expectedResolution == testResolution expectedResolution) ~? "6.E.10"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal NorthSea), (align Fleet England, SomeResolved (MoveObject (Normal Denmark), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Denmark) Germany) VNil) [])))))
+        , (Zone (Normal Yorkshire), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal Norway) (Normal NorthSea), Nothing)))
+
+        , (Zone (Normal Holland), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal HelgolandBright) (Normal NorthSea), Nothing)))
+        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Norway) Russia) VNil) [])))))
+        , (Zone (Normal Denmark), (align Fleet Germany, SomeResolved (MoveObject (Normal HelgolandBright), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal HelgolandBright) Germany) VNil) [])))))
+
+        , (Zone (Normal Skagerrak), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal Norway) (Normal NorthSea), Nothing)))
+        -- It bounces off the German fleet because in order to overpower it, it
+        -- must have more non-English support than the German fleet, as the
+        -- English fleet returns to North Sea!
+        , (Zone (Normal Norway), (align Fleet Russia, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal HelgolandBright) Germany) VNil) [])))))
+
         ]
 
 -- The friendly head-to-head battle.
