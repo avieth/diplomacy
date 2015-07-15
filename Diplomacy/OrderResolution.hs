@@ -542,8 +542,6 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
         --   for it.
         --   MoveConvoyParadox : the move requires a convoy, there is a paradox
         --   convoy route, and all non-paradox convoy routes fail.
-        --   Move2Cycle : the move forms a 2-cycle with some other move and
-        --   both have no successful convoy routes.
         --   MoveOverpowered : there is some other move of strictly greater
         --   support into this move's target.
         --   MoveBounced : this move is not a hold, and it is not a dominator
@@ -704,26 +702,33 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
                         thisPower = alignedGreatPower aunit
 
                     -- Complementary where the other would not succeed even
-                    -- without this one. Here the Move2Cycle cannot arise.
-                    ComplementaryMove WouldNotSucceed asubj target ->
-                        if length opposingSupports > length thisSupports && opposingPower /= thisPower
-                        then Just (MoveOverpowered (AtLeast (VCons asubj VNil) []))
-                        else if length thisSupports > length opposingSupports && opposingPower == thisPower
-                        then Just (MoveFriendlyDislodge opposingUnit)
-                        else if length opposingSupports == length thisSupports
-                        then Just (MoveBounced (AtLeast (VCons asubj VNil) []))
-                        else Nothing
+                    -- without this one.
+                    -- HERE AS WELL we must check that without supports friendly
+                    -- to the complementary, this move would still dominate!
+                    ComplementaryMove WouldNotSucceed asubj target -> case sortedOpposingSupports of
+                        [] -> Nothing -- Impossible
+                        ((x, ss) : xs) ->
+                            if length ss > length thisSupports && opposingPower /= thisPower
+                            then Just (MoveOverpowered (AtLeast (VCons x VNil) equallySupported))
+                            else if length thisSupports > length ss && opposingPower == thisPower
+                            then Just (MoveFriendlyDislodge opposingUnit)
+                            else if length ss == length thisSupports
+                            then Just (MoveBounced (AtLeast (VCons x VNil) equallySupported))
+                            else Nothing
+                          where
+                            equallySupported = fmap fst (filter (\(x, ss') -> length ss' == length ss) xs)
                       where
-                        opposingSupports :: Supports
-                        opposingSupports = foreignSupport res thisPower opposingSubject target
+                        sortedOpposingSupports = sortBy comparator ((asubj, complementarySupports) : opposingSupports)
+                        comparator :: (Aligned Subject, Supports) -> (Aligned Subject, Supports) -> Ordering
+                        comparator (_, xs) (_, ys) = Down (length xs) `compare` Down (length ys)
+                        opposingSupports :: [(Aligned Subject, Supports)]
+                        opposingSupports = fmap (\x -> (fst x, calculateOpposingSupports x)) theseCompetingMoves
+                        calculateOpposingSupports :: (Aligned Subject, ProvinceTarget) -> Supports
+                        calculateOpposingSupports (asubj, pt) = support res (alignedThing asubj) pt
+                        complementarySupports :: Supports
+                        complementarySupports = foreignSupport res thisPower opposingSubject target
                         thisSupports :: Supports
                         thisSupports = foreignSupport res opposingPower (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
-                        opposingSuccessfulConvoyRoutes :: [ConvoyRoute]
-                        opposingSuccessfulConvoyRoutes = successfulConvoyRoutes opposingConvoyRoutes
-                        thisSuccessfulConvoyRoutes :: [ConvoyRoute]
-                        thisSuccessfulConvoyRoutes = successfulConvoyRoutes theseConvoyRoutes
-                        opposingConvoyRoutes :: ConvoyRoutes
-                        opposingConvoyRoutes = convoyRoutes res opposingSubject target
                         opposingPower = alignedGreatPower asubj
                         opposingSubject = alignedThing asubj
                         opposingUnit = subjectUnit opposingSubject
@@ -732,19 +737,32 @@ resolveSomeOrderTypical res zone (aunit, SomeOrderObject object) =
 
                     -- Complementary where the other would succeed without
                     -- this one.
-                    ComplementaryMove WouldSucceed asubj target ->
-                        if length opposingSupports > length thisSupports && opposingPower /= thisPower
-                        then Just (MoveOverpowered (AtLeast (VCons asubj VNil) []))
-                        else if length thisSupports > length opposingSupports && opposingPower == thisPower
-                        then Just (MoveFriendlyDislodge opposingUnit)
-                        else if    length opposingSupports == length thisSupports
-                                && null (opposingSuccessfulConvoyRoutes)
-                                && null (thisSuccessfulConvoyRoutes)
-                        then Just (Move2Cycle (fmap fst asubj))
-                        else Nothing
+                    -- HERE AS WELL we must check that without supports friendly
+                    -- to the complementary, this move would still dominate!
+                    ComplementaryMove WouldSucceed asubj target -> case sortedOpposingSupports of
+                        [] -> Nothing -- Impossible
+                        ((x, ss) : xs) ->
+                            if length ss > length thisSupports && opposingPower /= thisPower
+                            then Just (MoveOverpowered (AtLeast (VCons x VNil) equallySupported))
+                            else if length thisSupports > length ss && opposingPower == thisPower
+                            then Just (MoveFriendlyDislodge opposingUnit)
+                            else if    length ss == length thisSupports
+                                    && null (opposingSuccessfulConvoyRoutes)
+                                    && null (thisSuccessfulConvoyRoutes)
+                            then Just (MoveBounced (AtLeast (VCons x VNil) equallySupported))
+                            else Nothing
+                          where
+                            equallySupported = fmap fst (filter (\(x, ss') -> length ss' == length ss) xs)
                       where
-                        opposingSupports :: Supports
-                        opposingSupports = foreignSupport res thisPower opposingSubject target
+                        sortedOpposingSupports = sortBy comparator ((asubj, complementarySupports) : opposingSupports)
+                        comparator :: (Aligned Subject, Supports) -> (Aligned Subject, Supports) -> Ordering
+                        comparator (_, xs) (_, ys) = Down (length xs) `compare` Down (length ys)
+                        opposingSupports :: [(Aligned Subject, Supports)]
+                        opposingSupports = fmap (\x -> (fst x, calculateOpposingSupports x)) theseCompetingMoves
+                        calculateOpposingSupports :: (Aligned Subject, ProvinceTarget) -> Supports
+                        calculateOpposingSupports (asubj, pt) = support res (alignedThing asubj) pt
+                        complementarySupports :: Supports
+                        complementarySupports = foreignSupport res thisPower opposingSubject target
                         thisSupports :: Supports
                         thisSupports = foreignSupport res opposingPower (alignedThing aunit, zoneProvinceTarget zone) (moveTarget moveObject)
                         opposingSuccessfulConvoyRoutes :: [ConvoyRoute]
@@ -1173,9 +1191,6 @@ data FailureReason (phase :: Phase) (order :: OrderType) where
 
     MoveBounced :: AtLeast One (Aligned Subject) -> FailureReason Typical Move
 
-    -- | The move is part of an unconvoyed 2-cycle of moves.
-    Move2Cycle :: Aligned Unit -> FailureReason Typical Move
-
     -- | The move would dislodge the player's own unit.
     MoveFriendlyDislodge :: Unit -> FailureReason Typical Move
 
@@ -1217,7 +1232,6 @@ failureReasonEqual
 failureReasonEqual r1 r2 = case (r1, r2) of
     (MoveOverpowered x, MoveOverpowered y) -> x == y
     (MoveBounced x, MoveBounced y) -> x == y
-    (Move2Cycle x, Move2Cycle y) -> x == y
     (MoveFriendlyDislodge x, MoveFriendlyDislodge y) -> x == y
     (MoveNoConvoy, MoveNoConvoy) -> True
     (MoveConvoyParadox, MoveConvoyParadox) -> True
