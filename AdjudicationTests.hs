@@ -101,6 +101,8 @@ tests = TestList [
     , sixE9
     , sixE10
     , sixE11
+    , sixE12
+    , sixE13
     , sixE15
     ]
 
@@ -1971,6 +1973,75 @@ sixE11 = (expectedResolution == testResolution expectedResolution) ~? "6.E.11"
 
         , (Zone (Normal Portugal), (align Fleet Italy, SomeResolved (MoveObject (Special SpainNorth), Nothing)))
         , (Zone (Normal WesternMediterranean), (align Fleet Italy, SomeResolved (SupportObject (Fleet, Normal Portugal) (Special SpainNorth), Nothing)))
+        ]
+
+-- 6.E.12. TEST CASE, SUPPORT ON ATTACK ON OWN UNIT CAN BE USED FOR OTHER MEANS
+--
+-- A support on an attack on your own unit has still effect. It can prevent that another army will dislodge the unit.
+--
+-- Austria: 
+-- A Budapest - Rumania
+-- A Serbia Supports A Vienna - Budapest
+--
+-- Italy: 
+-- A Vienna - Budapest
+--
+-- Russia: 
+-- A Galicia - Budapest
+-- A Rumania Supports A Galicia - Budapest
+--
+-- The support of Serbia on the Italian army prevents that the Russian army in Galicia will advance. No army will move. 
+sixE12 = (expectedResolution == testResolution expectedResolution) ~? "6.E.12"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Budapest), (align Army Austria, SomeResolved (MoveObject (Normal Rumania), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Rumania) Russia) VNil) [])))))
+        , (Zone (Normal Serbia), (align Army Austria, SomeResolved (SupportObject (Army, Normal Vienna) (Normal Budapest), Nothing)))
+
+        -- The move from Vienna is overpowered by the Russian move, rather
+        -- than bounced, because this contest does not include the Austrian
+        -- support, for the Austrian army in Budapest is a returning move, and
+        -- therefore Austrian support cannot be directed against it.
+        , (Zone (Normal Vienna), (align Army Italy, SomeResolved (MoveObject (Normal Budapest), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Galicia) Russia) VNil) [])))))
+
+        , (Zone (Normal Galicia), (align Army Russia, SomeResolved (MoveObject (Normal Budapest), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Vienna) Italy) VNil) [])))))
+        , (Zone (Normal Rumania), (align Army Russia, SomeResolved (SupportObject (Army, Normal Galicia) (Normal Budapest), Nothing)))
+        ]
+
+-- 6.E.13. TEST CASE, THREE WAY BELEAGUERED GARRISON
+--
+-- In a beleaguered garrison from three sides, the adjudicator may not let two attacks fail and then let the third succeed.
+--
+-- England: 
+-- F Edinburgh Supports F Yorkshire - North Sea
+-- F Yorkshire - North Sea
+--
+-- France: 
+-- F Belgium - North Sea
+-- F English Channel Supports F Belgium - North Sea
+--
+-- Germany: 
+-- F North Sea Hold
+--
+-- Russia: 
+-- F Norwegian Sea - North Sea
+-- F Norway Supports F Norwegian Sea - North Sea
+--
+-- None of the fleets move. The German fleet in the North Sea is not dislodged.
+sixE13 = (expectedResolution == testResolution expectedResolution) ~? "6.E.13"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Edinburgh), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal Yorkshire) (Normal NorthSea), Nothing)))
+        , (Zone (Normal Yorkshire), (align Fleet England, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Belgium) France) VNil) [align (Fleet, Normal NorwegianSea) Russia])))))
+
+        , (Zone (Normal Belgium), (align Fleet France, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Yorkshire) England) VNil) [align (Fleet, Normal NorwegianSea) Russia])))))
+        , (Zone (Normal EnglishChannel), (align Fleet France, SomeResolved (SupportObject (Fleet, Normal Belgium) (Normal NorthSea), Nothing)))
+
+        , (Zone (Normal NorthSea), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Nothing)))
+
+        , (Zone (Normal NorwegianSea), (align Fleet Russia, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Belgium) France) VNil) [align (Fleet, Normal Yorkshire) England])))))
+        , (Zone (Normal Norway), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal NorwegianSea) (Normal NorthSea), Nothing)))
         ]
 
 -- The friendly head-to-head battle.
