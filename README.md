@@ -54,6 +54,6 @@ reason, if any, they should fail.
 # Thanks
 
 Much thanks to Lucas B. Kruijswijk for giving us the
-[DATC](), from which
+[DATC](http://web.inter.nl.net/users/L.B.Kruijswijk/), from which
 [many tests](AdjudicationTests.hs) were transcribed and consequently many bugs
 found and fixed.
