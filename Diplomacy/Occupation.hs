@@ -24,6 +24,7 @@ module Diplomacy.Occupation (
   ) where
 
 import qualified Data.Map as M
+import Data.MapUtil
 import Data.Maybe (isJust)
 import Diplomacy.Aligned
 import Diplomacy.Unit
@@ -42,14 +43,22 @@ emptyOccupation = M.empty
 occupy :: ProvinceTarget -> Maybe (Aligned Unit) -> Occupation -> Occupation
 occupy pt maunit = M.alter (const maunit) (Zone pt)
 
+-- | Must be careful with this one! We can't just lookup the Zone corresponding
+--   to the ProvinceTarget; we must also check that the key matching that Zone,
+--   if there is one in the map, is also ProvinceTarget-equal.
 occupier :: ProvinceTarget -> Occupation -> Maybe (Aligned Unit)
-occupier pt = M.lookup (Zone pt)
+occupier pt occupation = case lookupWithKey (Zone pt) occupation of
+    Just (zone, value) ->
+        if zoneProvinceTarget zone == pt
+        then Just value
+        else Nothing
+    _ -> Nothing
 
 occupies :: Aligned Unit -> ProvinceTarget -> Occupation -> Bool
-occupies aunit pt = (==) (Just aunit) . M.lookup (Zone pt)
+occupies aunit pt = (==) (Just aunit) . occupier pt
 
 unitOccupies :: Unit -> ProvinceTarget -> Occupation -> Bool
-unitOccupies unit pt = (==) (Just unit) . fmap alignedThing . M.lookup (Zone pt)
+unitOccupies unit pt = (==) (Just unit) . fmap alignedThing . occupier pt
 
 occupied :: ProvinceTarget -> Occupation -> Bool
-occupied pt = isJust . M.lookup (Zone pt)
+occupied pt = isJust . occupier pt
