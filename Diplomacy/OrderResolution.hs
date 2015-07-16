@@ -46,8 +46,8 @@ import Data.TypeNat.Nat
 import Data.TypeNat.Vect
 import Data.Functor.Identity
 import Data.Traversable (sequenceA)
-import qualified Data.Set as S
 import qualified Data.Map as M
+import Data.MapUtil
 import Control.Monad
 import Control.Applicative
 import Diplomacy.GreatPower
@@ -375,21 +375,6 @@ data Incumbant
     --   It could be any of these.
     | NoIncumbant
     deriving (Show)
-
--- | Lookup a key in a map and get back the actual key as well. Useful when
---   the key Eq instance is not quite so sharp.
-lookupWithKey
-    :: Ord k
-    => k
-    -> M.Map k v
-    -> Maybe (k, v)
-lookupWithKey k m =
-    let v = M.lookup k m
-        keys = M.keysSet m
-        -- keys `S.intersection` S.singleton k is empty iff v is Nothing, so
-        -- this won't be undefined.
-        k' = Data.List.head (S.elems (keys `S.intersection` S.singleton k))
-    in fmap (\x -> (k', x)) v
 
 incumbant
     :: TypicalResolutionOutput
