@@ -801,20 +801,26 @@ resolveSomeOrderTypical resolution zone (aunit, SomeOrderObject object) =
                     -- this one.
                     -- HERE AS WELL we must check that without supports friendly
                     -- to the complementary, this move would still dominate!
-                    ComplementaryMove WouldSucceed asubj target -> case sortedOpposingSupports of
-                        [] -> Nothing -- Impossible
-                        ((x, ss) : xs) ->
-                            if length ss > length thisSupports && opposingPower /= thisPower
-                            then Just (MoveOverpowered (AtLeast (VCons x VNil) equallySupported))
-                            else if length thisSupports > length ss && opposingPower == thisPower
-                            then Just (MoveFriendlyDislodge opposingUnit)
-                            else if    length ss == length thisSupports
-                                    && null (opposingSuccessfulConvoyRoutes)
-                                    && null (thisSuccessfulConvoyRoutes)
-                            then Just (MoveBounced (AtLeast (VCons x VNil) equallySupported))
-                            else Nothing
-                          where
-                            equallySupported = fmap fst (filter (\(x, ss') -> length ss' == length ss) xs)
+                    -- However, since the other move would succeed, it's enough
+                    -- to know that at least one of these moves (this or the
+                    -- complementary) has at least one successful convoy route
+                    -- in order to pass this test.
+                    ComplementaryMove WouldSucceed asubj target ->
+                        if     not (null opposingSuccessfulConvoyRoutes)
+                            || not (null thisSuccessfulConvoyRoutes)
+                        then Nothing
+                        else case sortedOpposingSupports of
+                            [] -> Nothing -- Impossible
+                            ((x, ss) : xs) ->
+                                if length ss > length thisSupports && opposingPower /= thisPower
+                                then Just (MoveOverpowered (AtLeast (VCons x VNil) equallySupported))
+                                else if length thisSupports > length ss && opposingPower == thisPower
+                                then Just (MoveFriendlyDislodge opposingUnit)
+                                else if    length ss == length thisSupports
+                                then Just (MoveBounced (AtLeast (VCons x VNil) equallySupported))
+                                else Nothing
+                              where
+                                equallySupported = fmap fst (filter (\(x, ss') -> length ss' == length ss) xs)
                       where
                         sortedOpposingSupports = sortBy comparator ((asubj, complementarySupports) : opposingSupports)
                         comparator :: (Aligned Subject, Supports) -> (Aligned Subject, Supports) -> Ordering
