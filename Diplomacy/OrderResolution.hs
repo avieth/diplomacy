@@ -1013,11 +1013,13 @@ resolveSomeOrderTypical resolution zone (aunit, SomeOrderObject object) =
             convoyingUnit :: Unit
             convoyingUnit = fst convoyingSubject
 
+        -- Route cut in case every convoy route which this convoy order
+        -- participates in has at laest one of its convoyers dislodged.
         convoyNoRoute
             :: OrderObject Typical Convoy
             -> Maybe (FailureReason Typical Convoy)
         convoyNoRoute (ConvoyObject convoyingSubject convoyingTo) =
-            case routes of
+            case routesParticipatedIn of
                 [] -> Just ConvoyNoRoute
                 _ -> fmap ConvoyRouteCut cuttingSet
 
@@ -1026,12 +1028,17 @@ resolveSomeOrderTypical resolution zone (aunit, SomeOrderObject object) =
             routes :: [[(Zone, Maybe (Aligned Subject))]]
             routes = rawConvoyRoutes resolution convoyingSubject convoyingTo
 
+            routesParticipatedIn :: [[(Zone, Maybe (Aligned Subject))]]
+            routesParticipatedIn = filter participates routes
+              where
+                participates = any (\(z, _) -> z == zone)
+
             cuttingSet :: Maybe [(Zone, Aligned Subject)]
-            cuttingSet | length cutRoutes == length routes = Just (nub (concat cutRoutes))
+            cuttingSet | length cutRoutes == length routesParticipatedIn = Just (nub (concat cutRoutes))
                        | otherwise = Nothing
 
             cutRoutes :: [[(Zone, Aligned Subject)]]
-            cutRoutes = filter (not . null) (fmap cutRoute routes)
+            cutRoutes = filter (not . null) (fmap cutRoute routesParticipatedIn)
 
             cutRoute
                 :: [(Zone, Maybe (Aligned Subject))]
