@@ -31,6 +31,7 @@ module Diplomacy.OrderValidation (
 
   , validateMove
   , validateSupport
+  , validateConvoy
   , validateSurrender
   , validateWithdraw
   , validateDisband
@@ -83,7 +84,7 @@ data InvalidReason (phase :: Phase) (order :: OrderType) where
       :: InvalidReason Typical Move
 
     -- | The support is directed to or from the supporting unit's province.
-    --   For example, the following to are invalid for this reason:
+    --   For example, the following two are invalid for this reason:
     --
     --     A Munich S A Munch - Berlin
     --     A Paris S A Brest - Paris
@@ -106,6 +107,16 @@ data InvalidReason (phase :: Phase) (order :: OrderType) where
     --   This eliminates support through convoys.
     SupporterCouldNotDoMove
       :: InvalidReason Typical Support
+
+    ConvoyerIsNotFleet :: InvalidReason Typical Convoy
+
+    ConvoyingIsNotArmy :: InvalidReason Typical Convoy
+
+    ConvoyerNotInWater :: InvalidReason Typical Convoy
+
+    ConvoyingNotOnCoastal :: InvalidReason Typical Convoy
+
+    ConvoyingUnitNotPresent :: InvalidReason Typical Convoy
 
     -- | The withdraw destination is not directly adjacent to the province
     --   from which the unit withdraws.
@@ -203,6 +214,18 @@ validateSupport occupation =
     `also` validateSupporterCanDoMove
     `also` validateSupportedCanDoMove occupation
 
+-- | Validation for a convoy order.
+--   NB we do NOT check for convoys which are impossible, like a fleet in
+--   the Black Sea convoying Finland to Sweden.
+validateConvoy :: Occupation -> OrderValidation Typical Convoy
+validateConvoy occupation =
+           validateSubject occupation
+    `also` validateConvoyerIsFleet
+    `also` validateConvoyingIsArmy
+    `also` validateConvoyerInWater
+    `also` validateConvoyingOnCoastal
+    `also` validateConvoyingUnitPresent occupation
+
 -- | Validation for a surrender order.
 validateSurrender :: Occupation -> OrderValidation Retreat Surrender
 validateSurrender = validateSubject
@@ -269,6 +292,52 @@ supportedUnitNotPresent occupation order =
     SupportObject supportedSubject to = orderObject order
     unit = subjectUnit supportedSubject
     provinceTarget = subjectProvinceTarget supportedSubject
+
+validateConvoyerIsFleet :: OrderValidation Typical Convoy
+validateConvoyerIsFleet =
+    convoyerIsFleet
+    `orElse`
+    ConvoyerIsNotFleet
+  where
+    convoyerIsFleet order = case subjectUnit (orderSubject order) of
+        Fleet -> True
+        Army -> False
+
+validateConvoyingIsArmy :: OrderValidation Typical Convoy
+validateConvoyingIsArmy =
+    convoyingIsArmy
+    `orElse`
+    ConvoyingIsNotArmy
+  where
+    convoyingIsArmy order = case orderObject order of
+        ConvoyObject (Army, _) _ -> True
+        _ -> False
+
+validateConvoyerInWater :: OrderValidation Typical Convoy
+validateConvoyerInWater =
+    convoyerInWater
+    `orElse`
+    ConvoyerNotInWater
+  where
+    convoyerInWater = isWater . ptProvince . subjectProvinceTarget . orderSubject
+
+validateConvoyingOnCoastal :: OrderValidation Typical Convoy
+validateConvoyingOnCoastal =
+    convoyingOnCoastal
+    `orElse`
+    ConvoyingNotOnCoastal
+  where
+    convoyingOnCoastal = isCoastal . ptProvince . subjectProvinceTarget . orderSubject
+
+validateConvoyingUnitPresent :: Occupation -> OrderValidation Typical Convoy
+validateConvoyingUnitPresent occupation =
+    convoyingUnitNotPresent
+    `implies`
+    ConvoyingUnitNotPresent
+  where
+    convoyingUnitNotPresent order = not (unitOccupies (unit order) (provinceTarget order) occupation)
+    unit = subjectUnit . orderSubject
+    provinceTarget = subjectProvinceTarget . orderSubject
 
 validateWithdrawIntoOccupiedProvince :: Occupation -> OrderValidation Retreat Withdraw
 validateWithdrawIntoOccupiedProvince occupation =
