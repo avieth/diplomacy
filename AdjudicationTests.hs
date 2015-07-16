@@ -103,6 +103,7 @@ tests = TestList [
     , sixE11
     , sixE12
     , sixE13
+    , sixE14
     , sixE15
     ]
 
@@ -2042,6 +2043,34 @@ sixE13 = (expectedResolution == testResolution expectedResolution) ~? "6.E.13"
 
         , (Zone (Normal NorwegianSea), (align Fleet Russia, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Belgium) France) VNil) [align (Fleet, Normal Yorkshire) England])))))
         , (Zone (Normal Norway), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal NorwegianSea) (Normal NorthSea), Nothing)))
+        ]
+
+-- 6.E.14. TEST CASE, ILLEGAL HEAD TO HEAD BATTLE CAN STILL DEFEND
+--
+-- If in a head to head battle, one of the units makes an illegal move, than that unit has still the possibility to defend against attacks with strength of one.
+--
+-- England: 
+-- A Liverpool - Edinburgh
+--
+-- Russia: 
+-- F Edinburgh - Liverpool
+--
+-- The move of the Russian fleet is illegal, but can still prevent the English army to enter Edinburgh. So, none of the units move.
+--
+-- Note: the Russian move is _invalid_, but the resolver doesn't know this. If
+-- we pass it through the resolver, we ought to get MoveBounced. So here we
+-- test the validation and the resolution.
+sixE14 = (expectedResolution == testResolution expectedResolution && validation == Just MoveImpossible) ~? "6.E.14"
+  where
+
+    validation = validateMove occupation russianMove
+    occupation = occupy (Normal Edinburgh) (Just $ align Fleet Russia) emptyOccupation
+    russianMove = Order (align ((Fleet, Normal Edinburgh), MoveObject (Normal Liverpool)) Russia)
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Liverpool), (align Army England, SomeResolved (MoveObject (Normal Edinburgh), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Edinburgh) Russia) VNil) [])))))
+
+        , (Zone (Normal Edinburgh), (align Fleet Russia, SomeResolved (MoveObject (Normal Liverpool), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Liverpool) England) VNil) [])))))
         ]
 
 -- The friendly head-to-head battle.
