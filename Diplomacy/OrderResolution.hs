@@ -467,7 +467,7 @@ classify resolution zone (aunit, MoveObject movingTo) =
             if moveRequiresConvoy (zoneProvinceTarget zoneFrom) (zoneProvinceTarget zoneTo)
             then RequiresConvoy
             else DoesNotRequireConvoy
-        theseConvoyRoutes = convoyRoutes resolution (alignedThing asubject) pt 
+        theseConvoyRoutes = convoyRoutes (dropAssumptionTags resolution) (alignedThing asubject) pt 
         -- TODO Tuesday: compute the competing moves, here and in the
         -- Hold case. This will involve gathering them from the resolution,
         -- classifying them, and using the convoy routes and incumbant fields
@@ -484,11 +484,11 @@ classify resolution zone (aunit, MoveObject movingTo) =
 --   composese the route) as well as an indication of whether it was
 --   dislodged (Just means it was dislodged by that subject).
 rawConvoyRoutes
-    :: TypicalResolutionOutput
+    :: TypicalResolution
     -> Subject
     -> ProvinceTarget
     -> [ConvoyRoute]
-rawConvoyRoutes resolution' (unit, ptFrom) ptTo = do
+rawConvoyRoutes resolution (unit, ptFrom) ptTo = do
     let pool = viableConvoyZones
     let starters = filter isStarter pool
     s <- starters
@@ -496,8 +496,6 @@ rawConvoyRoutes resolution' (unit, ptFrom) ptTo = do
     (fmap . fmap) tagWithChange routes
 
   where
-
-    resolution = dropAssumptionTags resolution'
 
     tagWithChange :: Zone -> (Zone, Maybe (Aligned Subject))
     tagWithChange zone = (zone, change resolution zone)
@@ -533,24 +531,74 @@ rawConvoyRoutes resolution' (unit, ptFrom) ptTo = do
                 fmap ((:) zone) (paths shrunkenPool target n)
 
 convoyRoutes
-    :: TypicalResolutionOutput
+    :: TypicalResolution
     -> Subject
     -> ProvinceTarget
     -> ConvoyRoutes
 convoyRoutes resolution subject pt =
     let routes = rawConvoyRoutes resolution subject pt
-        (paradox, nonParadox) = partition (isParadoxRoute resolution pt) routes
+        (paradox, nonParadox) = partition (isParadoxRoute resolution pt . fmap fst) routes
     in  ConvoyRoutes paradox nonParadox
+
+-- | A void convoy is one for which there is no matching move order.
+isVoidConvoy
+    :: TypicalResolution
+    -> Subject
+    -> ProvinceTarget
+    -> Bool
+isVoidConvoy resolution subject convoyingTo = case M.lookup convoyingFrom resolution of
+    Nothing -> True
+    Just (aunit, SomeResolved (MoveObject movingTo, _)) ->
+           convoyingUnit /= alignedThing aunit
+        || convoyingTo /= movingTo
+  where
+    convoyingFrom :: Zone
+    convoyingFrom = Zone (snd subject)
+    convoyingUnit :: Unit
+    convoyingUnit = fst subject
 
 -- | Identify convoy routes which are paradox-inducing; those routes whose
 --   success is contingent upon the success of the move which they convoy!
+--   This accounts for simple paradox routes as well as the so-called
+--   second order paradoxes.
 isParadoxRoute
-    :: TypicalResolutionOutput
+    :: TypicalResolution
     -> ProvinceTarget -- ^ The destination of the route.
-    -> [(Zone, Maybe (Aligned Subject))]
+    -> [Zone] -- ^ The zones in the route.
     -> Bool
-isParadoxRoute resolution destination =
-    any (\(z, _) -> Just z == paradoxInducingConvoyZone resolution (Zone destination))
+isParadoxRoute resolution destination convoyZones = case M.lookup (Zone destination) resolution of
+    -- First we check the order at the destination of the route.
+    -- If it's not a support then we know there's no paradox, but if it is a
+    -- support then we must check whether it threatens a certain kind of
+    -- convoying fleet.
+    Just (_, SomeResolved (SupportObject _ supportTarget, _)) ->
+        if any ((==) (Zone supportTarget)) convoyZones
+        -- This support threatens a fleet in the parameter convoy zones. That's
+        -- enough to decide that we have a paradox route...
+        then True
+        -- ... but even if it doesn't threaten a zone in @convoyZones@, we must
+        -- make more checks, to account for the second order paradoxes!
+        -- It could threaten another convoying fleet which attacks a support
+        -- which threatens one of the zones in @convoyZones@, and so on
+        -- recursively.
+        else case M.lookup (Zone supportTarget) resolution of
+            -- There's a convoying fleet at the support target.
+            -- If it's a void convoy, we're done.
+            -- Otherwise, we get all of the raw routes for that convoying
+            -- fleet's subject and destination, and identify all of those which
+            -- are threatened by this support. We resolve the others, and if
+            -- none are successful, we recurse.
+            Just (_, SomeResolved (ConvoyObject convoySubject convoyTarget, _)) ->
+                let nextRoutes = rawConvoyRoutes resolution convoySubject convoyTarget
+                    (maybeParadoxical, others) = partition (any ((==) (Zone supportTarget)) . fmap fst) nextRoutes
+                    successfulOthers = filter isSuccessfulConvoyRoute others
+                in    not (isVoidConvoy resolution convoySubject convoyTarget)
+                   && null successfulOthers
+                   -- Here we're careful to delete the destination zone, so that
+                   -- we don't get nontermination.
+                   && isParadoxRoute (M.delete (Zone destination) resolution) convoyTarget convoyZones
+            _ -> False
+    _ -> False
 
 -- | Initial characterization of a support order which cannot be cut by a
 --   convoyed move to the given Zone. That's to say, if there is any such
@@ -575,10 +623,10 @@ paradoxInducingConvoyZone resolution =
 
 -- | These are always non-paradox routes.
 successfulConvoyRoutes :: ConvoyRoutes -> [ConvoyRoute]
-successfulConvoyRoutes =
-    filter isSuccessful . convoyRoutesNonParadox
-  where
-    isSuccessful = all (isNothing . snd)
+successfulConvoyRoutes = filter isSuccessfulConvoyRoute . convoyRoutesNonParadox
+
+isSuccessfulConvoyRoute :: ConvoyRoute -> Bool
+isSuccessfulConvoyRoute = all (isNothing . snd)
 
 resolveSomeOrderTypical
     :: TypicalResolutionOutput
@@ -838,7 +886,7 @@ resolveSomeOrderTypical resolution zone (aunit, SomeOrderObject object) =
                         thisSuccessfulConvoyRoutes :: [ConvoyRoute]
                         thisSuccessfulConvoyRoutes = successfulConvoyRoutes theseConvoyRoutes
                         opposingConvoyRoutes :: ConvoyRoutes
-                        opposingConvoyRoutes = convoyRoutes resolution opposingSubject target
+                        opposingConvoyRoutes = convoyRoutes (dropAssumptionTags resolution) opposingSubject target
                         opposingPower = alignedGreatPower asubj
                         opposingSubject = alignedThing asubj
                         opposingUnit = subjectUnit opposingSubject
@@ -996,22 +1044,10 @@ resolveSomeOrderTypical resolution zone (aunit, SomeOrderObject object) =
         convoyVoid
             :: OrderObject Typical Convoy
             -> Maybe (FailureReason Typical Convoy)
-        convoyVoid (ConvoyObject convoyingSubject convoyingTo) =
-            case M.lookup convoyingFrom (dropAssumptionTags resolution) of
-                Nothing -> Just ConvoyVoid
-                Just (aunit, SomeResolved (MoveObject movingTo, _)) ->
-                    if    convoyingUnit == alignedThing aunit
-                       && convoyingTo == movingTo
-                    then Nothing
-                    else Just ConvoyVoid
-
-          where
-
-            convoyingFrom :: Zone
-            convoyingFrom = Zone (snd convoyingSubject)
-
-            convoyingUnit :: Unit
-            convoyingUnit = fst convoyingSubject
+        convoyVoid (ConvoyObject subject target) =
+            if isVoidConvoy (dropAssumptionTags resolution) subject target
+            then Just ConvoyVoid
+            else Nothing
 
         -- Route cut in case every convoy route which this convoy order
         -- participates in has at laest one of its convoyers dislodged.
@@ -1026,7 +1062,7 @@ resolveSomeOrderTypical resolution zone (aunit, SomeOrderObject object) =
           where
 
             routes :: [[(Zone, Maybe (Aligned Subject))]]
-            routes = rawConvoyRoutes resolution convoyingSubject convoyingTo
+            routes = rawConvoyRoutes (dropAssumptionTags resolution) convoyingSubject convoyingTo
 
             routesParticipatedIn :: [[(Zone, Maybe (Aligned Subject))]]
             routesParticipatedIn = filter participates routes
