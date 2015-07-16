@@ -100,6 +100,7 @@ tests = TestList [
     , sixE8
     , sixE9
     , sixE10
+    , sixE11
     , sixE15
     ]
 
@@ -1922,6 +1923,54 @@ sixE10 = (expectedResolution == testResolution expectedResolution) ~? "6.E.10"
         -- English fleet returns to North Sea!
         , (Zone (Normal Norway), (align Fleet Russia, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal HelgolandBright) Germany) VNil) [])))))
 
+        ]
+
+-- 6.E.11. TEST CASE, NO SELF DISLODGEMENT WITH BELEAGUERED GARRISON, UNIT SWAP WITH ADJACENT CONVOYING AND TWO COASTS
+--
+-- Similar to the previous test case, but now the beleaguered fleet is in a unit swap with the stronger attacker. So, the unit swap succeeds. To make the situation more complex, the swap is on an area with two coasts.
+--
+-- France: 
+-- A Spain - Portugal via Convoy
+-- F Mid-Atlantic Ocean Convoys A Spain - Portugal
+-- F Gulf of Lyon Supports F Portugal - Spain(nc)
+--
+-- Germany: 
+-- A Marseilles Supports A Gascony - Spain
+-- A Gascony - Spain
+--
+-- Italy: 
+-- F Portugal - Spain(nc)
+-- F Western Mediterranean Supports F Portugal - Spain(nc)
+--
+-- The unit swap succeeds. Note that due to the success of the swap, there is no beleaguered garrison anymore. 
+--
+-- Note: this revealed a bug in the resolver. The Italian move would bounce off
+-- of the German move because the French support was discounted. The French
+-- move would fail because the Italian move is deemed to overpower it. I judge
+-- this to be two independent bugs:
+--   1. The French move: I was under the impression that this was supposed to
+--      be overpowered, and that the Italian fleet ought to dislodge the
+--      French move. Turns out that's only the case if the French army was not
+--      convoyed.
+--   2. The Italian move: the French support must be discounted ONLY IF the
+--      Italian move would dislodge the French army, i.e. ONLY IF the French
+--      army does not move to Portugal.
+--
+-- Solution implemented in 6951cbdb191361a1559fe4e50e6a565bd4665c05
+--
+sixE11 = (expectedResolution == testResolution expectedResolution) ~? "6.E.11"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Spain), (align Army France, SomeResolved (MoveObject (Normal Portugal), Nothing)))
+        , (Zone (Normal MidAtlanticOcean), (align Fleet France, SomeResolved (ConvoyObject (Army, Normal Spain) (Normal Portugal), Nothing)))
+        , (Zone (Normal GulfOfLyon), (align Fleet France, SomeResolved (SupportObject (Fleet, Normal Portugal) (Special SpainNorth), Nothing)))
+
+        , (Zone (Normal Marseilles), (align Army Germany, SomeResolved (SupportObject (Army, Normal Gascony) (Normal Spain), Nothing)))
+        , (Zone (Normal Gascony), (align Army Germany, SomeResolved (MoveObject (Normal Spain), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Portugal) Italy) VNil) [])))))
+
+        , (Zone (Normal Portugal), (align Fleet Italy, SomeResolved (MoveObject (Special SpainNorth), Nothing)))
+        , (Zone (Normal WesternMediterranean), (align Fleet Italy, SomeResolved (SupportObject (Fleet, Normal Portugal) (Special SpainNorth), Nothing)))
         ]
 
 -- The friendly head-to-head battle.
