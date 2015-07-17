@@ -37,6 +37,8 @@ module Diplomacy.OrderResolution (
   , convoyRoutes
   , successfulConvoyRoutes
 
+  , typicalChange
+
   ) where
 
 import Data.Typeable
@@ -487,7 +489,7 @@ rawConvoyRoutes resolution (unit, ptFrom) ptTo = do
   where
 
     tagWithChange :: Zone -> (Zone, Maybe (Aligned Subject))
-    tagWithChange zone = (zone, change resolution zone)
+    tagWithChange zone = (zone, typicalChange resolution zone)
 
     viableConvoyZones :: [Zone]
     viableConvoyZones = M.keys (M.filter isViableConvoy resolution)
@@ -1001,7 +1003,7 @@ resolveSomeOrderTypical resolution zone (aunit, SomeOrderObject object) =
         supportDislodged
             :: OrderObject Typical Support
             -> Maybe (FailureReason Typical Support)
-        supportDislodged _ = case change (dropAssumptionTags resolution) zone of
+        supportDislodged _ = case typicalChange (dropAssumptionTags resolution) zone of
             Nothing -> Nothing
             Just dislodger -> Just (SupportDislodged dislodger)
 
@@ -1078,8 +1080,8 @@ resolveSomeOrderTypical resolution zone (aunit, SomeOrderObject object) =
 -- | Changes to a board as the result of a typical phase.
 --   Nothing means no change, Just means the unit belonging to the great power
 --   now lies at this Zone, and used to lie at the given ProvinceTarget.
-change :: TypicalResolution -> Zone -> Maybe (Aligned Subject)
-change res zone = M.foldWithKey folder Nothing res
+typicalChange :: TypicalResolution -> Zone -> Maybe (Aligned Subject)
+typicalChange res zone = M.foldWithKey folder Nothing res
   where
     folder
         :: Zone
@@ -1088,7 +1090,10 @@ change res zone = M.foldWithKey folder Nothing res
         -> Maybe (Aligned Subject)
     folder zone' (aunit, SomeResolved (object, resolution)) b = case object of
         MoveObject movingTo ->
-            if Zone movingTo /= zone
+            -- Rule out moves that don't offend this zone, and moves that are
+            -- holds at this zone.
+            if    Zone movingTo /= zone
+               || Zone movingTo == zone'
             then b
             else case resolution of
                      Nothing -> let power = alignedGreatPower aunit
