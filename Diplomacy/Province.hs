@@ -60,10 +60,15 @@ module Diplomacy.Province (
   , provinceTargetCluster
   , allProvinceTargets
 
+  , shortestPath
+  , distance
+  , distanceFromHomeSupplyCentre
+
   ) where
 
 import Control.Monad (guard)
-
+import Control.Applicative
+import Data.List (sort)
 import Diplomacy.GreatPower
 
 -- | Exhaustive enumeration of the places on the diplomacy board.
@@ -506,7 +511,7 @@ provinceTargetCluster (Special c) = (Normal $ pcProvince c) : (map Special (prov
 
 data ProvinceCoast
   = StPetersburgNorth
-  | StPetersburgWest
+  | StPetersburgSouth
   | SpainNorth
   | SpainSouth
   | BulgariaEast
@@ -515,14 +520,14 @@ data ProvinceCoast
 
 pcProvince :: ProvinceCoast -> Province
 pcProvince StPetersburgNorth = StPetersburg
-pcProvince StPetersburgWest = StPetersburg
+pcProvince StPetersburgSouth = StPetersburg
 pcProvince SpainNorth = Spain
 pcProvince SpainSouth = Spain
 pcProvince BulgariaEast = Bulgaria
 pcProvince BulgariaSouth = Bulgaria
 
 provinceCoasts :: Province -> [ProvinceCoast]
-provinceCoasts StPetersburg = [StPetersburgNorth, StPetersburgWest]
+provinceCoasts StPetersburg = [StPetersburgNorth, StPetersburgSouth]
 provinceCoasts Spain = [SpainNorth, SpainSouth]
 provinceCoasts Bulgaria = [BulgariaEast, BulgariaSouth]
 provinceCoasts _ = []
@@ -558,7 +563,7 @@ blacklist p (Special c) = coastBlacklist p c
     coastBlacklist Marseilles SpainNorth = True
     -- NB MidAtlanticOcean to SpainSouth is fine!
     coastBlacklist GulfOfBothnia StPetersburgNorth = True
-    coastBlacklist BarentsSea StPetersburgWest = True
+    coastBlacklist BarentsSea StPetersburgSouth = True
     coastBlacklist BlackSea BulgariaSouth = True
     coastBlacklist AegeanSea BulgariaEast = True
     coastBlacklist _ _ = False
@@ -638,8 +643,39 @@ commonCoasts pt1 pt2 =
 
 instance Show ProvinceCoast where
   show StPetersburgNorth = "StP NC"
-  show StPetersburgWest = "StP WC"
+  show StPetersburgSouth = "StP SC"
   show SpainNorth = "Spa NC"
   show SpainSouth = "Spa SC"
   show BulgariaEast = "Bul EC"
   show BulgariaSouth = "Bul SC"
+
+distance :: Province -> Province -> Int
+distance pr1 pr2 = length (shortestPath pr1 pr2)
+
+-- Not particularly efficient, but it should be OK...
+shortestPath :: Province -> Province -> [Province]
+shortestPath pr1 pr2 =
+    if pr1 == pr2
+    then []
+    else reverse $ shortestPath' pr2 (fmap pure (adjacency pr1))
+  where
+    shortestPath' :: Province -> [[Province]] -> [Province]
+    shortestPath' pr paths = case select pr paths of
+        Just path -> path
+        Nothing -> shortestPath' pr (expand paths)
+
+    expand :: [[Province]] -> [[Province]]
+    expand ps = do
+        t : ts <- ps
+        fmap (\x -> x : t : ts) (adjacency t)
+
+    select :: Province -> [[Province]] -> Maybe [Province]
+    select p paths = foldr select Nothing paths
+      where
+        select path b = b <|> if elem p path then Just path else Nothing
+
+distanceFromHomeSupplyCentre :: GreatPower -> Province -> Int
+distanceFromHomeSupplyCentre power province = head (sort distances)
+  where
+    distances = fmap (distance province) homeSupplyCentres
+    homeSupplyCentres = filter (isHome power) supplyCentres
