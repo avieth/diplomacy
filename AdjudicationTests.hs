@@ -168,12 +168,6 @@ testRetreatResolution expectedRes = actualRes
     orders = M.map mapper expectedRes
     mapper (aunit, SomeResolved (object, _)) = (aunit, SomeOrderObject object)
 
-isValid :: Either (InvalidReason phase order) t -> Bool
-isValid = isRight
-
-isInvalid :: Either (InvalidReason phase order) t -> Bool
-isInvalid = isLeft
-
 isMoveImpossible :: Maybe (InvalidReason Typical Move) -> Bool
 isMoveImpossible = maybe False (== MoveImpossible)
 
@@ -340,10 +334,10 @@ sixA12 = (expectedResolution == resolution) ~? "6.A.12"
 -- This tests validation AND resolution. Not only must the support be valid, it
 -- must also cause the French move to succeed and the Italian move to fail.
 sixB4 :: Test
-sixB4 = (isValid supportValidation && resolution == expectedResolution) ~? "6.B.4"
+sixB4 = (supportValidation == Nothing && resolution == expectedResolution) ~? "6.B.4"
   where
 
-    supportValidation = validate (validateSupport occupation) supportOrder
+    supportValidation = validateSupport occupation supportOrder
 
     supportOrder = Order (align ((Fleet, Normal Marseilles), SupportObject (Fleet, Normal Gascony) (Special SpainNorth)) France)
 
