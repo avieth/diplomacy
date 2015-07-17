@@ -129,17 +129,42 @@ tests = TestList [
     , sixF22
     , sixF23
     , sixF24
+    , sixH1
+    , sixH2
+    , sixH3
+    , sixH4
+    , sixH5
+    , sixH6
+    , sixH7
+    , sixH8
+    , sixH9
+    , sixH10
+    , sixH11
+    , sixH12
+    , sixH13
+    , sixH14
+    , sixH15
+    , sixH16
     ]
 
 -- | A helper for testing typical phase resolutions. Give the orders and their
 --   expected resolutions once, and get back the actual resolution of those
 --   orders.
-testResolution
+testTypicalResolution
     :: TypicalResolution 
     -> TypicalResolution
-testResolution expectedRes = actualRes
+testTypicalResolution expectedRes = actualRes
   where
     actualRes = typicalResolution orders
+    orders = M.map mapper expectedRes
+    mapper (aunit, SomeResolved (object, _)) = (aunit, SomeOrderObject object)
+
+testRetreatResolution
+    :: M.Map Zone (Aligned Unit, SomeResolved OrderObject Retreat)
+    -> M.Map Zone (Aligned Unit, SomeResolved OrderObject Retreat)
+testRetreatResolution expectedRes = actualRes
+  where
+    actualRes = retreatResolution orders
     orders = M.map mapper expectedRes
     mapper (aunit, SomeResolved (object, _)) = (aunit, SomeOrderObject object)
 
@@ -875,7 +900,7 @@ sixD5 = (expectedResolution == resolution) ~? "6.D.5"
 -- F Gulf of Bothnia Supports F Livonia - Baltic Sea
 --
 -- The Russian move from Livonia to the Baltic Sea fails. The convoy from Berlin to Sweden succeeds. 
-sixD6 = (expectedResolution == testResolution expectedResolution) ~? "6.D.6"
+sixD6 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.6"
   where
 
     expectedResolution = M.fromList [
@@ -901,7 +926,7 @@ sixD6 = (expectedResolution == testResolution expectedResolution) ~? "6.D.6"
 -- A Finland - Sweden
 --
 -- The support of the fleet in Prussia fails. The fleet in Baltic Sea will bounce on the Russian army in Finland and will be dislodged by the Russian fleet from Livonia when it returns to the Baltic Sea. 
-sixD7 = (expectedResolution == testResolution expectedResolution) ~? "6.D.7"
+sixD7 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.7"
   where
     
     expectedResolution = M.fromList [
@@ -927,7 +952,7 @@ sixD7 = (expectedResolution == testResolution expectedResolution) ~? "6.D.7"
 -- A Bulgaria Supports A Greece
 --
 -- There was a possible convoy from Greece to Naples, before the orders were made public (via the Ionian Sea). This means that the order of Greece to Naples should never be treated as illegal order and be changed in a hold order able to receive hold support (see also issue VI.A). Therefore, the support in Bulgaria fails and the army in Greece is dislodged by the army in Albania. 
-sixD8 = (expectedResolution == testResolution expectedResolution) ~? "6.D.8"
+sixD8 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.8"
   where
 
     expectedResolution = M.fromList [
@@ -952,7 +977,7 @@ sixD8 = (expectedResolution == testResolution expectedResolution) ~? "6.D.8"
 -- A Trieste Hold
 --
 -- The support of the army in Albania fails and the army in Trieste is dislodged by the army from Venice. 
-sixD9 = (expectedResolution == testResolution expectedResolution) ~? "6.D.9"
+sixD9 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.9"
   where
 
     expectedResolution = M.fromList [
@@ -973,7 +998,7 @@ sixD9 = (expectedResolution == testResolution expectedResolution) ~? "6.D.9"
 -- A Munich Supports F Kiel - Berlin
 --
 -- Move to Berlin fails. 
-sixD10 = (expectedResolution == testResolution expectedResolution) ~? "6.D.10"
+sixD10 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.10"
   where
 
     expectedResolution = M.fromList [
@@ -997,7 +1022,7 @@ sixD10 = (expectedResolution == testResolution expectedResolution) ~? "6.D.10"
 -- A Warsaw - Prussia
 --
 -- Army in Berlin bounces, but is not dislodged by own unit. 
-sixD11 = (expectedResolution == testResolution expectedResolution) ~? "6.D.11"
+sixD11 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.11"
   where
 
     expectedResolution = M.fromList [
@@ -1023,7 +1048,7 @@ sixD11 = (expectedResolution == testResolution expectedResolution) ~? "6.D.11"
 -- A Venice - Trieste
 --
 -- No dislodgment of fleet in Trieste. 
-sixD12 = (expectedResolution == testResolution expectedResolution) ~? "6.D.12"
+sixD12 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.12"
   where
 
     expectedResolution = M.fromList [
@@ -1046,7 +1071,7 @@ sixD12 = (expectedResolution == testResolution expectedResolution) ~? "6.D.12"
 -- F Apulia - Adriatic Sea
 --
 -- No dislodgment of fleet in Trieste. 
-sixD13 = (expectedResolution == testResolution expectedResolution) ~? "6.D.13"
+sixD13 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.13"
   where
 
     expectedResolution = M.fromList [
@@ -1071,7 +1096,7 @@ sixD13 = (expectedResolution == testResolution expectedResolution) ~? "6.D.13"
 -- F Adriatic Sea Supports A Venice - Trieste
 --
 -- The fleet in Trieste is dislodged. 
-sixD14 = (expectedResolution == testResolution expectedResolution) ~? "6.D.14"
+sixD14 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.14"
   where
 
     expectedResolution = M.fromList [
@@ -1097,7 +1122,7 @@ sixD14 = (expectedResolution == testResolution expectedResolution) ~? "6.D.14"
 -- F Ankara - Constantinople
 --
 -- The support of Constantinople is not cut and the fleet in Ankara is dislodged by the fleet in the Black Sea.
-sixD15 = (expectedResolution == testResolution expectedResolution) ~? "6.D.15"
+sixD15 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.15"
   where
 
     expectedResolution = M.fromList [
@@ -1120,7 +1145,7 @@ sixD15 = (expectedResolution == testResolution expectedResolution) ~? "6.D.15"
 -- A Belgium - London
 --
 -- The English army in London is dislodged by the French army coming from Belgium. 
-sixD16 = (expectedResolution == testResolution expectedResolution) ~? "6.D.16"
+sixD16 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.16"
   where
 
     expectedResolution = M.fromList [
@@ -1145,7 +1170,7 @@ sixD16 = (expectedResolution == testResolution expectedResolution) ~? "6.D.16"
 -- A Armenia - Ankara
 --
 -- The Russian fleet in Constantinople is dislodged. This cuts the support to from Black Sea to Ankara. Black Sea will bounce with the army from Armenia. 
-sixD17 = (expectedResolution == testResolution expectedResolution) ~? "6.D.17"
+sixD17 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.17"
   where
 
     expectedResolution = M.fromList [
@@ -1172,7 +1197,7 @@ sixD17 = (expectedResolution == testResolution expectedResolution) ~? "6.D.17"
 -- A Armenia - Ankara
 --
 -- The Russian fleet in the Black Sea will dislodge the Turkish fleet in Ankara. 
-sixD18 = (expectedResolution == testResolution expectedResolution) ~? "6.D.18"
+sixD18 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.18"
   where
 
     expectedResolution = M.fromList [
@@ -1198,7 +1223,7 @@ sixD18 = (expectedResolution == testResolution expectedResolution) ~? "6.D.18"
 -- F Ankara - Constantinople
 --
 -- The Russian fleet in Constantinople is not dislodged, because one of the support is of Russian origin. The support from Black Sea to Ankara will sustain and the fleet in Ankara will be dislodged. 
-sixD19 = (expectedResolution == testResolution expectedResolution) ~? "6.D.19"
+sixD19 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.19"
   where
 
     expectedResolution = M.fromList [
@@ -1222,7 +1247,7 @@ sixD19 = (expectedResolution == testResolution expectedResolution) ~? "6.D.19"
 -- F English Channel Hold
 --
 -- The army in York does not cut support. This means that the fleet in the English Channel is dislodged by the fleet in the North Sea. 
-sixD20 = (expectedResolution == testResolution expectedResolution) ~? "6.D.20"
+sixD20 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.20"
   where
 
     expectedResolution = M.fromList [
@@ -1252,7 +1277,7 @@ sixD20 = (expectedResolution == testResolution expectedResolution) ~? "6.D.20"
 -- A Berlin Supports A Silesia - Munich
 --
 -- Although the German army is dislodged, it still cuts the Italian support. That means that the Austrian Fleet is not dislodged. 
-sixD21 = (expectedResolution == testResolution expectedResolution) ~? "6.D.21"
+sixD21 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.21"
   where
 
     expectedResolution = M.fromList [
@@ -1367,7 +1392,7 @@ sixD24 = (validation == Just (SupportedCouldNotDoMove MoveImpossible)) ~? "6.D.2
 -- Note: this one mentions the previous three cases, which test the verifier;
 -- yet, this one tests the resolver! All orders in this case are indeed
 -- valid.
-sixD25 = (expectedResolution == testResolution expectedResolution) ~? "6.D.25"
+sixD25 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.25"
   where
 
     expectedResolution = M.fromList [
@@ -1391,7 +1416,7 @@ sixD25 = (expectedResolution == testResolution expectedResolution) ~? "6.D.25"
 -- A Prussia - Berlin
 --
 -- Again, Berlin will not be dislodged. 
-sixD26 = (expectedResolution == testResolution expectedResolution) ~? "6.D.26"
+sixD26 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.26"
   where
 
     expectedResolution = M.fromList [
@@ -1418,7 +1443,7 @@ sixD26 = (expectedResolution == testResolution expectedResolution) ~? "6.D.26"
 -- F Prussia Supports F Baltic Sea
 --
 -- The convoy order in the Baltic Sea is unmatched and fails. However, the support of Prussia on the Baltic Sea is still valid and the fleet in the Baltic Sea is not dislodged. 
-sixD27 = (expectedResolution == testResolution expectedResolution) ~? "6.D.27"
+sixD27 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.27"
   where
 
     expectedResolution = M.fromList [
@@ -1566,7 +1591,7 @@ sixD30 = (validation == Just MoveImpossible) ~? "6.D.30"
 -- A Bulgaria - Serbia
 --
 -- Due to the Russian support, the army in Serbia advances to Budapest. This enables Turkey to capture Serbia with the army in Bulgaria. 
-sixD33 = (expectedResolution == testResolution expectedResolution) ~? "6.D.33"
+sixD33 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.D.33"
   where
 
     expectedResolution = M.fromList [
@@ -1619,8 +1644,8 @@ sixD34 = (validation == Just SupportSelf) ~? "6.D.34"
 -- A Prussia - Berlin
 --
 -- The army in Kiel will move to Berlin. 
-sixE1 = (expectedResolution == testResolution expectedResolution) ~? "6.E.1"
---sixE1 = (expectedResolution, testResolution expectedResolution)
+sixE1 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E.1"
+--sixE1 = (expectedResolution, testTypicalResolution expectedResolution)
   where
 
     expectedResolution = M.fromList [
@@ -1641,7 +1666,7 @@ sixE1 = (expectedResolution == testResolution expectedResolution) ~? "6.E.1"
 -- A Munich Supports A Berlin - Kiel
 --
 -- No unit will move. 
-sixE2 = (expectedResolution == testResolution expectedResolution) ~? "6.E.2"
+sixE2 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E.2"
   where
 
     expectedResolution = M.fromList [
@@ -1664,7 +1689,7 @@ sixE2 = (expectedResolution == testResolution expectedResolution) ~? "6.E.2"
 -- F Kiel - Berlin
 --
 -- No unit will move. 
-sixE3 = (expectedResolution == testResolution expectedResolution) ~? "6.E.3"
+sixE3 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E.3"
   where
 
     expectedResolution = M.fromList [
@@ -1697,8 +1722,8 @@ sixE3 = (expectedResolution == testResolution expectedResolution) ~? "6.E.3"
 -- A Ruhr - Holland
 --
 -- The French fleet in the North Sea is not dislodged due to the beleaguered garrison. Therefore, the Austrian army in Ruhr will not move to Holland. 
-sixE4 = (expectedResolution == testResolution expectedResolution) ~? "6.E.4"
---sixE4 = (expectedResolution, testResolution expectedResolution)
+sixE4 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E.4"
+--sixE4 = (expectedResolution, testTypicalResolution expectedResolution)
   where
 
     expectedResolution = M.fromList [
@@ -1746,7 +1771,7 @@ sixE4 = (expectedResolution == testResolution expectedResolution) ~? "6.E.4"
 -- A Ruhr - Holland
 --
 -- The French fleet in the North Sea is dislodged but not by the German fleet in Holland. Therefore, the French fleet can still prevent that the Austrian army in Ruhr will move to Holland. So, the Austrian move in Ruhr fails and the German fleet in Holland is not dislodged. 
-sixE5 = (expectedResolution == testResolution expectedResolution) ~? "6.E.5"
+sixE5 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E.5"
   where
 
     expectedResolution = M.fromList [
@@ -1784,7 +1809,7 @@ sixE5 = (expectedResolution == testResolution expectedResolution) ~? "6.E.5"
 -- A Ruhr - Holland
 --
 -- Although the German force from Holland to North Sea is one larger than the French force from North Sea to Holland, the French fleet in the North Sea is not dislodged, because one of the supports on the German movement is French. Therefore, the Austrian army in Ruhr will not move to Holland. 
-sixE6 = (expectedResolution == testResolution expectedResolution) ~? "6.E.6"
+sixE6 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E.6"
   where
 
     expectedResolution = M.fromList [
@@ -1822,7 +1847,7 @@ sixE6 = (expectedResolution == testResolution expectedResolution) ~? "6.E.6"
 -- look at the competing moves! We must to ask, in this case, is this move
 -- still a dominator if we remove the stationary unit's friendly supports?
 -- Same goes for the case of a returning unit!
-sixE7 = (expectedResolution == testResolution expectedResolution) ~? "6.E.7"
+sixE7 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E.7"
   where
 
     expectedResolution = M.fromList [
@@ -1853,7 +1878,7 @@ sixE7 = (expectedResolution == testResolution expectedResolution) ~? "6.E.7"
 -- F Norway - North Sea
 --
 -- Again, none of the fleets move. 
-sixE8 = (expectedResolution == testResolution expectedResolution) ~? "6.E.8"
+sixE8 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E.8"
   where
 
     expectedResolution = M.fromList [
@@ -1889,7 +1914,7 @@ sixE8 = (expectedResolution == testResolution expectedResolution) ~? "6.E.8"
 -- F Norway - North Sea
 --
 -- Both the fleet in the North Sea and the fleet in Norway move. 
-sixE9 = (expectedResolution == testResolution expectedResolution) ~? "6.E.9"
+sixE9 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E.9"
   where
 
     expectedResolution = M.fromList [
@@ -1933,7 +1958,7 @@ sixE9 = (expectedResolution == testResolution expectedResolution) ~? "6.E.9"
 -- Solution: commit 1b92936. We compute the incumbant under the assumption
 -- that the current move succeeds, rather than the assumption that the current
 -- move was not given.
-sixE10 = (expectedResolution == testResolution expectedResolution) ~? "6.E.10"
+sixE10 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E.10"
   where
 
     expectedResolution = M.fromList [
@@ -1985,7 +2010,7 @@ sixE10 = (expectedResolution == testResolution expectedResolution) ~? "6.E.10"
 --
 -- Solution implemented in 6951cbdb191361a1559fe4e50e6a565bd4665c05
 --
-sixE11 = (expectedResolution == testResolution expectedResolution) ~? "6.E.11"
+sixE11 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E.11"
   where
 
     expectedResolution = M.fromList [
@@ -2016,7 +2041,7 @@ sixE11 = (expectedResolution == testResolution expectedResolution) ~? "6.E.11"
 -- A Rumania Supports A Galicia - Budapest
 --
 -- The support of Serbia on the Italian army prevents that the Russian army in Galicia will advance. No army will move. 
-sixE12 = (expectedResolution == testResolution expectedResolution) ~? "6.E.12"
+sixE12 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E.12"
   where
 
     expectedResolution = M.fromList [
@@ -2053,7 +2078,7 @@ sixE12 = (expectedResolution == testResolution expectedResolution) ~? "6.E.12"
 -- F Norway Supports F Norwegian Sea - North Sea
 --
 -- None of the fleets move. The German fleet in the North Sea is not dislodged.
-sixE13 = (expectedResolution == testResolution expectedResolution) ~? "6.E.13"
+sixE13 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E.13"
   where
 
     expectedResolution = M.fromList [
@@ -2084,7 +2109,7 @@ sixE13 = (expectedResolution == testResolution expectedResolution) ~? "6.E.13"
 -- Note: the Russian move is _invalid_, but the resolver doesn't know this. If
 -- we pass it through the resolver, we ought to get MoveBounced. So here we
 -- test the validation and the resolution.
-sixE14 = (expectedResolution == testResolution expectedResolution && validation == Just MoveImpossible) ~? "6.E.14"
+sixE14 = (expectedResolution == testTypicalResolution expectedResolution && validation == Just MoveImpossible) ~? "6.E.14"
   where
 
     validation = validateMove occupation russianMove
@@ -2191,7 +2216,7 @@ sixF1 = (validation == Just ConvoyerNotInWater) ~? "6.F.1"
 -- A Paris - Brest
 --
 -- The English army in London bounces on the French army in Paris. Both units do not move. 
-sixF2 = (expectedResolution == testResolution expectedResolution) ~? "6.F.2"
+sixF2 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.2"
   where
 
     expectedResolution = M.fromList [
@@ -2214,7 +2239,7 @@ sixF2 = (expectedResolution == testResolution expectedResolution) ~? "6.F.2"
 -- A Paris - Brest
 --
 -- The army in London receives support and beats the army in Paris. This means that the army London will end in Brest and the French army in Paris stays in Paris. 
-sixF3 = (expectedResolution == testResolution expectedResolution) ~? "6.F.3"
+sixF3 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.3"
   where
 
     expectedResolution = M.fromList [
@@ -2237,7 +2262,7 @@ sixF3 = (expectedResolution == testResolution expectedResolution) ~? "6.F.3"
 -- F Skagerrak - North Sea
 --
 -- The army in London will successfully convoy and end in Holland. 
-sixF4 = (expectedResolution == testResolution expectedResolution) ~? "6.F.4"
+sixF4 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.4"
   where
 
     expectedResolution = M.fromList [
@@ -2264,7 +2289,7 @@ sixF4 = (expectedResolution == testResolution expectedResolution) ~? "6.F.4"
 -- F Denmark Supports F Skagerrak - North Sea
 --
 -- The army in London will successfully convoy and end in Holland. 
-sixF5 = (expectedResolution == testResolution expectedResolution) ~? "6.F.5"
+sixF5 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.5"
   where
 
     expectedResolution = M.fromList [
@@ -2297,7 +2322,7 @@ sixF5 = (expectedResolution == testResolution expectedResolution) ~? "6.F.5"
 -- A Burgundy Supports A Picardy - Belgium
 --
 -- The hold order of Holland on Belgium will sustain and Belgium will not be dislodged by the French in Picardy.
-sixF6 = (expectedResolution == testResolution expectedResolution) ~? "6.F.6"
+sixF6 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.6"
   where
 
     expectedResolution = M.fromList [
@@ -2327,14 +2352,25 @@ sixF6 = (expectedResolution == testResolution expectedResolution) ~? "6.F.6"
 --
 -- The dislodged English fleet can retreat to Holland. 
 --
--- This is TODO; currently we don't test retreat phase resolutions.
--- The test will go something like this:
---   1. use testResolution to resolve the above typical phase orders.
---   2. define some retreat phase orders in which that fleet retreats to
---      Holland.
---   2. use the outcome of 1 as input to the retreat phase resolutions and
---      check that the English fleet's retreat order succeeds.
-sixF7 = False ~? "6.F.7 TODO once retreat resolution is in"
+-- Note: this tests withdraw validation and typical resolution.
+sixF7 = (  validation == Nothing
+        && expectedResolution == resolution) ~? "6.F.7"
+  where
+
+    validation = validateWithdraw (occupation, resolution) withdrawOrder
+    withdrawOrder = Order (align ((Fleet, Normal NorthSea), WithdrawObject (Normal Holland)) England)
+    resolution = testTypicalResolution expectedResolution
+    expectedResolution = M.fromList [
+          (Zone (Normal NorthSea), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal London) (Normal Holland), Just (ConvoyRouteCut [(Zone (Normal NorthSea), align (Fleet, Normal Skagerrak) Germany)]))))
+        , (Zone (Normal London), (align Army England, SomeResolved (MoveObject (Normal Holland), Just MoveNoConvoy)))
+
+        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Skagerrak) (Normal NorthSea), Nothing)))
+        , (Zone (Normal Skagerrak), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Nothing)))
+        ]
+    occupation = occupy (Normal NorthSea) (Just (align Fleet England)) emptyOccupation
+
+
+    
 
 -- 6.F.8. TEST CASE, DISLODGED CONVOY DOES NOT CAUSE A BOUNCE
 --
@@ -2350,7 +2386,7 @@ sixF7 = False ~? "6.F.7 TODO once retreat resolution is in"
 -- A Belgium - Holland
 --
 -- The army in Belgium will not bounce and move to Holland. 
-sixF8 = (expectedResolution == testResolution expectedResolution) ~? "6.F.8"
+sixF8 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.8"
   where
 
     expectedResolution = M.fromList [
@@ -2378,7 +2414,7 @@ sixF8 = (expectedResolution == testResolution expectedResolution) ~? "6.F.8"
 -- The French fleet in Mid Atlantic Ocean will dislodge the convoying fleet in the English Channel. If the 1971 rules are used (see issue 4.A.1), this will disrupt the convoy and the army will stay in London. When the 1982 or 2000 rulebook is used (which I prefer) the army can still go via the North Sea and the convoy succeeds and the London army will end in Belgium. 
 --
 -- Note: here we use the modern rules; the move will succeed.
-sixF9 = (expectedResolution == testResolution expectedResolution) ~? "6.F.9"
+sixF9 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.9"
   where
 
     expectedResolution = M.fromList [
@@ -2409,7 +2445,7 @@ sixF9 = (expectedResolution == testResolution expectedResolution) ~? "6.F.9"
 --
 -- Note: we use the modern rules; expectation is that the English army
 -- successfully moves to Belgium.
-sixF10 = (expectedResolution == testResolution expectedResolution) ~? "6.F.10"
+sixF10 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.10"
   where
 
     expectedResolution = M.fromList [
@@ -2445,7 +2481,7 @@ sixF10 = (expectedResolution == testResolution expectedResolution) ~? "6.F.10"
 --
 -- Note: we use the modern rules; expectation is that the English army moves
 -- to Belgium.
-sixF11 = (expectedResolution == testResolution expectedResolution) ~? "6.F.11"
+sixF11 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.11"
   where
 
     expectedResolution = M.fromList [
@@ -2478,7 +2514,7 @@ sixF11 = (expectedResolution == testResolution expectedResolution) ~? "6.F.11"
 -- that Irish Sea convoyer has no effect on the English move/convoy to Belgium.
 -- The Irish Sea convoyer fails because there's no route from London to
 -- Belgium which includes him.
-sixF12 = (expectedResolution == testResolution expectedResolution) ~? "6.F.2"
+sixF12 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.2"
   where
 
     expectedResolution = M.fromList [
@@ -2508,7 +2544,7 @@ sixF12 = (expectedResolution == testResolution expectedResolution) ~? "6.F.2"
 -- If France and German are allies, England want to keep its army in London, to defend the island. An army in Belgium could easily be destroyed by an alliance of France and Germany. England tries to be friends with Germany, however France and Germany trick England.
 --
 -- The convoy of the army in London succeeds and the fleet in Denmark dislodges the fleet in the North Sea. 
-sixF13 = (expectedResolution == testResolution expectedResolution) ~? "6.F.13"
+sixF13 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.13"
   where
 
     expectedResolution = M.fromList [
@@ -2538,7 +2574,7 @@ sixF13 = (expectedResolution == testResolution expectedResolution) ~? "6.F.13"
 -- Note: we choose to, in cases of convoy paradox, treat the convoying move (the
 -- one which would cut the support against the convoy) as though it were a hold.
 -- So, we expect the French fleet to be dislodged.
-sixF14 = (expectedResolution == testResolution expectedResolution) ~? "6.F.14"
+sixF14 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.14"
   where
 
     expectedResolution = M.fromList [
@@ -2569,7 +2605,7 @@ sixF14 = (expectedResolution == testResolution expectedResolution) ~? "6.F.14"
 -- The Italian convoy is not part of the paradox core and should therefore succeed when the move of the fleet in Wales is successful. This is the case except when the 'All Hold' paradox rule is used (fully applied, not just as "backup" rule, see issue 4.A.2).
 --
 -- I prefer the Szykman rule, so I prefer that both the fleet in Wales as the army in North Africa succeed in moving.
-sixF15 = (expectedResolution == testResolution expectedResolution) ~? "6.F.15"
+sixF15 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.15"
   where
 
     expectedResolution = M.fromList [
@@ -2601,7 +2637,7 @@ sixF15 = (expectedResolution == testResolution expectedResolution) ~? "6.F.15"
 -- F Belgium - English Channel
 --
 -- In all the different rules for resolving convoy disruption paradoxes (see issue 4.A.2), the support of London is not cut. That means that the fleet in the English Channel is not dislodged and none of the units succeed to move. 
-sixF16 = (expectedResolution == testResolution expectedResolution) ~? "6.F.16"
+sixF16 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.16"
   where
 
     expectedResolution = M.fromList [
@@ -2637,7 +2673,7 @@ sixF16 = (expectedResolution == testResolution expectedResolution) ~? "6.F.16"
 -- If the Simon Szykman alternative is used (which I prefer), the convoy fails and the fleet in London and the English Channel are not dislodged. When the 'All Hold' (fully applied, not just as "backup" rule) or the DPTG rule is used, the result is the same as the Simon Szykman alternative. The involved moves (the move of the German fleet in Belgium and the convoying army in Brest) fail. 
 --
 -- Note: we also prefer the Simon Szykman alternative :)
-sixF17 = (expectedResolution == testResolution expectedResolution) ~? "6.F.17"
+sixF17 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.17"
   where
 
     expectedResolution = M.fromList [
@@ -2681,7 +2717,7 @@ sixF17 = (expectedResolution == testResolution expectedResolution) ~? "6.F.17"
 -- Since a failing convoy does not result in a consistent resolution, the DPTG gives the same result as the 'All Hold' rule. 
 --
 -- Note: expected resolution follows the Szykman rule.
-sixF18 = (expectedResolution == testResolution expectedResolution) ~? "6.F.18"
+sixF18 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.18"
   where
 
     expectedResolution = M.fromList [
@@ -2719,7 +2755,7 @@ sixF18 = (expectedResolution == testResolution expectedResolution) ~? "6.F.18"
 -- If the Szykman rule is used (which I prefer), the 'All Hold' rule or the DPTG, then there is no paradoxical situation. The support of Naples is cut and the fleet in the Tyrrhenian Sea is not dislodged.
 --
 -- Note: as always, we go with Szykman.
-sixF19 = (expectedResolution == testResolution expectedResolution) ~? "6.F.19"
+sixF19 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.19"
   where
 
     expectedResolution = M.fromList [
@@ -2760,7 +2796,7 @@ sixF19 = (expectedResolution == testResolution expectedResolution) ~? "6.F.19"
 -- As you can see, the 1982 rules allows the Italian player to save its fleet in the Ionian Sea with a trick. I do not consider this trick as normal tactical play. I prefer the Szykman rule as one of the rules that does not allow this trick. According to this rule the fleet in the Ionian Sea is dislodged.
 --
 -- Note: as always, we also prefer the Szykman rule.
-sixF20 = (expectedResolution == testResolution expectedResolution) ~? "6.F.20"
+sixF20 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.20"
   where
 
     expectedResolution = M.fromList [
@@ -2800,7 +2836,7 @@ sixF20 = (expectedResolution == testResolution expectedResolution) ~? "6.F.20"
 --
 -- Note: again, we too are sympathetic with the Szykman rule.
 -- Slightly confused, though, as the Russian support seems unecessary. Oh well.
-sixF21 = (expectedResolution == testResolution expectedResolution) ~? "6.F.21"
+sixF21 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.21"
   where
 
     expectedResolution = M.fromList [
@@ -2863,7 +2899,7 @@ sixF21 = (expectedResolution == testResolution expectedResolution) ~? "6.F.21"
 -- route which attacks a support which is directed against some zone in a route
 -- ... which attacks a support which is directed against some zone in that first
 -- route.
-sixF22 = (expectedResolution == testResolution expectedResolution) ~? "6.F.22"
+sixF22 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.22"
   where
 
     expectedResolution = M.fromList [
@@ -2917,7 +2953,7 @@ sixF22 = (expectedResolution == testResolution expectedResolution) ~? "6.F.22"
 -- Since there is no consistent resolution where all convoys fail, the DPTG rule has the same result as the 'All Hold' rule. That means the movement of all units fail. 
 --
 -- Note: we prefer Szykman as well.
-sixF23 = (expectedResolution == testResolution expectedResolution) ~? "6.F.23"
+sixF23 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.23"
   where
 
     expectedResolution = M.fromList [
@@ -2969,7 +3005,7 @@ sixF23 = (expectedResolution == testResolution expectedResolution) ~? "6.F.23"
 -- Since there is no consistent resolution where all convoys fail, the DPTG has in this case the same result as the 'All Hold' rule.
 --
 -- Note: as always, we prefer Szykman as well.
-sixF24 = (expectedResolution == testResolution expectedResolution) ~? "6.F.24"
+sixF24 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F.24"
   where
 
     expectedResolution = M.fromList [
@@ -2985,3 +3021,524 @@ sixF24 = (expectedResolution == testResolution expectedResolution) ~? "6.F.24"
         , (Zone (Normal Norway), (align Army Russia, SomeResolved (MoveObject (Normal Belgium), Just MoveConvoyParadox)))
         , (Zone (Normal NorthSea), (align Fleet Russia, SomeResolved (ConvoyObject (Army, Normal Norway) (Normal Belgium), Just (ConvoyRouteCut [(Zone (Normal NorthSea), align (Fleet, Normal Edinburgh) England)]))))
         ]
+
+-- 6.H.1. TEST CASE, NO SUPPORTS DURING RETREAT
+--
+-- Supports are not allowed in the retreat phase.
+--
+-- Austria: 
+-- F Trieste Hold
+-- A Serbia Hold
+--
+-- Turkey: 
+-- F Greece Hold
+--
+-- Italy: 
+-- A Venice Supports A Tyrolia - Trieste
+-- A Tyrolia - Trieste
+-- F Ionian Sea - Greece
+-- F Aegean Sea Supports F Ionian Sea - Greece
+--
+-- The fleet in Trieste and the fleet in Greece are dislodged. If the retreat orders are as follows:
+--
+-- Austria: 
+-- F Trieste - Albania
+-- A Serbia Supports F Trieste - Albania
+--
+-- Turkey: 
+-- F Greece - Albania
+--
+-- The Austrian support order is illegal. Both dislodged fleets are disbanded. 
+--
+-- Note: this case is ruled out by the type system, so we give no test.
+sixH1 = True ~? "6.H.1"
+
+-- 6.H.2. TEST CASE, NO SUPPORTS FROM RETREATING UNIT
+--
+-- Even a retreating unit can not give support.
+--
+-- England: 
+-- A Liverpool - Edinburgh
+-- F Yorkshire Supports A Liverpool - Edinburgh
+-- F Norway Hold
+--
+-- Germany: 
+-- A Kiel Supports A Ruhr - Holland
+-- A Ruhr - Holland
+--
+-- Russia: 
+-- F Edinburgh Hold
+-- A Sweden Supports A Finland - Norway
+-- A Finland - Norway
+-- F Holland Hold
+--
+-- The English fleet in Norway and the Russian fleets in Edinburgh and Holland are dislodged. If the following retreat orders are given:
+--
+-- England:
+-- F Norway - North Sea
+--
+-- Russia:
+-- F Edinburgh - North Sea
+-- F Holland Supports F Edinburgh - North Sea
+--
+-- Although the fleet in Holland may receive an order, it may not support (it is disbanded). The English fleet in Norway and the Russian fleet in Edinburgh bounce and are disbanded. 
+--
+-- Note: this case is ruled out by the type system, so we give no test.
+sixH2 = True ~? "6.H.2"
+
+-- 6.H.3. TEST CASE, NO CONVOY DURING RETREAT
+--
+-- Convoys during retreat are not allowed.
+--
+-- England: 
+-- F North Sea Hold
+-- A Holland Hold
+--
+-- Germany: 
+-- F Kiel Supports A Ruhr - Holland
+-- A Ruhr - Holland
+--
+-- The English army in Holland is dislodged. If England orders the following in retreat:
+--
+-- England: 
+-- A Holland - Yorkshire
+-- F North Sea Convoys A Holland - Yorkshire
+--
+-- The convoy order is illegal. The army in Holland is disbanded.
+--
+-- Note: this case is ruled out by the type system, so we give no test.
+sixH3 = True ~? "6.H.3"
+
+-- 6.H.4. TEST CASE, NO OTHER MOVES DURING RETREAT
+--
+-- Of course you may not do any other move during a retreat. But look if the adjudicator checks for it.
+--
+-- England: 
+-- F North Sea Hold
+-- A Holland Hold
+--
+-- Germany: 
+-- F Kiel Supports A Ruhr - Holland
+-- A Ruhr - Holland
+--
+-- The English army in Holland is dislodged. If England orders the following in retreat:
+--
+-- England: 
+-- A Holland - Belgium
+-- F North Sea - Norwegian Sea
+--
+-- The fleet in the North Sea is not dislodge, so the move is illegal. 
+--
+-- Note: this case is ruled out by the type system, so we give no test
+sixH4 = True ~? "6.H.4"
+
+-- 6.H.5. TEST CASE, A UNIT MAY NOT RETREAT TO THE AREA FROM WHICH IT IS ATTACKED
+--
+-- Well, that would be of course stupid. Still, the adjudicator must be tested on this.
+--
+-- Russia: 
+-- F Constantinople Supports F Black Sea - Ankara
+-- F Black Sea - Ankara
+--
+-- Turkey: 
+-- F Ankara Hold
+--
+-- Fleet in Ankara is dislodged and may not retreat to Black Sea. 
+--
+-- Note: this is principally a test of validation; we also have an implicit
+-- test of resolution, though, as retreat phase validation depends upon
+-- typical phase resolution.
+sixH5 = (  validation == Just WithdrawIntoAttackingProvince
+        && expectedResolution == resolution) ~? "6.H.5"
+  where
+
+    validation = validateWithdraw (occupation, resolution) withdrawOrder
+    withdrawOrder = Order (align ((Fleet, Normal Ankara), WithdrawObject (Normal BlackSea)) Turkey)
+    resolution = testTypicalResolution expectedResolution
+    expectedResolution = M.fromList [
+          (Zone (Normal Constantinople), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal BlackSea) (Normal Ankara), Nothing)))
+        , (Zone (Normal BlackSea), (align Fleet Russia, SomeResolved (MoveObject (Normal Ankara), Nothing)))
+
+        , (Zone (Normal Ankara), (align Fleet Turkey, SomeResolved (MoveObject (Normal Ankara), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal BlackSea) Russia) VNil) [])))))
+        ]
+    occupation = occupy (Normal Ankara) (Just (align Fleet Turkey)) emptyOccupation
+
+-- 6.H.6. TEST CASE, UNIT MAY NOT RETREAT TO A CONTESTED AREA
+--
+-- Stand off prevents retreat to the area.
+--
+-- Austria: 
+-- A Budapest Supports A Trieste - Vienna
+-- A Trieste - Vienna
+--
+-- Germany: 
+-- A Munich - Bohemia
+-- A Silesia - Bohemia
+--
+-- Italy: 
+-- A Vienna Hold
+--
+-- The Italian army in Vienna is dislodged. It may not retreat to Bohemia. 
+--
+-- Note: this tests validation and typical resolution.
+sixH6 = (  validation == Just WithdrawIntoContestedArea
+        && expectedResolution == resolution) ~? "6.H.6"
+  where
+
+    validation = validateWithdraw (occupation, resolution) withdrawOrder
+    withdrawOrder = Order (align ((Army, Normal Vienna), WithdrawObject (Normal Bohemia)) Italy)
+    resolution = testTypicalResolution expectedResolution
+    expectedResolution = M.fromList [
+          (Zone (Normal Budapest), (align Army Austria, SomeResolved (SupportObject (Army, Normal Trieste) (Normal Vienna), Nothing)))
+        , (Zone (Normal Trieste), (align Army Austria, SomeResolved (MoveObject (Normal Vienna), Nothing)))
+
+        , (Zone (Normal Munich), (align Army Germany, SomeResolved (MoveObject (Normal Bohemia), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Silesia) Germany) VNil) [])))))
+        , (Zone (Normal Silesia), (align Army Germany, SomeResolved (MoveObject (Normal Bohemia), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Munich) Germany) VNil) [])))))
+
+        , (Zone (Normal Vienna), (align Army Italy, SomeResolved (MoveObject (Normal Vienna), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Trieste) Austria) VNil) [])))))
+        ]
+    occupation = occupy (Normal Vienna) (Just (align Army Italy)) emptyOccupation
+
+-- 6.H.7. TEST CASE, MULTIPLE RETREAT TO SAME AREA WILL DISBAND UNITS
+--
+-- There can only be one unit in an area.
+--
+-- Austria: 
+-- A Budapest Supports A Trieste - Vienna
+-- A Trieste - Vienna
+--
+-- Germany: 
+-- A Munich Supports A Silesia - Bohemia
+-- A Silesia - Bohemia
+--
+-- Italy: 
+-- A Vienna Hold
+-- A Bohemia Hold
+--
+-- If Italy orders the following for retreat:
+--
+-- Italy: 
+-- A Bohemia - Tyrolia
+-- A Vienna - Tyrolia
+--
+-- Both armies will be disbanded. 
+sixH7 = (expectedResolution == testRetreatResolution expectedResolution) ~? "6.H.7"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Bohemia), (align Army Italy, SomeResolved (WithdrawObject (Normal Tyrolia), Just (WithdrawCollision (AtLeast (VCons (align (Army, Normal Vienna) Italy) VNil) [])))))
+        , (Zone (Normal Vienna), (align Army Italy, SomeResolved (WithdrawObject (Normal Tyrolia), Just (WithdrawCollision (AtLeast (VCons (align (Army, Normal Bohemia) Italy) VNil) [])))))
+        ]
+
+-- 6.H.8. TEST CASE, TRIPLE RETREAT TO SAME AREA WILL DISBAND UNITS
+--
+-- When three units retreat to the same area, then all three units are disbanded.
+--
+-- England: 
+-- A Liverpool - Edinburgh
+-- F Yorkshire Supports A Liverpool - Edinburgh
+-- F Norway Hold
+--
+-- Germany: 
+-- A Kiel Supports A Ruhr - Holland
+-- A Ruhr - Holland
+--
+-- Russia: 
+-- F Edinburgh Hold
+-- A Sweden Supports A Finland - Norway
+-- A Finland - Norway
+-- F Holland Hold
+--
+-- The fleets in Norway, Edinburgh and Holland are dislodged. If the following retreat orders are given:
+--
+-- England: 
+-- F Norway - North Sea
+--
+-- Russia: 
+-- F Edinburgh - North Sea
+-- F Holland - North Sea
+--
+-- All three units are disbanded. 
+sixH8 = (expectedResolution == testRetreatResolution expectedResolution) ~? "6.H.8"
+  where
+
+    expectedResolution = M.fromList [
+          (Zone (Normal Norway), (align Fleet England, SomeResolved (WithdrawObject (Normal NorthSea), Just (WithdrawCollision (AtLeast (VCons (align (Fleet, Normal Edinburgh) Russia) VNil) [align (Fleet, Normal Holland) Russia])))))
+
+        , (Zone (Normal Edinburgh), (align Fleet Russia, SomeResolved (WithdrawObject (Normal NorthSea), Just (WithdrawCollision (AtLeast (VCons (align (Fleet, Normal Norway) England) VNil) [align (Fleet, Normal Holland) Russia])))))
+        , (Zone (Normal Holland), (align Fleet Russia, SomeResolved (WithdrawObject (Normal NorthSea), Just (WithdrawCollision (AtLeast (VCons (align (Fleet, Normal Norway) England) VNil) [align (Fleet, Normal Edinburgh) Russia])))))
+        ]
+
+-- 6.H.9. TEST CASE, DISLODGED UNIT WILL NOT MAKE ATTACKERS AREA CONTESTED
+--
+-- An army can follow.
+--
+-- England: 
+-- F Helgoland Bight - Kiel
+-- F Denmark Supports F Helgoland Bight - Kiel
+--
+-- Germany: 
+-- A Berlin - Prussia
+-- F Kiel Hold
+-- A Silesia Supports A Berlin - Prussia
+--
+-- Russia: 
+-- A Prussia - Berlin
+--
+-- The fleet in Kiel can retreat to Berlin. 
+sixH9 = (  validation == Nothing
+        && expectedResolution == resolution) ~? "6.H.9"
+  where
+
+    validation = validateWithdraw (occupation, resolution) withdrawOrder
+    withdrawOrder = Order (align ((Fleet, Normal Kiel), WithdrawObject (Normal Berlin)) Germany)
+    resolution = testTypicalResolution expectedResolution
+    expectedResolution = M.fromList [
+          (Zone (Normal HelgolandBright), (align Fleet England, SomeResolved (MoveObject (Normal Kiel), Nothing)))
+        , (Zone (Normal Denmark), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal HelgolandBright) (Normal Kiel), Nothing)))
+
+        , (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Prussia), Nothing)))
+        , (Zone (Normal Kiel), (align Army Germany, SomeResolved (MoveObject (Normal Kiel), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal HelgolandBright) England) VNil) [])))))
+        , (Zone (Normal Silesia), (align Army Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Prussia), Nothing)))
+
+        , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
+        ]
+    occupation = occupy (Normal Kiel) (Just (align Fleet Germany)) emptyOccupation
+
+-- 6.H.10. TEST CASE, NOT RETREATING TO ATTACKER DOES NOT MEAN CONTESTED
+--
+-- An army can not retreat to the place of the attacker. The easiest way to program that, is to mark that place as "contested". However, this is not correct. Another army may retreat to that place.
+--
+-- England: 
+-- A Kiel Hold
+--
+-- Germany: 
+-- A Berlin - Kiel
+-- A Munich Supports A Berlin - Kiel
+-- A Prussia Hold
+--
+-- Russia: 
+-- A Warsaw - Prussia
+-- A Silesia Supports A Warsaw - Prussia
+--
+-- The armies in Kiel and Prussia are dislodged. The English army in Kiel can not retreat to Berlin, but the army in Prussia can retreat to Berlin. Suppose the following retreat orders are given:
+--
+-- England:
+-- A Kiel - Berlin
+--
+-- Germany:
+-- A Prussia - Berlin
+--
+-- The English retreat to Berlin is illegal and fails (the unit is disbanded). The German retreat to Berlin is successful and does not bounce on the English unit. 
+sixH10 = (  englishValidation == Just WithdrawIntoAttackingProvince
+         && germanValidation == Nothing
+         && expectedResolution == resolution) ~? "6.H.10"
+  where
+
+    englishValidation = validateWithdraw (occupation, resolution) englishWithdrawOrder
+    germanValidation = validateWithdraw (occupation, resolution) germanWithdrawOrder
+    englishWithdrawOrder = Order (align ((Army, Normal Kiel), WithdrawObject (Normal Berlin)) England)
+    germanWithdrawOrder = Order (align ((Army, Normal Prussia), WithdrawObject (Normal Berlin)) Germany)
+    resolution = testTypicalResolution expectedResolution
+    expectedResolution = M.fromList [
+          (Zone (Normal Kiel), (align Army England, SomeResolved (MoveObject (Normal Kiel), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
+
+        , (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Kiel), Nothing)))
+        , (Zone (Normal Munich), (align Army Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Kiel), Nothing)))
+        , (Zone (Normal Prussia), (align Army Germany, SomeResolved (MoveObject (Normal Prussia), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Warsaw) Russia) VNil) [])))))
+
+        , (Zone (Normal Warsaw), (align Army Russia, SomeResolved (MoveObject (Normal Prussia), Nothing)))
+        , (Zone (Normal Silesia), (align Army Russia, SomeResolved (SupportObject (Army, Normal Warsaw) (Normal Prussia), Nothing)))
+        ]
+    occupation =
+          occupy (Normal Kiel) (Just (align Army England))
+        . occupy (Normal Prussia) (Just (align Army Germany))
+        $ emptyOccupation
+
+-- 6.H.11. TEST CASE, RETREAT WHEN DISLODGED BY ADJACENT CONVOY
+--
+-- If a unit is dislodged by an army via convoy, the question arises whether the dislodged army can retreat to the original place of the convoyed army. This is only relevant in case the convoy was to an adjacent place.
+--
+-- France: 
+-- A Gascony - Marseilles via Convoy
+-- A Burgundy Supports A Gascony - Marseilles
+-- F Mid-Atlantic Ocean Convoys A Gascony - Marseilles
+-- F Western Mediterranean Convoys A Gascony - Marseilles
+-- F Gulf of Lyon Convoys A Gascony - Marseilles
+--
+-- Italy: 
+-- A Marseilles Hold
+--
+-- If for issue 4.A.3 choice b or c has been taken, then the army in Gascony will not move with the use of the convoy, because the army in Marseilles does not move in opposite direction. This immediately means that the army in Marseilles may not move to Gascony when it dislodged by the army there.
+--
+-- For all other choices of issue 4.A.3, the army in Gascony takes a convoy and does not pass the border of Gascony with Marseilles (it went a complete different direction). Now, the result depends on which rule is used for retreating (see issue 4.A.5).
+--
+-- I prefer the 1982/2000 rule for convoying to adjacent places. This means that the move of Gascony happened by convoy. Furthermore, I prefer that the army in Marseilles may retreat to Gascony.
+--
+-- Note: we go with the 1982/2000 rule.
+sixH11 = (  validation == Nothing
+         && expectedResolution == resolution) ~? "6.H.11"
+  where
+
+    validation = validateWithdraw (occupation, resolution) withdrawOrder
+    withdrawOrder = Order (align ((Army, Normal Marseilles), WithdrawObject (Normal Gascony)) Italy)
+    resolution = testTypicalResolution expectedResolution
+    expectedResolution = M.fromList [
+          (Zone (Normal Gascony), (align Army France, SomeResolved (MoveObject (Normal Marseilles), Nothing)))
+        , (Zone (Normal Burgundy), (align Army France, SomeResolved (SupportObject (Army, Normal Gascony) (Normal Marseilles), Nothing)))
+        , (Zone (Normal MidAtlanticOcean), (align Fleet France, SomeResolved (ConvoyObject (Army, Normal Gascony) (Normal Marseilles), Nothing)))
+        , (Zone (Normal WesternMediterranean), (align Fleet France, SomeResolved (ConvoyObject (Army, Normal Gascony) (Normal Marseilles), Nothing)))
+        , (Zone (Normal GulfOfLyon), (align Fleet France, SomeResolved (ConvoyObject (Army, Normal Gascony) (Normal Marseilles), Nothing)))
+
+        , (Zone (Normal Marseilles), (align Army Italy, SomeResolved (MoveObject (Normal Marseilles), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Gascony) France) VNil) [])))))
+        ]
+    occupation = occupy (Normal Marseilles) (Just (align Army Italy)) emptyOccupation
+
+-- 6.H.12. TEST CASE, RETREAT WHEN DISLODGED BY ADJACENT CONVOY WHILE TRYING TO DO THE SAME
+--
+-- The previous test case can be made more extra ordinary, when both armies tried to move by convoy.
+--
+-- England: 
+-- A Liverpool - Edinburgh via Convoy
+-- F Irish Sea Convoys A Liverpool - Edinburgh
+-- F English Channel Convoys A Liverpool - Edinburgh
+-- F North Sea Convoys A Liverpool - Edinburgh
+--
+-- France: 
+-- F Brest - English Channel
+-- F Mid-Atlantic Ocean Supports F Brest - English Channel
+--
+-- Russia: 
+-- A Edinburgh - Liverpool via Convoy
+-- F Norwegian Sea Convoys A Edinburgh - Liverpool
+-- F North Atlantic Ocean Convoys A Edinburgh - Liverpool
+-- A Clyde Supports A Edinburgh - Liverpool
+--
+-- If for issue 4.A.3 choice c has been taken, then the army in Liverpool will not try to move by convoy, because the convoy is disrupted. This has as consequence that army will just advance to Edinburgh by using the land route.
+--
+-- For all other choices of issue 4.A.3, both the army in Liverpool as in Edinburgh will try to move by convoy. The army in Edinburgh will succeed. The army in Liverpool will fail, because of the disrupted convoy. It is dislodged by the army of Edinburgh. Now, the question is whether the army in Liverpool may retreat to Edinburgh. The result depends on which rule is used for retreating (see issue 4.A.5).
+--
+-- I prefer the 1982/2000 rule for convoying to adjacent places. This means that the army in Liverpool tries the disrupted convoy. Furthermore, I prefer that the army in Liverpool may retreat to Edinburgh.
+--
+-- Note: we do not have the notion of explicit convoying! The English move to
+-- Edinburgh will go over land, and because the Russian move is over water,
+-- there is no conflict! The English and Russian moves succeed.
+-- So, this test case is ignored radically altered, just to test the typical
+-- resolution.
+sixH12 = (expectedResolution == resolution) ~? "6.H.12"
+  where
+
+    resolution = testTypicalResolution expectedResolution
+    expectedResolution = M.fromList [
+          (Zone (Normal Liverpool), (align Army England, SomeResolved (MoveObject (Normal Edinburgh), Nothing)))
+        , (Zone (Normal IrishSea), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal Liverpool) (Normal Edinburgh), Just (ConvoyRouteCut [(Zone (Normal EnglishChannel), align (Fleet, Normal Brest) France)]))))
+        , (Zone (Normal EnglishChannel), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal Liverpool) (Normal Edinburgh), Just (ConvoyRouteCut [(Zone (Normal EnglishChannel), align (Fleet, Normal Brest) France)]))))
+        , (Zone (Normal NorthSea), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal Liverpool) (Normal Edinburgh), Just (ConvoyRouteCut [(Zone (Normal EnglishChannel), align (Fleet, Normal Brest) France)]))))
+
+        , (Zone (Normal Brest), (align Fleet France, SomeResolved (MoveObject (Normal EnglishChannel), Nothing)))
+        , (Zone (Normal MidAtlanticOcean), (align Fleet France, SomeResolved (SupportObject (Fleet, Normal Brest) (Normal EnglishChannel), Nothing)))
+
+        , (Zone (Normal Edinburgh), (align Army Russia, SomeResolved (MoveObject (Normal Liverpool), Nothing)))
+        , (Zone (Normal NorwegianSea), (align Fleet Russia, SomeResolved (ConvoyObject (Army, Normal Edinburgh) (Normal Liverpool), Nothing)))
+        , (Zone (Normal NorthAtlanticOcean), (align Fleet Russia, SomeResolved (ConvoyObject (Army, Normal Edinburgh) (Normal Liverpool), Nothing)))
+        , (Zone (Normal Clyde), (align Army Russia, SomeResolved (SupportObject (Army, Normal Edinburgh) (Normal Liverpool), Nothing)))
+        ]
+
+-- 6.H.13. TEST CASE, NO RETREAT WITH CONVOY IN MAIN PHASE
+--
+-- The places where a unit may retreat to, must be calculated during the main phase. Care should be taken that a convoy ordered in the main phase can not be used in the retreat phase.
+--
+-- England: 
+-- A Picardy Hold
+-- F English Channel Convoys A Picardy - London
+--
+-- France: 
+-- A Paris - Picardy
+-- A Brest Supports A Paris - Picardy
+--
+-- The dislodged army in Picardy can not retreat to London. 
+--
+-- Note: this is ruled out by the type system.
+sixH13 = True ~? "6.H.13"
+
+-- 6.H.14. TEST CASE, NO RETREAT WITH SUPPORT IN MAIN PHASE
+--
+-- Comparable to the previous test case, a support given in the main phase can not be used in the retreat phase.
+--
+-- England: 
+-- A Picardy Hold
+-- F English Channel Supports A Picardy - Belgium
+--
+-- France: 
+-- A Paris - Picardy
+-- A Brest Supports A Paris - Picardy
+-- A Burgundy Hold
+--
+-- Germany: 
+-- A Munich Supports A Marseilles - Burgundy
+-- A Marseilles - Burgundy
+--
+-- After the main phase the following retreat orders are given: England: A Picardy - Belgium France: A Burgundy - Belgium
+--
+-- Both the army in Picardy and Burgundy are disbanded. 
+--
+-- Note: this is ruled out by the type system.
+sixH14 = True ~? "6.H.14"
+
+-- 6.H.15. TEST CASE, NO COASTAL CRAWL IN RETREAT
+--
+-- You can not go to the other coast from where the attacker came from.
+--
+-- England: 
+-- F Portugal Hold
+--
+-- France: 
+-- F Spain(sc) - Portugal
+-- F Mid-Atlantic Ocean Supports F Spain(sc) - Portugal
+--
+-- The English fleet in Portugal is destroyed and can not retreat to Spain(nc). 
+sixH15 = (  validation == Just WithdrawIntoAttackingProvince
+         && expectedResolution == resolution) ~? "6.H.15"
+  where
+
+    validation = validateWithdraw (occupation, resolution) withdrawOrder
+    withdrawOrder = Order (align ((Fleet, Normal Portugal), WithdrawObject (Special SpainNorth)) England)
+    resolution = testTypicalResolution expectedResolution
+    expectedResolution = M.fromList [
+          (Zone (Normal Portugal), (align Fleet England, SomeResolved (MoveObject (Normal Portugal), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Special SpainSouth) France) VNil) [])))))
+
+        , (Zone (Special SpainSouth), (align Fleet France, SomeResolved (MoveObject (Normal Portugal), Nothing)))
+        , (Zone (Normal MidAtlanticOcean), (align Fleet France, SomeResolved (SupportObject (Fleet, Special SpainSouth) (Normal Portugal), Nothing)))
+        ]
+    occupation = occupy (Normal Portugal) (Just (align Fleet England)) emptyOccupation
+
+-- 6.H.16. TEST CASE, CONTESTED FOR BOTH COASTS
+--
+-- If a coast is contested, the other is not available for retreat.
+--
+-- France: 
+-- F Mid-Atlantic Ocean - Spain(nc)
+-- F Gascony - Spain(nc)
+-- F Western Mediterranean Hold
+--
+-- Italy: 
+-- F Tunis Supports F Tyrrhenian Sea - Western Mediterranean
+-- F Tyrrhenian Sea - Western Mediterranean
+--
+-- The French fleet in the Western Mediterranean can not retreat to Spain(sc). 
+sixH16 = (  validation == Just WithdrawIntoContestedArea
+         && expectedResolution == resolution) ~? "6.H.16"
+  where
+
+    validation = validateWithdraw (occupation, resolution) withdrawOrder
+    withdrawOrder = Order (align ((Fleet, Normal WesternMediterranean), WithdrawObject (Special SpainSouth)) France)
+    resolution = testTypicalResolution expectedResolution
+    expectedResolution = M.fromList [
+          (Zone (Normal MidAtlanticOcean), (align Fleet France, SomeResolved (MoveObject (Special SpainNorth), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Gascony) France) VNil) [])))))
+        , (Zone (Normal Gascony), (align Fleet France, SomeResolved (MoveObject (Special SpainNorth), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal MidAtlanticOcean) France) VNil) [])))))
+        , (Zone (Normal WesternMediterranean), (align Fleet France, SomeResolved (MoveObject (Normal WesternMediterranean), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal TyrrhenianSea) Italy) VNil) [])))))
+
+        , (Zone (Normal Tunis), (align Fleet Italy, SomeResolved (SupportObject (Fleet, Normal TyrrhenianSea) (Normal WesternMediterranean), Nothing)))
+        , (Zone (Normal TyrrhenianSea), (align Fleet Italy, SomeResolved (MoveObject (Normal WesternMediterranean), Nothing)))
+        ]
+    occupation = occupy (Normal WesternMediterranean) (Just (align Fleet France)) emptyOccupation
