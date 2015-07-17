@@ -7,12 +7,8 @@ the board game Diplomacy in Haskell.
 
 As of [this commit](https://github.com/avieth/diplomacy/commit/a19c72e61bd7aaf48071f825fd066596799260f2)
 the typical phase resolver passes
-87 of the [DATC](http://web.inter.nl.net/users/L.B.Kruijswijk/) test cases.
+104 of the [DATC](http://web.inter.nl.net/users/L.B.Kruijswijk/) test cases.
 It probably passes more than that, but not every one of them has been transcribed.
-
-It remains to implement an interface for playing a game of diplomacy, but with
-order validation and resolution in place for all phases, this will be
-straightforward.
 
 # Components
 
