@@ -39,8 +39,10 @@ module Diplomacy.OrderValidation (
 
   ) where
 
-import qualified Data.Map as M
 import Control.Applicative
+import qualified Data.Map as M
+import Data.MapUtil
+import Data.AtLeast
 import Diplomacy.GreatPower
 import Diplomacy.Aligned
 import Diplomacy.Unit
@@ -127,6 +129,8 @@ data InvalidReason (phase :: Phase) (order :: OrderType) where
     --   unit was dislodged.
     WithdrawIntoAttackingProvince
       :: InvalidReason Retreat Withdraw
+
+    WithdrawIntoContestedArea :: InvalidReason Retreat Withdraw
 
     -- | The withdraw destination is occupied.
     WithdrawIntoOccupiedProvince
@@ -234,9 +238,10 @@ validateSurrender = validateSubject
 validateWithdraw :: (Occupation, TypicalResolution) -> OrderValidation Retreat Withdraw
 validateWithdraw (occupation, resolved) =
            validateSubject occupation
-    `also` validateWithdrawIntoAttackingProvince resolved
     `also` validateWithdrawNonAdjacent
     `also` validateWithdrawIntoOccupiedProvince occupation
+    `also` validateWithdrawIntoAttackingProvince resolved
+    `also` validateWithdrawIntoContestedArea resolved
 
 -- | Validation for a disband order.
 validateDisband :: Occupation -> OrderValidation Adjust Disband
@@ -362,17 +367,48 @@ withdrawIntoAttackingProvince
     :: TypicalResolution
     -> Order Retreat Withdraw
     -> Bool
-withdrawIntoAttackingProvince resolved order = case M.lookup (Zone target) resolved of
+withdrawIntoAttackingProvince resolved order = case lookupWithKey (Zone target) resolved of
     Nothing -> False
-    Just (_, SomeResolved (someOrderObject, resolution)) ->
+    Just (key, (aunit, SomeResolved (someOrderObject, resolution))) ->
         -- Must pattern match on the resolution, to know whether the move
         -- succeeded (Nothing means no failure reason, so it succeeded).
+        -- We also must check the successful convoy routes. If this move has at
+        -- least one, then the withdraw is OK.
         case (resolution, someOrderObject) of
-            (Nothing, MoveObject to) -> to == from
+            (Nothing, MoveObject to) ->
+                if Zone to /= Zone from
+                then False
+                else case successfulConvoyRoutes (convoyRoutes resolved (alignedThing aunit, zoneProvinceTarget key) to) of
+                    [] -> True
+                    _ -> False
             _ -> False
   where
     WithdrawObject target = orderObject order
     from = subjectProvinceTarget (orderSubject order)
+
+-- | A withdraw into an area where a standoff occurred is considered invalid.
+validateWithdrawIntoContestedArea :: TypicalResolution -> OrderValidation Retreat Withdraw
+validateWithdrawIntoContestedArea resolution =
+    invalidWithdrawIntoContestedArea resolution
+    `implies`
+    WithdrawIntoContestedArea
+
+invalidWithdrawIntoContestedArea :: TypicalResolution -> Order Retreat Withdraw -> Bool
+invalidWithdrawIntoContestedArea resolution order = M.fold folder False resolution
+  where
+    folder :: (Aligned Unit, SomeResolved OrderObject Typical) -> Bool -> Bool
+    folder (aunit, SomeResolved (object, thisResolution)) b = b || case object of
+        MoveObject movingTo ->
+            if Zone movingTo /= Zone (withdrawTarget (orderObject order))
+            then False
+            else case thisResolution of
+                -- careful: a move that's overpowered by a move from its
+                -- destination does not contest the area.
+                Just (MoveOverpowered overpowerers) ->
+                    all (\x -> Zone movingTo /= Zone (subjectProvinceTarget (alignedThing x))) (toList overpowerers)
+                Just (MoveBounced _) -> True
+                _ -> False
+        _ -> False
 
 validateWithdrawNonAdjacent :: OrderValidation Retreat Withdraw
 validateWithdrawNonAdjacent =
