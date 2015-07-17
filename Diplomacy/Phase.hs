@@ -10,6 +10,7 @@ Portability : non-portable (GHC only)
 
 {-# LANGUAGE AutoDeriveTypeable #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module Diplomacy.Phase (
 
@@ -21,3 +22,9 @@ data Phase where
     Typical :: Phase
     Retreat :: Phase
     Adjust :: Phase
+
+deriving instance Show Phase
+deriving instance Eq Phase
+deriving instance Ord Phase
+deriving instance Enum Phase
+deriving instance Bounded Phase
