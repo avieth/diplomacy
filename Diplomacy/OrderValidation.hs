@@ -24,10 +24,9 @@ would pass and lead one sane game state to another sane game state.
 
 module Diplomacy.OrderValidation (
 
-    validate
-
-  , OrderValidation
+    OrderValidation
   , InvalidReason(..)
+  , SomeInvalidReason(..)
 
   , validateMove
   , validateSupport
@@ -36,6 +35,7 @@ module Diplomacy.OrderValidation (
   , validateWithdraw
   , validateDisband
   , validateBuild
+  , validateContinue
 
   ) where
 
@@ -57,14 +57,6 @@ import Diplomacy.Occupation
 import Diplomacy.SupplyCentreDefecit
 import Diplomacy.Valid
 import Diplomacy.OrderResolution
-
-validate
-  :: OrderValidation phase order
-  -> Order phase order
-  -> Either (InvalidReason phase order) (Valid (Order phase order))
-validate orderValidation order = case orderValidation order of
-    Nothing -> Right (Valid order)
-    Just reason -> Left reason
 
 type OrderValidation phase order =
     Order phase order -> Maybe (InvalidReason phase order)
@@ -156,6 +148,11 @@ data InvalidReason (phase :: Phase) (order :: OrderType) where
 deriving instance Show (InvalidReason phase order)
 deriving instance Eq (InvalidReason phase order)
 
+data SomeInvalidReason (phase :: Phase) where
+    SomeInvalidReason :: InvalidReason phase order -> SomeInvalidReason phase
+
+deriving instance Show (SomeInvalidReason phase)
+
 valid :: OrderValidation phase order
 valid = const Nothing
 
@@ -216,7 +213,7 @@ validateSupport occupation =
     `also` validateSupportSelf
     `also` validateSupportedUnitPresent occupation
     `also` validateSupporterCanDoMove
-    `also` validateSupportedCanDoMove occupation
+    `also` validateSupportedCanDoMove
 
 -- | Validation for a convoy order.
 --   NB we do NOT check for convoys which are impossible, like a fleet in
@@ -254,6 +251,9 @@ validateBuild defecit =
     `also` validateBuildInHomeSupplyCentre
     `also` validateBuildRespectsDefecit defecit
 
+validateContinue :: OrderValidation Adjust Continue
+validateContinue = const Nothing
+
 -- * Sub-validations used to define principal validations.
 
 validateSupportSelf :: OrderValidation Typical Support
@@ -267,9 +267,8 @@ validateSupportSelf =
         in     supportAt == supportTarget (orderObject order)
             || supportAt == subjectProvinceTarget (supportedSubject (orderObject order))
 
-validateSupportedCanDoMove :: Occupation -> OrderValidation Typical Support
-validateSupportedCanDoMove occupation =
-    validateAs makeMove makeReason (validateMove occupation)
+validateSupportedCanDoMove :: OrderValidation Typical Support
+validateSupportedCanDoMove order = fmap SupportedCouldNotDoMove (validateMoveAdjacency (makeMove order))
   where
     makeMove :: Order Typical Support -> Order Typical Move
     makeMove order =
@@ -279,10 +278,6 @@ validateSupportedCanDoMove occupation =
         --  issuing great power than the move being supported, because the
         --  validity of a move is independent of the issuing power!
         in  Order $ align (subject, MoveObject to) power
-    makeReason
-      :: InvalidReason Typical Move
-      -> InvalidReason Typical Support
-    makeReason = SupportedCouldNotDoMove
 
 validateSupportedUnitPresent :: Occupation -> OrderValidation Typical Support
 validateSupportedUnitPresent occupation =
