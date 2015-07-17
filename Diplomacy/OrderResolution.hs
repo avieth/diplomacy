@@ -26,12 +26,16 @@ module Diplomacy.OrderResolution (
     Resolved
   , SomeResolved(..)
   , withSomeResolved
-  , someResolvedValidOrder
 
   , FailureReason(..)
 
   , TypicalResolution
   , typicalResolution
+  , retreatResolution
+  , adjustResolution
+
+  , convoyRoutes
+  , successfulConvoyRoutes
 
   ) where
 
@@ -834,10 +838,6 @@ resolveSomeOrderTypical resolution zone (aunit, SomeOrderObject object) =
                     -- this one.
                     -- HERE AS WELL we must check that without supports friendly
                     -- to the complementary, this move would still dominate!
-                    -- However, since the other move would succeed, it's enough
-                    -- to know that at least one of these moves (this or the
-                    -- complementary) has at least one successful convoy route
-                    -- in order to pass this test.
                     ComplementaryMove WouldSucceed asubj target ->
                         if     not (null opposingSuccessfulConvoyRoutes)
                             || not (null thisSuccessfulConvoyRoutes)
@@ -996,6 +996,8 @@ resolveSomeOrderTypical resolution zone (aunit, SomeOrderObject object) =
                         thisClassification = classify resolution zone (aunit', object)
                     _ -> Nothing
 
+        -- TODO TBD can't we remove this and the SupportDislodged constructor?
+        -- SupportCut is sufficient.
         supportDislodged
             :: OrderObject Typical Support
             -> Maybe (FailureReason Typical Support)
@@ -1096,163 +1098,57 @@ change res zone = M.foldWithKey folder Nothing res
                      _ -> b
         _ -> b
 
--- Will want this:
---   TypicalResolution -> (Occupation, Dislodgement)
-
-test1 :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-test1 = M.fromList [
-      (Zone (Normal Brest), (align Army France, SomeOrderObject (MoveObject (Normal Paris))))
-    , (Zone (Normal Burgundy), (align Army Italy, SomeOrderObject (MoveObject (Normal Paris))))
-
-    ]
-
-test2 :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-test2 = M.fromList [
-      (Zone (Normal Brest), (align Army France, SomeOrderObject (MoveObject (Normal Paris))))
-    , (Zone (Normal Burgundy), (align Army Italy, SomeOrderObject (MoveObject (Normal Paris))))
-    , (Zone (Normal Paris), (align Army England, SomeOrderObject (MoveObject (Normal Paris))))
-
-    ]
-
--- 2 moves into Paris bounce, while move out of Paris succeeds.
-test3 :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-test3 = M.fromList [
-      (Zone (Normal Brest), (align Army France, SomeOrderObject (MoveObject (Normal Paris))))
-    , (Zone (Normal Burgundy), (align Army Italy, SomeOrderObject (MoveObject (Normal Paris))))
-    , (Zone (Normal Paris), (align Army England, SomeOrderObject (MoveObject (Normal Picardy))))
-
-    ]
-
--- 3-cycle of moves; all succeed.
-test4 :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-test4 = M.fromList [
-      (Zone (Normal Brest), (align Army France, SomeOrderObject (MoveObject (Normal Paris))))
-    , (Zone (Normal Paris), (align Army Italy, SomeOrderObject (MoveObject (Normal Gascony))))
-    , (Zone (Normal Gascony), (align Army England, SomeOrderObject (MoveObject (Normal Brest))))
-
-    ]
-
--- 3-cycle of moves, interrupted by a bounce; all moves fail.
-test5 :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-test5 = M.fromList [
-      (Zone (Normal Brest), (align Army France, SomeOrderObject (MoveObject (Normal Paris))))
-    , (Zone (Normal Paris), (align Army Italy, SomeOrderObject (MoveObject (Normal Gascony))))
-    , (Zone (Normal Gascony), (align Army England, SomeOrderObject (MoveObject (Normal Brest))))
-
-    , (Zone (Normal Picardy), (align Army England, SomeOrderObject (MoveObject (Normal Paris))))
-    ]
-
--- A convoyed move; French orders succeed, English move bounces.
-test6 :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-test6 = M.fromList [
-      (Zone (Normal Brest), (align Army France, SomeOrderObject (MoveObject (Normal London))))
-    , (Zone (Normal EnglishChannel), (align Fleet France, SomeOrderObject (ConvoyObject (Army, Normal Brest) (Normal London))))
-    , (Zone (Normal Wales), (align Fleet England, SomeOrderObject (MoveObject (Normal EnglishChannel))))
-    ]
-
--- Like test 6, except the convoy is dislodged and so the move fails.
-test7 :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-test7 = M.fromList [
-      (Zone (Normal Brest), (align Army France, SomeOrderObject (MoveObject (Normal London))))
-    , (Zone (Normal EnglishChannel), (align Fleet France, SomeOrderObject (ConvoyObject (Army, Normal Brest) (Normal London))))
-    , (Zone (Normal Wales), (align Fleet England, SomeOrderObject (MoveObject (Normal EnglishChannel))))
-    , (Zone (Normal IrishSea), (align Fleet England, SomeOrderObject (SupportObject (Fleet, Normal Wales) (Normal EnglishChannel))))
-    ]
-
--- Support is not cut when the move has no convoy.
-test8 :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-test8 = M.fromList [
-      (Zone (Normal Brest), (align Army France, SomeOrderObject (MoveObject (Normal London))))
-    , (Zone (Normal EnglishChannel), (align Fleet France, SomeOrderObject (MoveObject (Normal EnglishChannel))))
-    , (Zone (Normal Wales), (align Fleet England, SomeOrderObject (MoveObject (Normal EnglishChannel))))
-    , (Zone (Normal London), (align Fleet England, SomeOrderObject (SupportObject (Fleet, Normal Wales) (Normal EnglishChannel))))
-    ]
-
--- Simple convoy paradox!!!
-test9 :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-test9 = M.fromList [
-      (Zone (Normal Brest), (align Army France, SomeOrderObject (MoveObject (Normal London))))
-    , (Zone (Normal EnglishChannel), (align Fleet France, SomeOrderObject (ConvoyObject (Army, Normal Brest) (Normal London))))
-    , (Zone (Normal Wales), (align Fleet England, SomeOrderObject (MoveObject (Normal EnglishChannel))))
-    , (Zone (Normal London), (align Fleet England, SomeOrderObject (SupportObject (Fleet, Normal Wales) (Normal EnglishChannel))))
-    ]
-
--- Pandin's paradox!!!
---
--- England:
--- F Wal - ENG
--- F Lon S F Wal - ENG
---
--- France:
--- A Bre - ENG - Lon
--- F ENG C A Bre - Lon
--- A Yor S A Bre - Lon
---
--- Germany:
--- F Bel - ENG
--- F NTH S F Bel - ENG 
---
--- Germany and England standoff in ENG, the French convoying fleet succeeds, yet
--- the move fails. This is to be expected; a convoy CAN succeed without the
--- required move succeeding, so long as the move was issued.
-test10 :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-test10 = M.fromList [
-
-      (Zone (Normal Brest), (align Army France, SomeOrderObject (MoveObject (Normal London))))
-    , (Zone (Normal EnglishChannel), (align Fleet France, SomeOrderObject (ConvoyObject (Army, Normal Brest) (Normal London))))
-    , (Zone (Normal Yorkshire), (align Army France, SomeOrderObject (SupportObject (Army, Normal Brest) (Normal London))))
-
-    , (Zone (Normal Wales), (align Fleet England, SomeOrderObject (MoveObject (Normal EnglishChannel))))
-    , (Zone (Normal London), (align Fleet England, SomeOrderObject (SupportObject (Fleet, Normal Wales) (Normal EnglishChannel))))
-
-    , (Zone (Normal Belgium), (align Fleet Germany, SomeOrderObject (MoveObject (Normal EnglishChannel))))
-    , (Zone (Normal NorthSea), (align Fleet Germany, SomeOrderObject (SupportObject (Fleet, Normal Belgium) (Normal EnglishChannel))))
-    ]
-
-{-
 -- | Retreat phase resolution groups all withdraws by target, and fails elements
 --   of groups with size > 1.
 --   All surrenders of course succeed.
-resolveRetreat :: PhaseResolution Retreat
-resolveRetreat zonedOrders = M.mapWithKey resolve zonedOrders
+retreatResolution
+    :: M.Map Zone (Aligned Unit, SomeOrderObject Retreat)
+    -> M.Map Zone (Aligned Unit, SomeResolved OrderObject Retreat)
+retreatResolution zonedOrders = M.mapWithKey (resolveRetreat zonedWithdraws) zonedOrders
   where
-    resolve
-        :: Zone
+    -- At each Zone we have a list of the zones from which a withdraw attempt
+    -- is made.
+    zonedWithdraws :: M.Map Zone [Aligned Subject]
+    zonedWithdraws = M.foldWithKey folder M.empty zonedOrders
+      where
+        folder
+            :: Zone
+            -> (Aligned Unit, SomeOrderObject Retreat)
+            -> M.Map Zone [Aligned Subject]
+            -> M.Map Zone [Aligned Subject]
+        folder zone (aunit, SomeOrderObject object) b = case object of
+            WithdrawObject withdrawingTo -> M.alter alteration (Zone withdrawingTo) b
+              where
+                subject = align (alignedThing aunit, zoneProvinceTarget zone) (alignedGreatPower aunit)
+                alteration x = case x of
+                    Nothing -> Just [subject]
+                    Just ys -> Just (subject : ys)
+            _ -> b
+    resolveRetreat
+        :: M.Map Zone [Aligned Subject]
+        -> Zone
         -> (Aligned Unit, SomeOrderObject Retreat)
         -> (Aligned Unit, SomeResolved OrderObject Retreat)
-    resolve zone (aunit, SomeOrderObject object) = case object of
+    resolveRetreat zonedWithdraws zone (aunit, SomeOrderObject object) = case object of
         SurrenderObject -> (aunit, SomeResolved (object, Nothing))
         WithdrawObject _ -> (aunit, SomeResolved (object, resolution))
           where
             resolution :: Maybe (FailureReason Retreat Withdraw)
-            resolution = case filter (/= thisOrder) (withdrawsToZone (Zone (withdrawTarget object)) zonedOrders) of
-                [] -> Nothing
-                xs -> Just (WithdrawCollision xs)
-            thisOrder :: Order Retreat Withdraw
-            thisOrder = makeOrder zone (aunit, object)
-
-withdrawsToZone
-    :: Zone
-    -> M.Map Zone (Aligned Unit, SomeOrderObject Retreat)
-    -> [Order Retreat Withdraw]
-withdrawsToZone zone = M.elems . M.mapWithKey makeOrder . M.mapMaybe (pickWithdrawAt zone)
-  where
-    pickWithdrawAt
-        :: Zone
-        -> (Aligned Unit, SomeOrderObject Retreat)
-        -> Maybe (Aligned Unit, OrderObject Retreat Withdraw)
-    pickWithdrawAt zone (aunit, SomeOrderObject retreatObject) = case retreatObject of
-        SurrenderObject -> Nothing
-        WithdrawObject pt ->
-            if Zone pt == zone
-            then Just (aunit, retreatObject)
-            else Nothing
+            resolution = case fmap (filter (/= thisSubject)) (M.lookup (Zone (withdrawTarget object)) zonedWithdraws) of
+                Just [] -> Nothing
+                Just (x : xs) -> Just (WithdrawCollision (AtLeast (VCons x VNil) xs))
+                _ -> Nothing
+      where
+        thisSubject = align (alignedThing aunit, zoneProvinceTarget zone) (alignedGreatPower aunit)
 
 -- | Adjust phase is resolved very easily, as self-consistent disband and
---   build orders always succeed.
-resolveAdjust :: PhaseResolution Adjust
-resolveAdjust = M.map (\(aunit, SomeOrderObject object) -> (aunit, SomeResolved (object, Nothing)))
--}
+--   build orders always succeed (defecit control is handled by validation,
+--   because orders are validated in a defined order (unfortunate homonym) and
+--   so the defecit is well-defined locally for each order).
+adjustResolution
+    :: M.Map Zone (Aligned Unit, SomeOrderObject Adjust)
+    -> M.Map Zone (Aligned Unit, SomeResolved OrderObject Adjust)
+adjustResolution = M.map (\(aunit, SomeOrderObject object) -> (aunit, SomeResolved (object, Nothing)))
 
 type Resolved (k :: Phase -> OrderType -> *) (phase :: Phase) (order :: OrderType) =
     (k phase order, Maybe (FailureReason phase order))
@@ -1275,10 +1171,6 @@ withSomeResolved
   :: (forall order . Resolved k phase order -> t) -> SomeResolved k phase -> t
 withSomeResolved f term = case term of
     SomeResolved x -> f x
-
-someResolvedValidOrder :: SomeResolved Order phase -> Valid (SomeOrder phase)
-someResolvedValidOrder res = case res of
-    SomeResolved (order, _) -> Valid (SomeOrder order)
 
 -- | Enumeration of reasons why an order could not succeed.
 data FailureReason (phase :: Phase) (order :: OrderType) where
@@ -1313,7 +1205,7 @@ data FailureReason (phase :: Phase) (order :: OrderType) where
     ConvoyRouteCut :: [(Zone, Aligned Subject)] ->  FailureReason Typical Convoy
 
     -- | The unit withdraws into the same province as some other unit(s).
-    WithdrawCollision :: [Order Retreat Withdraw] -> FailureReason Retreat Withdraw
+    WithdrawCollision :: AtLeast One (Aligned Subject) -> FailureReason Retreat Withdraw
 
     -- Surrender orders and adjust phase orders can never fail; if they're
     -- valid, they succeed!
