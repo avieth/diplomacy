@@ -30,3 +30,5 @@ data GreatPower where
 deriving instance Eq GreatPower
 deriving instance Ord GreatPower
 deriving instance Show GreatPower
+deriving instance Enum GreatPower
+deriving instance Bounded GreatPower
