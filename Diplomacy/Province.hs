@@ -837,6 +837,6 @@ parseCoast = choice parsers
 parseProvinceTarget :: Parser ProvinceTarget
 parseProvinceTarget = try parseSpecial <|> parseNormal
   where
-    parseNormal = Normal <$> (parseProvince <* spaces <* eof)
-    parseSpecial = Special <$> (parseCoast <* spaces <* eof)
+    parseNormal = Normal <$> parseProvince
+    parseSpecial = Special <$> parseCoast
 
