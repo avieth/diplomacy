@@ -11,12 +11,21 @@ Portability : non-portable (GHC only)
 {-# LANGUAGE AutoDeriveTypeable #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Diplomacy.Unit (
 
     Unit(..)
 
+  , parseUnit
+  , printUnit
+
   ) where
+
+import Control.Applicative
+import Data.String (IsString)
+import Text.Parsec hiding ((<|>))
+import Text.Parsec.Text
 
 data Unit where
     Army :: Unit
@@ -25,3 +34,16 @@ data Unit where
 deriving instance Eq Unit
 deriving instance Ord Unit
 deriving instance Show Unit
+
+parseUnit :: Parser Unit
+parseUnit = parseFleet <|> parseArmy
+  where
+    parseFleet :: Parser Unit
+    parseFleet = char 'F' *> pure Fleet
+    parseArmy :: Parser Unit
+    parseArmy = char 'A' *> pure Army
+
+printUnit :: IsString a => Unit -> a
+printUnit unit = case unit of
+    Army -> "A"
+    Fleet -> "F"
