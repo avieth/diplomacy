@@ -1722,7 +1722,7 @@ sixE4 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E
 
     expectedResolution = M.fromList [
           (Zone (Normal Holland), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal NorwegianSea) England) VNil) [])))))
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Holland) (Normal NorthSea), Nothing)))
+        , (Zone (Normal HeligolandBight), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Holland) (Normal NorthSea), Nothing)))
         , (Zone (Normal Skagerrak), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Holland) (Normal NorthSea), Nothing)))
 
         -- This is overpowered by the german move in the head-to-head. You
@@ -1770,7 +1770,7 @@ sixE5 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E
 
     expectedResolution = M.fromList [
           (Zone (Normal Holland), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal NorwegianSea) England) VNil) [])))))
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Holland) (Normal NorthSea), Nothing)))
+        , (Zone (Normal HeligolandBight), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Holland) (Normal NorthSea), Nothing)))
         , (Zone (Normal Skagerrak), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Holland) (Normal NorthSea), Nothing)))
 
         , (Zone (Normal NorthSea), (align Fleet France, SomeResolved (MoveObject (Normal Holland), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Holland) Germany) VNil) [])))))
@@ -1808,7 +1808,7 @@ sixE6 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E
 
     expectedResolution = M.fromList [
           (Zone (Normal Holland), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal NorthSea) France) VNil) [])))))
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Holland) (Normal NorthSea), Nothing)))
+        , (Zone (Normal HeligolandBight), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Holland) (Normal NorthSea), Nothing)))
 
         , (Zone (Normal NorthSea), (align Fleet France, SomeResolved (MoveObject (Normal Holland), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Ruhr) Austria) VNil) [])))))
         , (Zone (Normal Belgium), (align Fleet France, SomeResolved (SupportObject (Fleet, Normal NorthSea) (Normal Holland), Nothing)))
@@ -1848,11 +1848,11 @@ sixE7 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E
           (Zone (Normal NorthSea), (align Fleet England, SomeResolved (MoveObject (Normal NorthSea), Nothing)))
         , (Zone (Normal Yorkshire), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal Norway) (Normal NorthSea), Nothing)))
 
-        , (Zone (Normal Holland), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal HelgolandBright) (Normal NorthSea), Nothing)))
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Norway) Russia) VNil) [])))))
+        , (Zone (Normal Holland), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal HeligolandBight) (Normal NorthSea), Nothing)))
+        , (Zone (Normal HeligolandBight), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Norway) Russia) VNil) [])))))
 
         , (Zone (Normal Skagerrak), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal Norway) (Normal NorthSea), Nothing)))
-        , (Zone (Normal Norway), (align Fleet Russia, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal HelgolandBright) Germany) VNil) [])))))
+        , (Zone (Normal Norway), (align Fleet Russia, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal HeligolandBight) Germany) VNil) [])))))
         ]
 
 -- 6.E.8. TEST CASE, NO SELF DISLODGEMENT WITH BELEAGUERED GARRISON AND HEAD TO HEAD BATTLE
@@ -1881,14 +1881,14 @@ sixE8 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E
           (Zone (Normal NorthSea), (align Fleet England, SomeResolved (MoveObject (Normal Norway), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Norway) Russia) VNil) [])))))
         , (Zone (Normal Yorkshire), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal Norway) (Normal NorthSea), Nothing)))
 
-        , (Zone (Normal Holland), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal HelgolandBright) (Normal NorthSea), Nothing)))
+        , (Zone (Normal Holland), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal HeligolandBight) (Normal NorthSea), Nothing)))
         -- German move is overpowered due to English + Russian support.
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Norway) Russia) VNil) [])))))
+        , (Zone (Normal HeligolandBight), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Norway) Russia) VNil) [])))))
 
         , (Zone (Normal Skagerrak), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal Norway) (Normal NorthSea), Nothing)))
         -- Russian move bounces against the German fleet (English support is
         -- cast out here).
-        , (Zone (Normal Norway), (align Fleet Russia, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal HelgolandBright) Germany) VNil) [])))))
+        , (Zone (Normal Norway), (align Fleet Russia, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal HeligolandBight) Germany) VNil) [])))))
         ]
 
 -- 6.E.9. TEST CASE, ALMOST SELF DISLODGEMENT WITH BELEAGUERED GARRISON
@@ -1915,8 +1915,8 @@ sixE9 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.E
           (Zone (Normal NorthSea), (align Fleet England, SomeResolved (MoveObject (Normal NorwegianSea), Nothing)))
         , (Zone (Normal Yorkshire), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal Norway) (Normal NorthSea), Nothing)))
 
-        , (Zone (Normal Holland), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal HelgolandBright) (Normal NorthSea), Nothing)))
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Norway) Russia) VNil) [])))))
+        , (Zone (Normal Holland), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal HeligolandBight) (Normal NorthSea), Nothing)))
+        , (Zone (Normal HeligolandBight), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Norway) Russia) VNil) [])))))
 
         , (Zone (Normal Skagerrak), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal Norway) (Normal NorthSea), Nothing)))
         , (Zone (Normal Norway), (align Fleet Russia, SomeResolved (MoveObject (Normal NorthSea), Nothing)))
@@ -1959,15 +1959,15 @@ sixE10 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.
           (Zone (Normal NorthSea), (align Fleet England, SomeResolved (MoveObject (Normal Denmark), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Denmark) Germany) VNil) [])))))
         , (Zone (Normal Yorkshire), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal Norway) (Normal NorthSea), Nothing)))
 
-        , (Zone (Normal Holland), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal HelgolandBright) (Normal NorthSea), Nothing)))
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Norway) Russia) VNil) [])))))
-        , (Zone (Normal Denmark), (align Fleet Germany, SomeResolved (MoveObject (Normal HelgolandBright), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal HelgolandBright) Germany) VNil) [])))))
+        , (Zone (Normal Holland), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal HeligolandBight) (Normal NorthSea), Nothing)))
+        , (Zone (Normal HeligolandBight), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal Norway) Russia) VNil) [])))))
+        , (Zone (Normal Denmark), (align Fleet Germany, SomeResolved (MoveObject (Normal HeligolandBight), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal HeligolandBight) Germany) VNil) [])))))
 
         , (Zone (Normal Skagerrak), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal Norway) (Normal NorthSea), Nothing)))
         -- It bounces off the German fleet because in order to overpower it, it
         -- must have more non-English support than the German fleet, as the
         -- English fleet returns to North Sea!
-        , (Zone (Normal Norway), (align Fleet Russia, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal HelgolandBright) Germany) VNil) [])))))
+        , (Zone (Normal Norway), (align Fleet Russia, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal HeligolandBight) Germany) VNil) [])))))
 
         ]
 
@@ -2152,7 +2152,7 @@ sixE15 = (expectedResolution == resolution) ~? "6.E.15"
 
         , (Zone (Normal Berlin), (align Army Germany, SomeOrderObject (MoveObject (Normal Kiel))))
         , (Zone (Normal Denmark), (align Fleet Germany, SomeOrderObject (SupportObject (Army, Normal Berlin) (Normal Kiel))))
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeOrderObject (SupportObject (Army, Normal Berlin) (Normal Kiel))))
+        , (Zone (Normal HeligolandBight), (align Fleet Germany, SomeOrderObject (SupportObject (Army, Normal Berlin) (Normal Kiel))))
 
         , (Zone (Normal BalticSea), (align Fleet Russia, SomeOrderObject (SupportObject (Army, Normal Prussia) (Normal Berlin))))
         , (Zone (Normal Prussia), (align Army Russia, SomeOrderObject (MoveObject (Normal Berlin))))
@@ -2168,7 +2168,7 @@ sixE15 = (expectedResolution == resolution) ~? "6.E.15"
 
         , (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Kiel), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Kiel) France) VNil) [])))))
         , (Zone (Normal Denmark), (align Fleet Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Kiel), Nothing)))
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Kiel), Nothing)))
+        , (Zone (Normal HeligolandBight), (align Fleet Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Kiel), Nothing)))
 
         , (Zone (Normal BalticSea), (align Fleet Russia, SomeResolved (SupportObject (Army, Normal Prussia) (Normal Berlin), Nothing)))
         , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Kiel) France) VNil) [])))))
@@ -2325,7 +2325,7 @@ sixF6 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F
 
         , (Zone (Normal Holland), (align Army Germany, SomeResolved (SupportObject (Army, Normal Belgium) (Normal Belgium), Nothing)))
         , (Zone (Normal Belgium), (align Army Germany, SomeResolved (SupportObject (Army, Normal Holland) (Normal Holland), Just (SupportCut (AtLeast (VCons (align (Army, Normal Picardy) France) VNil) [])))))
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Skagerrak) (Normal NorthSea), Nothing)))
+        , (Zone (Normal HeligolandBight), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Skagerrak) (Normal NorthSea), Nothing)))
         , (Zone (Normal Skagerrak), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Nothing)))
 
         , (Zone (Normal Picardy), (align Army France, SomeResolved (MoveObject (Normal Belgium), Just (MoveBounced (AtLeast (VCons (align (Army, Normal Belgium) Germany) VNil) [])))))
@@ -2358,7 +2358,7 @@ sixF7 = (  validation == Nothing
           (Zone (Normal NorthSea), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal London) (Normal Holland), Just (ConvoyRouteCut [(Zone (Normal NorthSea), align (Fleet, Normal Skagerrak) Germany)]))))
         , (Zone (Normal London), (align Army England, SomeResolved (MoveObject (Normal Holland), Just MoveNoConvoy)))
 
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Skagerrak) (Normal NorthSea), Nothing)))
+        , (Zone (Normal HeligolandBight), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Skagerrak) (Normal NorthSea), Nothing)))
         , (Zone (Normal Skagerrak), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Nothing)))
         ]
     occupation = occupy (Normal NorthSea) (Just (align Fleet England)) emptyOccupation
@@ -2387,7 +2387,7 @@ sixF8 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F
           (Zone (Normal NorthSea), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal London) (Normal Holland), Just (ConvoyRouteCut [(Zone (Normal NorthSea), align (Fleet, Normal Skagerrak) Germany)]))))
         , (Zone (Normal London), (align Army England, SomeResolved (MoveObject (Normal Holland), Just MoveNoConvoy)))
 
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Skagerrak) (Normal NorthSea), Nothing)))
+        , (Zone (Normal HeligolandBight), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Skagerrak) (Normal NorthSea), Nothing)))
         , (Zone (Normal Skagerrak), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Nothing)))
         , (Zone (Normal Belgium), (align Army Germany, SomeResolved (MoveObject (Normal Holland), Nothing)))
         ]
@@ -2721,7 +2721,7 @@ sixF18 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.
 
         , (Zone (Normal Belgium), (align Fleet France, SomeResolved (SupportObject (Fleet, Normal NorthSea) (Normal NorthSea), Nothing)))
 
-        , (Zone (Normal HelgolandBright), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Skagerrak) (Normal NorthSea), Nothing)))
+        , (Zone (Normal HeligolandBight), (align Fleet Germany, SomeResolved (SupportObject (Fleet, Normal Skagerrak) (Normal NorthSea), Nothing)))
         , (Zone (Normal Skagerrak), (align Fleet Germany, SomeResolved (MoveObject (Normal NorthSea), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal NorthSea) England) VNil) [])))))
         ]
 
@@ -3288,11 +3288,11 @@ sixH9 = (  validation == Nothing
     withdrawOrder = Order (align ((Fleet, Normal Kiel), WithdrawObject (Normal Berlin)) Germany)
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
-          (Zone (Normal HelgolandBright), (align Fleet England, SomeResolved (MoveObject (Normal Kiel), Nothing)))
-        , (Zone (Normal Denmark), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal HelgolandBright) (Normal Kiel), Nothing)))
+          (Zone (Normal HeligolandBight), (align Fleet England, SomeResolved (MoveObject (Normal Kiel), Nothing)))
+        , (Zone (Normal Denmark), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal HeligolandBight) (Normal Kiel), Nothing)))
 
         , (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Prussia), Nothing)))
-        , (Zone (Normal Kiel), (align Army Germany, SomeResolved (MoveObject (Normal Kiel), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal HelgolandBright) England) VNil) [])))))
+        , (Zone (Normal Kiel), (align Army Germany, SomeResolved (MoveObject (Normal Kiel), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal HeligolandBight) England) VNil) [])))))
         , (Zone (Normal Silesia), (align Army Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Prussia), Nothing)))
 
         , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))

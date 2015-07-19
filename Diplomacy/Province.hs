@@ -10,6 +10,7 @@ Portability : non-portable (GHC only)
 
 {-# LANGUAGE AutoDeriveTypeable #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Diplomacy.Province (
 
@@ -64,12 +65,17 @@ module Diplomacy.Province (
   , distance
   , distanceFromHomeSupplyCentre
 
+  , parseProvince
+  , parseProvinceTarget
+
   ) where
 
 import Control.Monad (guard)
 import Control.Applicative
 import Data.List (sort)
 import Diplomacy.GreatPower
+import Text.Parsec hiding ((<|>))
+import Text.Parsec.Text
 
 -- | Exhaustive enumeration of the places on the diplomacy board.
 --   Refernce: https://www.wizards.com/avalonhill/rules/diplomacy.pdf
@@ -139,7 +145,7 @@ data Province
   | EnglishChannel
   | GulfOfBothnia
   | GulfOfLyon
-  | HelgolandBright
+  | HeligolandBight
   | IonianSea
   | IrishSea
   | MidAtlanticOcean
@@ -222,7 +228,7 @@ provinceType EasternMediterranean = Water
 provinceType EnglishChannel = Water
 provinceType GulfOfBothnia = Water
 provinceType GulfOfLyon = Water
-provinceType HelgolandBright = Water
+provinceType HeligolandBight = Water
 provinceType IonianSea = Water
 provinceType IrishSea = Water
 provinceType MidAtlanticOcean = Water
@@ -257,7 +263,7 @@ adjacency Paris = [Brest, Picardy, Burgundy, Gascony]
 adjacency Picardy = [EnglishChannel, Belgium, Burgundy, Paris, Brest]
 adjacency Berlin = [BalticSea, Prussia, Silesia, Munich, Kiel]
 -- TODO verify this one!
-adjacency Kiel = [HelgolandBright, Berlin, Munich, Ruhr, Holland, Denmark, BalticSea]
+adjacency Kiel = [HeligolandBight, Berlin, Munich, Ruhr, Holland, Denmark, BalticSea]
 adjacency Munich = [Ruhr, Kiel, Berlin, Silesia, Bohemia, Tyrolia, Burgundy]
 adjacency Prussia = [BalticSea, Livonia, Warsaw, Silesia, Berlin]
 adjacency Ruhr = [Belgium, Holland, Kiel, Munich, Burgundy]
@@ -284,7 +290,7 @@ adjacency Belgium = [Holland, Ruhr, Burgundy, Picardy, EnglishChannel, NorthSea]
 adjacency Bulgaria = [Rumania, BlackSea, Constantinople, AegeanSea, Greece, Serbia]
 adjacency Finland = [StPetersburg, Sweden, Norway, GulfOfBothnia]
 adjacency Greece = [IonianSea, AegeanSea, Albania, Serbia, Bulgaria]
-adjacency Holland = [Belgium, NorthSea, Kiel, Ruhr, HelgolandBright]
+adjacency Holland = [Belgium, NorthSea, Kiel, Ruhr, HeligolandBight]
 adjacency Norway = [NorwegianSea, NorthSea, Sweden, Finland, Skagerrak, BarentsSea]
 adjacency NorthAfrica = [MidAtlanticOcean, WesternMediterranean, Tunis]
 adjacency Portugal = [MidAtlanticOcean, Spain]
@@ -293,7 +299,7 @@ adjacency Serbia = [Trieste, Budapest, Rumania, Bulgaria, Greece, Albania]
 adjacency Spain = [Portugal, MidAtlanticOcean, Gascony, GulfOfLyon, WesternMediterranean, Marseilles]
 adjacency Sweden = [GulfOfBothnia, Finland, Norway, BalticSea, Skagerrak, Denmark]
 adjacency Tunis = [NorthAfrica, WesternMediterranean, IonianSea, TyrrhenianSea]
-adjacency Denmark = [BalticSea, Skagerrak, HelgolandBright, Kiel, NorthSea, Sweden]
+adjacency Denmark = [BalticSea, Skagerrak, HeligolandBight, Kiel, NorthSea, Sweden]
 adjacency AdriaticSea = [Trieste, Venice, Apulia, Albania, IonianSea]
 adjacency AegeanSea = [Greece, Bulgaria, Constantinople, Smyrna, EasternMediterranean, IonianSea]
 adjacency BalticSea = [Sweden, GulfOfBothnia, Livonia, Prussia, Berlin, Kiel, Denmark]
@@ -303,12 +309,12 @@ adjacency EasternMediterranean = [Syria, IonianSea, AegeanSea, Smyrna]
 adjacency EnglishChannel = [London, Belgium, Picardy, Brest, MidAtlanticOcean, IrishSea, Wales, NorthSea]
 adjacency GulfOfBothnia = [Sweden, Finland, Livonia, StPetersburg, BalticSea]
 adjacency GulfOfLyon = [Marseilles, Piedmont, Tuscany, TyrrhenianSea, WesternMediterranean, Spain]
-adjacency HelgolandBright = [Denmark, Kiel, Holland, NorthSea]
+adjacency HeligolandBight = [Denmark, Kiel, Holland, NorthSea]
 adjacency IonianSea = [Tunis, TyrrhenianSea, Naples, Apulia, AdriaticSea, Greece, Albania, AegeanSea, EasternMediterranean]
 adjacency IrishSea = [NorthAtlanticOcean, EnglishChannel, MidAtlanticOcean, Liverpool, Wales]
 adjacency MidAtlanticOcean = [NorthAtlanticOcean, IrishSea, EnglishChannel, Brest, Gascony, Spain, Portugal, WesternMediterranean, NorthAfrica]
 adjacency NorthAtlanticOcean = [NorwegianSea, Clyde, Liverpool, IrishSea, MidAtlanticOcean]
-adjacency NorthSea = [NorwegianSea, Skagerrak, Denmark, HelgolandBright, Holland, Belgium, EnglishChannel, London, Yorkshire, Edinburgh, Norway]
+adjacency NorthSea = [NorwegianSea, Skagerrak, Denmark, HeligolandBight, Holland, Belgium, EnglishChannel, London, Yorkshire, Edinburgh, Norway]
 adjacency NorwegianSea = [NorthAtlanticOcean, Norway, BarentsSea, NorthSea, Clyde, Edinburgh]
 adjacency Skagerrak = [Norway, Sweden, Denmark, NorthSea]
 adjacency TyrrhenianSea = [GulfOfLyon, WesternMediterranean, Tunis, Tuscany, Rome, Naples, IonianSea]
@@ -455,7 +461,7 @@ country EasternMediterranean = Nothing
 country EnglishChannel = Nothing
 country GulfOfBothnia = Nothing
 country GulfOfLyon = Nothing
-country HelgolandBright = Nothing
+country HeligolandBight = Nothing
 country IonianSea = Nothing
 country IrishSea = Nothing
 country MidAtlanticOcean = Nothing
@@ -516,7 +522,7 @@ data ProvinceCoast
   | SpainSouth
   | BulgariaEast
   | BulgariaSouth
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, Enum, Bounded)
 
 pcProvince :: ProvinceCoast -> Province
 pcProvince StPetersburgNorth = StPetersburg
@@ -679,3 +685,158 @@ distanceFromHomeSupplyCentre power province = head (sort distances)
   where
     distances = fmap (distance province) homeSupplyCentres
     homeSupplyCentres = filter (isHome power) supplyCentres
+
+provinceStringRepresentation :: Province -> String
+provinceStringRepresentation province = case province of
+    Denmark -> "Denmark"
+    Bohemia -> "Bohemia"
+    Budapest -> "Budapest"
+    Galicia -> "Galicia"
+    Trieste -> "Trieste"
+    Tyrolia -> "Tyrolia"
+    Vienna -> "Vienna"
+    Clyde -> "Clyde"
+    Edinburgh -> "Edinburgh"
+    Liverpool -> "Liverpool"
+    London -> "London"
+    Wales -> "Wales"
+    Yorkshire -> "Yorkshire"
+    Brest -> "Brest"
+    Burgundy -> "Burgundy"
+    Gascony -> "Gascony"
+    Marseilles -> "Marseilles"
+    Paris -> "Paris"
+    Picardy -> "Picardy"
+    Berlin -> "Berlin"
+    Kiel -> "Kiel"
+    Munich -> "Munich"
+    Prussia -> "Prussia"
+    Ruhr -> "Ruhr"
+    Silesia -> "Silesia"
+    Apulia -> "Apulia"
+    Naples -> "Naples"
+    Piedmont -> "Piedmont"
+    Rome -> "Rome"
+    Tuscany -> "Tuscany"
+    Venice -> "Venice"
+    Livonia -> "Livonia"
+    Moscow -> "Moscow"
+    Sevastopol -> "Sevastopol"
+    StPetersburg -> "St. Petersburg"
+    Ukraine -> "Ukraine"
+    Warsaw -> "Warsaw"
+    Ankara -> "Ankara"
+    Armenia -> "Armenia"
+    Constantinople -> "Constantinople"
+    Smyrna -> "Smyrna"
+    Syria -> "Syria"
+    Albania -> "Albania"
+    Belgium -> "Belgium"
+    Bulgaria -> "Bulgaria"
+    Finland -> "Finland"
+    Greece -> "Greece"
+    Holland -> "Holland"
+    Norway -> "Norway"
+    NorthAfrica -> "North Africa"
+    Portugal -> "Portugal"
+    Rumania -> "Rumania"
+    Serbia -> "Serbia"
+    Spain -> "Spain"
+    Sweden -> "Sweden"
+    Tunis -> "Tunis"
+    AdriaticSea -> "Adriatic Sea"
+    AegeanSea -> "Aegean Sea"
+    BalticSea -> "Baltic Sea"
+    BarentsSea -> "Barents Sea"
+    BlackSea -> "Black Sea"
+    EasternMediterranean -> "Eastern Mediterranean"
+    EnglishChannel -> "English Channel"
+    GulfOfBothnia -> "Gulf of Bothnia"
+    GulfOfLyon -> "Gulf of Lyon"
+    HeligolandBight -> "Heligoland Bight"
+    IonianSea -> "Ionian Sea"
+    IrishSea -> "Irish Sea"
+    MidAtlanticOcean -> "Mid-Atlantic Ocean"
+    NorthAtlanticOcean -> "North Atlantic Ocean"
+    NorthSea -> "North Sea"
+    NorwegianSea -> "Norwegian Sea"
+    Skagerrak -> "Skagerrak"
+    TyrrhenianSea -> "TyrrhenianSea"
+    WesternMediterranean -> "Western Mediterranean"
+
+provinceStringRepresentations :: Province -> (String, [String])
+provinceStringRepresentations pr = (principal, others)
+  where
+    principal = provinceStringRepresentation pr
+    others = case pr of
+        Liverpool -> ["Lvp"]
+        Livonia -> ["Lvn"]
+        StPetersburg -> ["StP"]
+        Norway -> ["Nwy"]
+        NorthAfrica -> ["NAf"]
+        GulfOfBothnia -> ["Bot"]
+        GulfOfLyon -> ["GoL"]
+        -- There are 2 accepted spellings of this one:
+        --   Heligoland
+        --   Helgoland
+        -- according to Wikipedia.
+        HeligolandBight -> ["Helgoland Bight", "Hel"]
+        MidAtlanticOcean -> ["Mid Atlantic Ocean"]
+        NorthAtlanticOcean -> ["NAt"]
+        NorthSea -> ["Nth"]
+        NorwegianSea -> ["Nrg"]
+        TyrrhenianSea -> ["Tyn"]
+        _ -> [take 3 principal]
+
+parseProvince :: Parser Province
+parseProvince = choice parsers
+  where
+    parsers :: [Parser Province]
+    parsers = fmap makeParser provincesWithReps
+    provinces = [minBound..maxBound]
+    provincesWithReps = fmap bundleReps provinces
+    bundleReps :: Province -> (Province, [String])
+    bundleReps pr = let (s, ss) = provinceStringRepresentations pr
+                    in  (pr, s : ss)
+    makeParser :: (Province, [String]) -> Parser Province
+    makeParser (p, ss) = choice (fmap (try . string) ss) *> pure p
+
+provinceCoastStringRepresentations :: ProvinceCoast -> [String]
+provinceCoastStringRepresentations pc = provinceReps >>= addSuffix
+  where
+    (principal, others) = provinceStringRepresentations (pcProvince pc)
+    provinceReps = principal : others
+    addSuffix str = [
+          str ++ " " ++ suffix
+        , str ++ " (" ++ suffix ++ ")"
+        ]
+    suffix = provinceCoastStringSuffix pc
+
+provinceCoastStringSuffix :: ProvinceCoast -> String
+provinceCoastStringSuffix pc = case pc of
+    StPetersburgNorth -> "NC"
+    StPetersburgSouth -> "SC"
+    SpainNorth -> "NC"
+    SpainSouth -> "SC"
+    BulgariaEast -> "EC"
+    BulgariaSouth -> "SC"
+
+parseCoast :: Parser ProvinceCoast
+parseCoast = choice parsers
+  where
+    parsers :: [Parser ProvinceCoast]
+    parsers = fmap makeParser provinceCoastsWithReps
+    provinceCoasts = [minBound..maxBound]
+    provinceCoastsWithReps = fmap bundleReps provinceCoasts
+    bundleReps :: ProvinceCoast -> (ProvinceCoast, [String])
+    bundleReps pc = let ss = provinceCoastStringRepresentations pc
+                    in  (pc, ss)
+    makeParser :: (ProvinceCoast, [String]) -> Parser ProvinceCoast
+    makeParser (pc, ss) = choice (fmap (try . string) ss) *> pure pc
+
+parseProvinceTarget :: Parser ProvinceTarget
+parseProvinceTarget = try parseSpecial <|> parseNormal
+  where
+    parseNormal = Normal <$> (parseProvince <* spaces <* eof)
+    parseSpecial = Special <$> (parseCoast <* spaces <* eof)
+
