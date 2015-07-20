@@ -67,11 +67,13 @@ module Diplomacy.Province (
 
   , parseProvince
   , parseProvinceTarget
+  , printProvinceTarget
 
   ) where
 
 import Control.Monad (guard)
 import Control.Applicative
+import Data.String (fromString, IsString)
 import Data.List (sort)
 import Diplomacy.GreatPower
 import Text.Parsec hiding ((<|>))
@@ -840,3 +842,5 @@ parseProvinceTarget = try parseSpecial <|> parseNormal
     parseNormal = Normal <$> parseProvince
     parseSpecial = Special <$> parseCoast
 
+printProvinceTarget :: IsString a => ProvinceTarget -> a
+printProvinceTarget = fromString . show
