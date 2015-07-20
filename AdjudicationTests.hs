@@ -181,9 +181,9 @@ isSupporterCouldNotDoMove = maybe False (== SupporterCouldNotDoMove)
 sixA1 :: Test
 sixA1 = isMoveImpossible validation ~? "6.A.1"
   where
-    validation = validateMove occupation order
+    validation = validateMove England occupation order
     occupation = occupy (Normal NorthSea) (Just $ align Fleet England) emptyOccupation
-    order = Order (align ((Fleet, Normal NorthSea), MoveObject (Normal Picardy)) England)
+    order = Order ((Fleet, Normal NorthSea), MoveObject (Normal Picardy))
 
 -- Move army to sea
 --
@@ -192,9 +192,9 @@ sixA1 = isMoveImpossible validation ~? "6.A.1"
 sixA2 :: Test
 sixA2 = isMoveImpossible validation ~? "6.A.2"
   where
-    validation = validateMove occupation order
+    validation = validateMove England occupation order
     occupation = occupy (Normal Liverpool) (Just $ align Army England) emptyOccupation
-    order = Order (align ((Army, Normal Liverpool), MoveObject (Normal IrishSea)) England)
+    order = Order ((Army, Normal Liverpool), MoveObject (Normal IrishSea))
 
 -- Move fleet to land
 --
@@ -203,9 +203,9 @@ sixA2 = isMoveImpossible validation ~? "6.A.2"
 sixA3 :: Test
 sixA3 = isMoveImpossible validation ~? "6.A.3"
   where
-    validation = validateMove occupation order
+    validation = validateMove Germany occupation order
     occupation = occupy (Normal Kiel) (Just $ align Fleet Germany) emptyOccupation
-    order = Order (align ((Fleet, Normal Kiel), MoveObject (Normal Munich)) Germany)
+    order = Order ((Fleet, Normal Kiel), MoveObject (Normal Munich))
 
 -- Test cases 6.A.4 and 6.A.5 are moot; this program interprets a loop
 -- move as a hold.
@@ -223,9 +223,9 @@ sixA3 = isMoveImpossible validation ~? "6.A.3"
 sixA9 :: Test
 sixA9 = isMoveImpossible validation ~? "6.A.9"
   where
-    validation = validateMove occupation order
+    validation = validateMove Italy occupation order
     occupation = occupy (Normal Rome) (Just $ align Fleet Italy) emptyOccupation
-    order = Order (align ((Fleet, Normal Rome), MoveObject (Normal Venice)) Italy)
+    order = Order ((Fleet, Normal Rome), MoveObject (Normal Venice))
 
 -- Support on unreachable destination not possible
 --
@@ -241,11 +241,11 @@ sixA9 = isMoveImpossible validation ~? "6.A.9"
 sixA10 :: Test
 sixA10 = isSupporterCouldNotDoMove validation ~? "6.A.10"
   where
-    validation = validateSupport occupation order
+    validation = validateSupport Italy occupation order
     occupation = occupy (Normal Rome) (Just $ align Fleet Italy)
                . occupy (Normal Apulia) (Just $ align Army Italy)
                $ emptyOccupation
-    order = Order (align ((Fleet, Normal Rome), SupportObject (Army, Normal Apulia) (Normal Venice)) Italy)
+    order = Order ((Fleet, Normal Rome), SupportObject (Army, Normal Apulia) (Normal Venice))
 
 -- Simple bounce
 --
@@ -337,9 +337,9 @@ sixB4 :: Test
 sixB4 = (supportValidation == Nothing && resolution == expectedResolution) ~? "6.B.4"
   where
 
-    supportValidation = validateSupport occupation supportOrder
+    supportValidation = validateSupport France occupation supportOrder
 
-    supportOrder = Order (align ((Fleet, Normal Marseilles), SupportObject (Fleet, Normal Gascony) (Special SpainNorth)) France)
+    supportOrder = Order ((Fleet, Normal Marseilles), SupportObject (Fleet, Normal Gascony) (Special SpainNorth))
 
     occupation = occupy (Normal Gascony) (Just $ align Fleet France)
                . occupy (Normal Marseilles) (Just $ align Fleet France)
@@ -379,10 +379,9 @@ sixB5 :: Test
 sixB5 = isSupporterCouldNotDoMove validation ~? "6.B.5"
   where
 
-    validation = validateSupport occupation support
+    validation = validateSupport France occupation support
  
-    support =
-        Order (align ((Fleet, Special SpainNorth), SupportObject (Fleet, Normal Marseilles) (Normal GulfOfLyon)) France)
+    support = Order ((Fleet, Special SpainNorth), SupportObject (Fleet, Normal Marseilles) (Normal GulfOfLyon))
 
     occupation = occupy (Normal Marseilles) (Just $ align Fleet France)
                . occupy (Special SpainNorth) (Just $ align Fleet France)
@@ -436,7 +435,11 @@ sixB6 = (expectedResolution == resolution) ~? "6.B.6"
 changeCoasts :: Test
 changeCoasts = isMoveImpossible validation ~? "changeCoasts"
   where
-    validation = validateMove (occupy (Special SpainNorth) (Just (align Fleet France)) emptyOccupation) (Order (align ((Fleet, Special SpainNorth), MoveObject (Special SpainSouth)) France))
+    validation =
+        validateMove
+          France
+          (occupy (Special SpainNorth) (Just (align Fleet France)) emptyOccupation)
+          (Order ((Fleet, Special SpainNorth), MoveObject (Special SpainSouth)))
 
 -- 6.C.1. TEST CASE, THREE ARMY CIRCULAR MOVEMENT
 --
@@ -1308,8 +1311,8 @@ sixD21 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.
 sixD22 = (validation == Just (SupportedCouldNotDoMove MoveImpossible)) ~? "6.D.22"
   where
 
-    validation = validateSupport occupation supportOrder
-    supportOrder = Order (align ((Army, Normal Burgundy), SupportObject (Fleet, Normal Kiel) (Normal Munich)) Germany)
+    validation = validateSupport Germany occupation supportOrder
+    supportOrder = Order ((Army, Normal Burgundy), SupportObject (Fleet, Normal Kiel) (Normal Munich))
     occupation =
           occupy (Normal Burgundy) (Just (align Army Germany))
         . occupy (Normal Kiel) (Just (align Fleet Germany))
@@ -1333,8 +1336,8 @@ sixD22 = (validation == Just (SupportedCouldNotDoMove MoveImpossible)) ~? "6.D.2
 sixD23 = (validation == Just (SupportedCouldNotDoMove MoveImpossible)) ~? "6.D.23"
   where
 
-    validation = validateSupport occupation supportOrder
-    supportOrder = Order (align ((Fleet, Normal Marseilles), SupportObject (Fleet, Special SpainNorth) (Normal GulfOfLyon)) France)
+    validation = validateSupport France occupation supportOrder
+    supportOrder = Order ((Fleet, Normal Marseilles), SupportObject (Fleet, Special SpainNorth) (Normal GulfOfLyon))
     occupation =
           occupy (Normal Marseilles) (Just (align Fleet France))
         . occupy (Special SpainNorth) (Just (align Fleet France))
@@ -1362,8 +1365,8 @@ sixD23 = (validation == Just (SupportedCouldNotDoMove MoveImpossible)) ~? "6.D.2
 sixD24 = (validation == Just (SupportedCouldNotDoMove MoveImpossible)) ~? "6.D.24"
   where
 
-    validation = validateSupport occupation supportOrder
-    supportOrder = Order (align ((Fleet, Special SpainSouth), SupportObject (Army, Normal Marseilles) (Normal GulfOfLyon)) France)
+    validation = validateSupport France occupation supportOrder
+    supportOrder = Order ((Fleet, Special SpainSouth), SupportObject (Army, Normal Marseilles) (Normal GulfOfLyon))
     occupation =
           occupy (Normal Marseilles) (Just (align Army France))
         . occupy (Special SpainSouth) (Just (align Fleet France))
@@ -1475,8 +1478,8 @@ sixD27 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.
 sixD28 = (validation == Just MoveImpossible) ~? "6.D.28"
   where
 
-    validation = validateMove occupation moveOrder
-    moveOrder = Order (align ((Fleet, Normal Rumania), MoveObject (Normal Holland)) Russia)
+    validation = validateMove Russia occupation moveOrder
+    moveOrder = Order ((Fleet, Normal Rumania), MoveObject (Normal Holland))
     occupation =
           occupy (Normal Rumania) (Just (align Fleet Russia))
         $ emptyOccupation
@@ -1502,8 +1505,8 @@ sixD28 = (validation == Just MoveImpossible) ~? "6.D.28"
 sixD29 = (validation == Just MoveImpossible) ~? "6.D.29"
   where
 
-    validation = validateMove occupation moveOrder
-    moveOrder = Order (align ((Fleet, Normal Rumania), MoveObject (Special BulgariaSouth)) Russia)
+    validation = validateMove Russia occupation moveOrder
+    moveOrder = Order ((Fleet, Normal Rumania), MoveObject (Special BulgariaSouth))
     occupation =
           occupy (Normal Rumania) (Just (align Fleet Russia))
         $ emptyOccupation
@@ -1526,8 +1529,8 @@ sixD29 = (validation == Just MoveImpossible) ~? "6.D.29"
 sixD30 = (validation == Just MoveImpossible) ~? "6.D.30"
   where
 
-    validation = validateMove occupation moveOrder
-    moveOrder = Order (align ((Fleet, Normal Rumania), MoveObject (Normal Bulgaria)) Russia)
+    validation = validateMove Russia occupation moveOrder
+    moveOrder = Order ((Fleet, Normal Rumania), MoveObject (Normal Bulgaria))
     occupation =
           occupy (Normal Rumania) (Just (align Fleet Russia))
         $ emptyOccupation
@@ -1619,8 +1622,8 @@ sixD33 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.
 sixD34 = (validation == Just SupportSelf) ~? "6.D.34"
   where
 
-    validation = validateSupport occupation supportOrder
-    supportOrder = Order (align ((Army, Normal Prussia), SupportObject (Army, Normal Livonia) (Normal Prussia)) Italy)
+    validation = validateSupport Italy occupation supportOrder
+    supportOrder = Order ((Army, Normal Prussia), SupportObject (Army, Normal Livonia) (Normal Prussia))
     occupation =
           occupy (Normal Prussia) (Just (align Army Italy))
         $ emptyOccupation
@@ -2106,9 +2109,9 @@ sixE13 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.
 sixE14 = (expectedResolution == testTypicalResolution expectedResolution && validation == Just MoveImpossible) ~? "6.E.14"
   where
 
-    validation = validateMove occupation russianMove
+    validation = validateMove Russia occupation russianMove
     occupation = occupy (Normal Edinburgh) (Just $ align Fleet Russia) emptyOccupation
-    russianMove = Order (align ((Fleet, Normal Edinburgh), MoveObject (Normal Liverpool)) Russia)
+    russianMove = Order ((Fleet, Normal Edinburgh), MoveObject (Normal Liverpool))
 
     expectedResolution = M.fromList [
           (Zone (Normal Liverpool), (align Army England, SomeResolved (MoveObject (Normal Edinburgh), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Edinburgh) Russia) VNil) [])))))
@@ -2191,8 +2194,8 @@ sixE15 = (expectedResolution == resolution) ~? "6.E.15"
 sixF1 = (validation == Just ConvoyerNotInWater) ~? "6.F.1"
   where
 
-    convoyOrder = Order (align ((Fleet, Normal Constantinople), ConvoyObject (Army, Normal Greece) (Normal Sevastopol)) Turkey)
-    validation = validateConvoy occupation convoyOrder
+    validation = validateConvoy Turkey occupation convoyOrder
+    convoyOrder = Order ((Fleet, Normal Constantinople), ConvoyObject (Army, Normal Greece) (Normal Sevastopol))
     occupation =
           occupy (Normal Constantinople) (Just $ align Fleet Turkey)
         . occupy (Normal Greece) (Just $ align Army Turkey)
@@ -2351,8 +2354,8 @@ sixF7 = (  validation == Nothing
         && expectedResolution == resolution) ~? "6.F.7"
   where
 
-    validation = validateWithdraw (occupation, resolution) withdrawOrder
-    withdrawOrder = Order (align ((Fleet, Normal NorthSea), WithdrawObject (Normal Holland)) England)
+    validation = validateWithdraw England occupation resolution withdrawOrder
+    withdrawOrder = Order ((Fleet, Normal NorthSea), WithdrawObject (Normal Holland))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
           (Zone (Normal NorthSea), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal London) (Normal Holland), Just (ConvoyRouteCut [(Zone (Normal NorthSea), align (Fleet, Normal Skagerrak) Germany)]))))
@@ -3146,8 +3149,8 @@ sixH5 = (  validation == Just WithdrawIntoAttackingProvince
         && expectedResolution == resolution) ~? "6.H.5"
   where
 
-    validation = validateWithdraw (occupation, resolution) withdrawOrder
-    withdrawOrder = Order (align ((Fleet, Normal Ankara), WithdrawObject (Normal BlackSea)) Turkey)
+    validation = validateWithdraw Turkey occupation resolution withdrawOrder
+    withdrawOrder = Order ((Fleet, Normal Ankara), WithdrawObject (Normal BlackSea))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
           (Zone (Normal Constantinople), (align Fleet Russia, SomeResolved (SupportObject (Fleet, Normal BlackSea) (Normal Ankara), Nothing)))
@@ -3179,8 +3182,8 @@ sixH6 = (  validation == Just WithdrawIntoContestedArea
         && expectedResolution == resolution) ~? "6.H.6"
   where
 
-    validation = validateWithdraw (occupation, resolution) withdrawOrder
-    withdrawOrder = Order (align ((Army, Normal Vienna), WithdrawObject (Normal Bohemia)) Italy)
+    validation = validateWithdraw Italy occupation resolution withdrawOrder
+    withdrawOrder = Order ((Army, Normal Vienna), WithdrawObject (Normal Bohemia))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
           (Zone (Normal Budapest), (align Army Austria, SomeResolved (SupportObject (Army, Normal Trieste) (Normal Vienna), Nothing)))
@@ -3284,8 +3287,8 @@ sixH9 = (  validation == Nothing
         && expectedResolution == resolution) ~? "6.H.9"
   where
 
-    validation = validateWithdraw (occupation, resolution) withdrawOrder
-    withdrawOrder = Order (align ((Fleet, Normal Kiel), WithdrawObject (Normal Berlin)) Germany)
+    validation = validateWithdraw Germany occupation resolution withdrawOrder
+    withdrawOrder = Order ((Fleet, Normal Kiel), WithdrawObject (Normal Berlin))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
           (Zone (Normal HeligolandBight), (align Fleet England, SomeResolved (MoveObject (Normal Kiel), Nothing)))
@@ -3329,10 +3332,10 @@ sixH10 = (  englishValidation == Just WithdrawIntoAttackingProvince
          && expectedResolution == resolution) ~? "6.H.10"
   where
 
-    englishValidation = validateWithdraw (occupation, resolution) englishWithdrawOrder
-    germanValidation = validateWithdraw (occupation, resolution) germanWithdrawOrder
-    englishWithdrawOrder = Order (align ((Army, Normal Kiel), WithdrawObject (Normal Berlin)) England)
-    germanWithdrawOrder = Order (align ((Army, Normal Prussia), WithdrawObject (Normal Berlin)) Germany)
+    englishValidation = validateWithdraw England occupation resolution englishWithdrawOrder
+    germanValidation = validateWithdraw Germany occupation resolution germanWithdrawOrder
+    englishWithdrawOrder = Order ((Army, Normal Kiel), WithdrawObject (Normal Berlin))
+    germanWithdrawOrder = Order ((Army, Normal Prussia), WithdrawObject (Normal Berlin))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
           (Zone (Normal Kiel), (align Army England, SomeResolved (MoveObject (Normal Kiel), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
@@ -3374,8 +3377,8 @@ sixH11 = (  validation == Nothing
          && expectedResolution == resolution) ~? "6.H.11"
   where
 
-    validation = validateWithdraw (occupation, resolution) withdrawOrder
-    withdrawOrder = Order (align ((Army, Normal Marseilles), WithdrawObject (Normal Gascony)) Italy)
+    validation = validateWithdraw Italy occupation resolution withdrawOrder
+    withdrawOrder = Order ((Army, Normal Marseilles), WithdrawObject (Normal Gascony))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
           (Zone (Normal Gascony), (align Army France, SomeResolved (MoveObject (Normal Marseilles), Nothing)))
@@ -3495,8 +3498,8 @@ sixH15 = (  validation == Just WithdrawIntoAttackingProvince
          && expectedResolution == resolution) ~? "6.H.15"
   where
 
-    validation = validateWithdraw (occupation, resolution) withdrawOrder
-    withdrawOrder = Order (align ((Fleet, Normal Portugal), WithdrawObject (Special SpainNorth)) England)
+    validation = validateWithdraw England occupation resolution withdrawOrder
+    withdrawOrder = Order ((Fleet, Normal Portugal), WithdrawObject (Special SpainNorth))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
           (Zone (Normal Portugal), (align Fleet England, SomeResolved (MoveObject (Normal Portugal), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Special SpainSouth) France) VNil) [])))))
@@ -3524,8 +3527,8 @@ sixH16 = (  validation == Just WithdrawIntoContestedArea
          && expectedResolution == resolution) ~? "6.H.16"
   where
 
-    validation = validateWithdraw (occupation, resolution) withdrawOrder
-    withdrawOrder = Order (align ((Fleet, Normal WesternMediterranean), WithdrawObject (Special SpainSouth)) France)
+    validation = validateWithdraw France occupation resolution withdrawOrder
+    withdrawOrder = Order ((Fleet, Normal WesternMediterranean), WithdrawObject (Special SpainSouth))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
           (Zone (Normal MidAtlanticOcean), (align Fleet France, SomeResolved (MoveObject (Special SpainNorth), Just (MoveBounced (AtLeast (VCons (align (Fleet, Normal Gascony) France) VNil) [])))))

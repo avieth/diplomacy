@@ -9,6 +9,13 @@ Portability : non-portable (GHC only)
 
 A valid order is one which, in the absence of other orders to compete with it,
 would pass and lead one sane game state to another sane game state.
+
+TODO remove the use of Occupation and the InvalidSubject reason. At validation
+time, we should assume every subject is valid, as this can be enforced by
+judicious choice of data types for representing a diplomacy board: 
+
+  Map Zone (Aligned Unit, SomeOrderObject phase)
+
 -}
 
 {-# LANGUAGE AutoDeriveTypeable #-}
@@ -188,28 +195,28 @@ validateAs forder invalid validation1 order = case validation1 (forder order) of
     Just reason -> Just (invalid reason)
 
 -- | Validation for the subject of an order.
-validateSubject :: Occupation -> OrderValidation phase order
-validateSubject occupation order =
+validateSubject :: GreatPower -> Occupation -> OrderValidation phase order
+validateSubject greatPower occupation order =
     case occupies alignedUnit provinceTarget occupation of
         True -> Nothing
         False -> Just InvalidSubject
   where
     subject = orderSubject order
-    alignedUnit = align (subjectUnit subject) (orderGreatPower order)
+    alignedUnit = align (subjectUnit subject) greatPower
     provinceTarget = subjectProvinceTarget subject
 
 -- * Principal validations
 
 -- | Validation for a move order.
-validateMove :: Occupation -> OrderValidation Typical Move
-validateMove occupation =
-           validateSubject occupation
+validateMove :: GreatPower -> Occupation -> OrderValidation Typical Move
+validateMove greatPower occupation =
+           validateSubject greatPower occupation
     `also` validateMoveAdjacency
 
 -- | Validation for a support order.
-validateSupport :: Occupation -> OrderValidation Typical Support
-validateSupport occupation =
-           validateSubject occupation
+validateSupport :: GreatPower -> Occupation -> OrderValidation Typical Support
+validateSupport greatPower occupation =
+           validateSubject greatPower occupation
     `also` validateSupportSelf
     `also` validateSupportedUnitPresent occupation
     `also` validateSupporterCanDoMove
@@ -218,9 +225,9 @@ validateSupport occupation =
 -- | Validation for a convoy order.
 --   NB we do NOT check for convoys which are impossible, like a fleet in
 --   the Black Sea convoying Finland to Sweden.
-validateConvoy :: Occupation -> OrderValidation Typical Convoy
-validateConvoy occupation =
-           validateSubject occupation
+validateConvoy :: GreatPower -> Occupation -> OrderValidation Typical Convoy
+validateConvoy greatPower occupation =
+           validateSubject greatPower occupation
     `also` validateConvoyerIsFleet
     `also` validateConvoyingIsArmy
     `also` validateConvoyerInWater
@@ -228,31 +235,31 @@ validateConvoy occupation =
     `also` validateConvoyingUnitPresent occupation
 
 -- | Validation for a surrender order.
-validateSurrender :: Occupation -> OrderValidation Retreat Surrender
+validateSurrender :: GreatPower -> Occupation -> OrderValidation Retreat Surrender
 validateSurrender = validateSubject
 
 -- | Validation for a withdraw order.
-validateWithdraw :: (Occupation, TypicalResolution) -> OrderValidation Retreat Withdraw
-validateWithdraw (occupation, resolved) =
-           validateSubject occupation
+validateWithdraw :: GreatPower -> Occupation -> TypicalResolution -> OrderValidation Retreat Withdraw
+validateWithdraw greatPower occupation resolved =
+           validateSubject greatPower occupation
     `also` validateWithdrawNonAdjacent
     `also` validateWithdrawIntoOccupiedProvince occupation
     `also` validateWithdrawIntoAttackingProvince resolved
     `also` validateWithdrawIntoContestedArea resolved
 
 -- | Validation for a disband order.
-validateDisband :: Occupation -> OrderValidation Adjust Disband
+validateDisband :: GreatPower -> Occupation -> OrderValidation Adjust Disband
 validateDisband = validateSubject
 
 -- | Validation for a build order.
-validateBuild :: SupplyCentreDefecit -> OrderValidation Adjust Build
-validateBuild defecit =
+validateBuild :: GreatPower -> SupplyCentreDefecit -> OrderValidation Adjust Build
+validateBuild greatPower defecit =
            validateBuildUnitCannotOccupy
-    `also` validateBuildInHomeSupplyCentre
+    `also` validateBuildInHomeSupplyCentre greatPower
     `also` validateBuildRespectsDefecit defecit
 
-validateContinue :: OrderValidation Adjust Continue
-validateContinue = const Nothing
+validateContinue :: GreatPower -> Occupation -> OrderValidation Adjust Continue
+validateContinue = validateSubject
 
 -- * Sub-validations used to define principal validations.
 
@@ -273,11 +280,10 @@ validateSupportedCanDoMove order = fmap SupportedCouldNotDoMove (validateMoveAdj
     makeMove :: Order Typical Support -> Order Typical Move
     makeMove order =
         let SupportObject subject to = orderObject order
-            power = orderGreatPower order
         --  It doesn't matter that the move we construct may have a different
         --  issuing great power than the move being supported, because the
         --  validity of a move is independent of the issuing power!
-        in  Order $ align (subject, MoveObject to) power
+        in  Order (subject, MoveObject to)
 
 validateSupportedUnitPresent :: Occupation -> OrderValidation Typical Support
 validateSupportedUnitPresent occupation =
@@ -421,8 +427,8 @@ invalidWithdrawNonAdjacent order = unitCannotWithdrawFromTo unit from to
 validateBuildUnitCannotOccupy :: OrderValidation Adjust Build
 validateBuildUnitCannotOccupy = buildUnitCannotOccupy `implies` BuildUnitCannotOccupy
 
-validateBuildInHomeSupplyCentre :: OrderValidation Adjust Build
-validateBuildInHomeSupplyCentre = notInHomeSupplyCentre `implies` BuildNotInHomeSupplyCentre
+validateBuildInHomeSupplyCentre :: GreatPower -> OrderValidation Adjust Build
+validateBuildInHomeSupplyCentre greatPower = notInHomeSupplyCentre greatPower `implies` BuildNotInHomeSupplyCentre
 
 validateBuildRespectsDefecit :: SupplyCentreDefecit -> OrderValidation Adjust Build
 validateBuildRespectsDefecit i = const (i >= 0) `implies` BuildInsufficientSupplyCentres
@@ -433,11 +439,10 @@ buildUnitCannotOccupy order = unitCannotOccupy unit target
     unit = subjectUnit (orderSubject order)
     target = subjectProvinceTarget (orderSubject order)
 
-notInHomeSupplyCentre :: Order Adjust Build -> Bool
-notInHomeSupplyCentre order = not (supplyCentre province && isHome power province)
+notInHomeSupplyCentre :: GreatPower -> Order Adjust Build -> Bool
+notInHomeSupplyCentre greatPower order = not (supplyCentre province && isHome greatPower province)
   where
     province = ptProvince (subjectProvinceTarget (orderSubject order))
-    power = orderGreatPower order
 
 validateMoveAdjacency :: OrderValidation Typical Move
 validateMoveAdjacency = invalidMoveAdjacency `implies` MoveImpossible

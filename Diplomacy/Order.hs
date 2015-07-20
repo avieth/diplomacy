@@ -20,7 +20,6 @@ module Diplomacy.Order (
 
   , SomeOrder(..)
 
-  , orderGreatPower
   , orderSubject
   , orderObject
 
@@ -41,20 +40,17 @@ import Diplomacy.OrderObject
 import Diplomacy.Province
 
 newtype Order (phase :: Phase) (order :: OrderType) = Order {
-    outOrder :: Aligned (Subject, OrderObject phase order)
+    outOrder :: (Subject, OrderObject phase order)
   } deriving (Eq, Show)
 
-coerce' :: Order phase order -> Aligned (Subject, OrderObject phase order)
+coerce' :: Order phase order -> (Subject, OrderObject phase order)
 coerce' = coerce
 
-orderGreatPower :: Order phase order -> GreatPower
-orderGreatPower = alignedGreatPower . coerce'
-
 orderSubject :: Order phase order -> Subject
-orderSubject = fst . alignedThing . coerce'
+orderSubject = fst . coerce'
 
 orderObject :: Order phase order -> OrderObject phase order
-orderObject = snd . alignedThing . coerce'
+orderObject = snd . coerce'
 
 data SomeOrder phase where
     SomeOrder :: Order phase order -> SomeOrder phase

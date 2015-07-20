@@ -343,50 +343,55 @@ gamePhase game = case game of
 
 issueOrder
     :: forall order round .
-       Order (RoundPhase round) order
+       Aligned (Order (RoundPhase round) order)
     -> Game round RoundUnresolved
     -> Either (SomeInvalidReason (RoundPhase round)) (Game round RoundUnresolved)
-issueOrder order game = case validation of
-    Nothing -> Right (issueOrderUnsafe order game)
+issueOrder aorder game = case validation of
+    Nothing -> Right (issueOrderUnsafe aorder game)
     Just invalid -> Left (SomeInvalidReason invalid)
   where
 
     occupation = gameOccupation game
 
+    order = alignedThing aorder
+    greatPower = alignedGreatPower aorder
+
     validation :: Maybe (InvalidReason (RoundPhase round) order)
     validation = case orderObject order of
-        MoveObject _ -> validateMove occupation order
-        SupportObject _ _ -> validateSupport occupation order
-        ConvoyObject _ _ -> validateConvoy occupation order
-        SurrenderObject -> validateSurrender dislodged order
+        MoveObject _ -> validateMove greatPower occupation order
+        SupportObject _ _ -> validateSupport greatPower occupation order
+        ConvoyObject _ _ -> validateConvoy greatPower occupation order
+        SurrenderObject -> validateSurrender greatPower dislodged order
           where
             dislodged = gameDislodged game
-        WithdrawObject _ -> validateWithdraw (dislodged, resolution) order
+        WithdrawObject _ -> validateWithdraw greatPower dislodged resolution order
           where
             dislodged = gameDislodged game
             resolution = case game of
                 RetreatGame _ _ _ x _ _ _ -> x
-        DisbandObject -> validateDisband occupation order
-        BuildObject -> validateBuild defecit order
+        DisbandObject -> validateDisband greatPower occupation order
+        BuildObject -> validateBuild greatPower defecit order
           where
-            defecit = gameSupplyCentreDefecit (orderGreatPower order) game
-        ContinueObject -> validateContinue order
+            defecit = gameSupplyCentreDefecit greatPower game
+        ContinueObject -> validateContinue greatPower occupation order
 
     issueOrderUnsafe
         :: forall round order .
-           Order (RoundPhase round) order
+           Aligned (Order (RoundPhase round) order)
         -> Game round RoundUnresolved
         -> Game round RoundUnresolved
-    issueOrderUnsafe order game = case game of
+    issueOrderUnsafe aorder game = case game of
         TypicalGame TypicalRoundOne s t zonedOrders v -> TypicalGame TypicalRoundOne s t (insertOrder zonedOrders) v
         TypicalGame TypicalRoundTwo s t zonedOrders v -> TypicalGame TypicalRoundTwo s t (insertOrder zonedOrders) v
         RetreatGame RetreatRoundOne s t res zonedOrders o c -> RetreatGame RetreatRoundOne s t res (insertOrder zonedOrders) o c
         RetreatGame RetreatRoundTwo s t res zonedOrders o c -> RetreatGame RetreatRoundTwo s t res (insertOrder zonedOrders) o c
         AdjustGame AdjustRound s t zonedOrders c -> AdjustGame AdjustRound s t (insertOrder zonedOrders) c
       where
+        order = alignedThing aorder
+        greatPower = alignedGreatPower aorder
         zone = Zone (subjectProvinceTarget (orderSubject order))
         unit = subjectUnit (orderSubject order)
-        aunit = align unit (orderGreatPower order)
+        aunit = align unit greatPower
         object :: OrderObject (RoundPhase round) order
         object = orderObject order
         someObject :: SomeOrderObject (RoundPhase round)
