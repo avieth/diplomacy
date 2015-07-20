@@ -208,16 +208,24 @@ newGame = TypicalGame TypicalRoundOne Unresolved firstTurn zonedOrders thisContr
         greatPowers :: [GreatPower]
         greatPowers = [minBound..maxBound]
 
-showGame :: Game round RoundUnresolved -> String
+showGame :: Game round roundStatus -> String
 showGame game = concat . intersperse "\n" $ [
       showGameMetadata game
     , "****"
-    , showZonedOrders (gameZonedOrders game)
+    , middle
     , "****"
     , showControl (gameControl game)
     ]
+  where
+    middle = case game of
+        TypicalGame _ Unresolved _ _ _ -> showZonedOrders (gameZonedOrders game)
+        RetreatGame _ Unresolved _ _ _ _ _ -> showZonedOrders (gameZonedOrders game)
+        AdjustGame _ Unresolved _ _ _ -> showZonedOrders (gameZonedOrders game)
+        TypicalGame _ Resolved _ _ _ -> showZonedResolvedOrders (gameZonedResolvedOrders game)
+        RetreatGame _ Resolved _ _ _ _ _ -> showZonedResolvedOrders (gameZonedResolvedOrders game)
+        AdjustGame _ Resolved _ _ _ -> showZonedResolvedOrders (gameZonedResolvedOrders game)
 
-showGameMetadata :: Game round RoundUnresolved -> String
+showGameMetadata :: Game round roundStatus -> String
 showGameMetadata game = concat . intersperse "\n" $ [
       "Year: " ++ show year
     , "Season: " ++ show season
@@ -227,6 +235,16 @@ showGameMetadata game = concat . intersperse "\n" $ [
     year = 1900 + turnToInt (gameTurn game)
     season = gameSeason game
     phase = gamePhase game
+
+showOccupation :: Occupation -> String
+showOccupation = concat . intersperse "\n" . M.foldWithKey foldShowAlignedUnit []
+  where
+    foldShowAlignedUnit zone aunit b =
+        concat [show provinceTarget, ": ", show greatPower, " ", show unit] : b
+      where
+        provinceTarget = zoneProvinceTarget zone
+        greatPower = alignedGreatPower aunit
+        unit = alignedThing aunit
 
 showZonedOrders :: M.Map Zone (Aligned Unit, SomeOrderObject phase) -> String
 showZonedOrders = concat . intersperse "\n" . M.foldWithKey foldShowOrder []
@@ -256,6 +274,42 @@ showZonedOrders = concat . intersperse "\n" . M.foldWithKey foldShowOrder []
             BuildObject -> "build"
             ContinueObject -> "continue"
 
+showZonedResolvedOrders :: M.Map Zone (Aligned Unit, SomeResolved OrderObject phase) -> String
+showZonedResolvedOrders = concat . intersperse "\n" . M.foldWithKey foldShowResolvedOrder []
+  where
+    foldShowResolvedOrder
+        :: Zone
+        -> (Aligned Unit, SomeResolved OrderObject phase)
+        -> [String]
+        -> [String]
+    foldShowResolvedOrder zone (aunit, SomeResolved (object, resolution)) b =
+        concat [show provinceTarget, ": ", show greatPower, " ", show unit, " ", objectString, " ", resolutionString] : b
+      where
+        provinceTarget = zoneProvinceTarget zone
+        greatPower = alignedGreatPower aunit
+        unit = alignedThing aunit
+        objectString = case object of
+            MoveObject pt ->
+                if pt == zoneProvinceTarget zone
+                then "hold"
+                else "move to " ++ show pt
+            SupportObject subj pt -> concat ["support ", show supportedUnit, " at ", show supportedPt, " into ", show pt]
+              where
+                supportedUnit = subjectUnit subj
+                supportedPt = subjectProvinceTarget subj
+            ConvoyObject subj pt -> concat ["convoy ", show convoyedUnit, " from ", show convoyedFrom, " to ", show pt]
+              where
+                convoyedUnit = subjectUnit subj
+                convoyedFrom = subjectProvinceTarget subj
+            SurrenderObject -> "surrender"
+            WithdrawObject pt -> "withdraw to " ++ show pt
+            DisbandObject -> "disband"
+            BuildObject -> "build"
+            ContinueObject -> "continue"
+        resolutionString = case resolution of
+            Nothing -> "✓"
+            Just reason -> "✗ " ++ show reason
+
 showControl :: Control -> String
 showControl = concat . intersperse "\n" . M.foldWithKey foldShowControl []
   where
@@ -265,6 +319,16 @@ gameZonedOrders
     :: Game round RoundUnresolved
     -> M.Map Zone (Aligned Unit, SomeOrderObject (RoundPhase round))
 gameZonedOrders game = case game of
+    TypicalGame TypicalRoundOne _ _ x _ -> x
+    TypicalGame TypicalRoundTwo _ _ x _ -> x
+    RetreatGame RetreatRoundOne _ _ _ x _ _ -> x
+    RetreatGame RetreatRoundTwo _ _ _ x _ _ -> x
+    AdjustGame AdjustRound _ _ x _ -> x
+
+gameZonedResolvedOrders
+    :: Game round RoundResolved
+    -> M.Map Zone (Aligned Unit, SomeResolved OrderObject (RoundPhase round))
+gameZonedResolvedOrders game = case game of
     TypicalGame TypicalRoundOne _ _ x _ -> x
     TypicalGame TypicalRoundTwo _ _ x _ -> x
     RetreatGame RetreatRoundOne _ _ _ x _ _ -> x
@@ -433,21 +497,31 @@ continue game = case game of
         nextOccupation :: Occupation
         (dislodged, nextOccupation) = M.foldWithKey dislodgedAndOccupationFold (M.empty, M.empty) currentOccupation
 
+        -- We use this to fold over the current occupation.
+        -- At a given zone, we check whether a new unit occupies it (using
+        -- typicalChange) and if so, we dislodge the unit at that zone unless
+        -- it successfully moved away.
         dislodgedAndOccupationFold
             :: Zone
             -> Aligned Unit
             -> (M.Map Zone (Aligned Unit), Occupation)
             -> (M.Map Zone (Aligned Unit), Occupation)
         dislodgedAndOccupationFold zone aunit (d, o) =
-            case typicalChange zonedResolvedOrders zone of
+            case (typicalChange zonedResolvedOrders zone, M.lookup zone zonedResolvedOrders) of
                 -- No change here; this unit still occupies... unless it did
                 -- a successful move.
-                Nothing -> case M.lookup zone zonedResolvedOrders of
-                    Just (_, SomeResolved (MoveObject pt, Nothing)) ->
-                        (d, M.insert (Zone pt) aunit o)
-                    _ -> (d, M.insert zone aunit o)
-                -- Change here; this unit is dislodged, incoming unit occupies.
-                Just asubj -> (M.insert zone aunit d, M.insert zone aunit' o)
+                (Nothing, Just (_, SomeResolved (MoveObject pt, Nothing))) ->
+                    (d, M.insert (Zone pt) aunit o)
+                (Nothing, _) ->
+                    (d, M.insert zone aunit o)
+                -- Change here; the incoming unit now occupies, and the unit
+                -- here is dislodged unless it moved away.
+                (Just asubj, Just (_, SomeResolved (MoveObject pt, Nothing))) ->
+                    (d, M.insert zone aunit' o)
+                  where
+                    aunit' = align (subjectUnit (alignedThing asubj)) (alignedGreatPower asubj)
+                (Just asubj, _) ->
+                    (M.insert zone aunit d, M.insert zone aunit' o)
                   where
                     aunit' = align (subjectUnit (alignedThing asubj)) (alignedGreatPower asubj)
 
