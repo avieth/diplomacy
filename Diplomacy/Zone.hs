@@ -41,7 +41,7 @@ instance Ord Zone where
         (Normal p1, Normal p2) -> p1 `compare` p2
         (Special c1, Special c2) -> pcProvince c1 `compare` pcProvince c2
         (Normal p, Special c) -> p `compare` pcProvince c
-        (Special c, Normal p) -> p `compare` pcProvince c
+        (Special c, Normal p) -> pcProvince c `compare` p
 
 zoneProvinceTarget :: Zone -> ProvinceTarget
 zoneProvinceTarget (Zone pt) = pt
