@@ -29,13 +29,16 @@ module Diplomacy.Game (
   , NextRound
   , RoundPhase
   , RoundOrderConstructor
+  , roundToInt
 
   , gameZonedOrders
+  , gameZonedResolvedOrders
   , gameOccupation
   , gameDislodged
   , gameControl
   , gameSupplyCentreDefecit
   , gameTurn
+  , gameRound
   , gameSeason
   , issueOrder
   , resolve
@@ -74,6 +77,11 @@ data Round where
     RoundFive :: Round
 
 deriving instance Show Round
+deriving instance Enum Round
+deriving instance Bounded Round
+
+roundToInt :: Round -> Int
+roundToInt = fromEnum
 
 data RoundStatus where
     RoundUnresolved :: RoundStatus
@@ -315,6 +323,12 @@ showControl = concat . intersperse "\n" . M.foldWithKey foldShowControl []
   where
     foldShowControl province greatPower b = concat [show province, ": ", show greatPower] : b
 
+gameStatus :: Game round roundStatus -> Status roundStatus
+gameStatus game = case game of
+    TypicalGame _ x _ _ _ -> x
+    RetreatGame _ x _ _ _ _ _ -> x
+    AdjustGame _ x _ _ _ -> x
+
 gameZonedOrders
     :: Game round RoundUnresolved
     -> M.Map Zone (Aligned Unit, SomeOrderObject (RoundPhase round))
@@ -354,9 +368,12 @@ gameOccupation game = case game of
             ContinueObject -> Just aunit
             _ -> Nothing
 
-gameDislodged :: (RoundPhase round ~ Retreat) => Game round RoundUnresolved -> Occupation
+gameDislodged
+    :: (RoundPhase round ~ Retreat)
+    => Game round RoundUnresolved
+    -> M.Map Zone (Aligned Unit)
 gameDislodged game = case game of
-    RetreatGame _ _ _ _ _ _ _ -> M.empty
+    RetreatGame _ Unresolved _ _ zonedOrders _ _ -> M.map fst zonedOrders
 
 gameControl :: Game round roundStatus -> Control
 gameControl game = case game of
@@ -390,6 +407,14 @@ gameTurn game = case game of
     TypicalGame _ _ t _ _ -> t
     RetreatGame _ _ t _ _ _ _ -> t
     AdjustGame _ _ t _ _ -> t
+
+gameRound :: Game round roundStatus -> Round
+gameRound game = case game of
+    TypicalGame TypicalRoundOne _ _ _ _ -> RoundOne
+    TypicalGame TypicalRoundTwo _ _ _ _ -> RoundThree
+    RetreatGame RetreatRoundOne _ _ _ _ _ _ -> RoundTwo
+    RetreatGame RetreatRoundTwo _ _ _ _ _ _ -> RoundFour
+    AdjustGame AdjustRound _ _ _ _ -> RoundFive
 
 gameSeason :: Game round roundStatus -> Season
 gameSeason game = case game of
@@ -582,6 +607,9 @@ continue game = case game of
         --
         -- Associate every country with a list of the zones it occupies,
         -- ordered by distance from home supply centre.
+        --
+        -- TODO must respect the rule "in case of a tie, fleets first, then
+        -- alphabetically by province".
         zonesByDistance :: M.Map GreatPower [Zone]
         zonesByDistance =
             M.mapWithKey
