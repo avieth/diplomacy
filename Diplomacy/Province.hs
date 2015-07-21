@@ -67,6 +67,8 @@ module Diplomacy.Province (
 
   , parseProvince
   , parseProvinceTarget
+
+  , printProvince
   , printProvinceTarget
 
   ) where
@@ -842,5 +844,13 @@ parseProvinceTarget = try parseSpecial <|> parseNormal
     parseNormal = Normal <$> parseProvince
     parseSpecial = Special <$> parseCoast
 
+provinceTargetStringRepresentation :: ProvinceTarget -> String
+provinceTargetStringRepresentation pt = case pt of
+    Normal p -> provinceStringRepresentation p
+    Special c -> head (provinceCoastStringRepresentations c)
+
 printProvinceTarget :: IsString a => ProvinceTarget -> a
-printProvinceTarget = fromString . show
+printProvinceTarget = fromString . provinceTargetStringRepresentation
+
+printProvince :: IsString a => Province -> a
+printProvince = fromString . provinceStringRepresentation
