@@ -24,6 +24,8 @@ module Diplomacy.OrderObject (
   , moveTarget
   , supportedSubject
   , supportTarget
+  , convoySubject
+  , convoyTarget
   , withdrawTarget
 
   ) where
@@ -82,6 +84,12 @@ supportedSubject (SupportObject x _) = x
 
 supportTarget :: OrderObject Typical Support -> ProvinceTarget
 supportTarget (SupportObject _ x) = x
+
+convoySubject :: OrderObject Typical Convoy -> Subject
+convoySubject (ConvoyObject x _) = x
+
+convoyTarget :: OrderObject Typical Convoy -> ProvinceTarget
+convoyTarget (ConvoyObject _ x) = x
 
 withdrawTarget :: OrderObject Retreat Withdraw -> ProvinceTarget
 withdrawTarget (WithdrawObject x) = x
