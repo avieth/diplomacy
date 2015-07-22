@@ -20,6 +20,7 @@ module Diplomacy.Occupation (
   , occupies
   , unitOccupies
   , occupied
+  , zoneOccupied
 
   ) where
 
@@ -62,3 +63,6 @@ unitOccupies unit pt = (==) (Just unit) . fmap alignedThing . occupier pt
 
 occupied :: ProvinceTarget -> Occupation -> Bool
 occupied pt = isJust . occupier pt
+
+zoneOccupied :: Zone -> Occupation -> Bool
+zoneOccupied zone = isJust . M.lookup zone

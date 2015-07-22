@@ -333,7 +333,7 @@ validateConvoyingOnCoastal =
     `orElse`
     ConvoyingNotOnCoastal
   where
-    convoyingOnCoastal = isCoastal . ptProvince . subjectProvinceTarget . orderSubject
+    convoyingOnCoastal = isCoastal . ptProvince . subjectProvinceTarget . convoySubject . orderObject
 
 validateConvoyingUnitPresent :: Occupation -> OrderValidation Typical Convoy
 validateConvoyingUnitPresent occupation =
@@ -352,7 +352,7 @@ validateWithdrawIntoOccupiedProvince occupation =
     WithdrawIntoOccupiedProvince
 
 withdrawIntoOccupiedProvince :: Occupation -> Order Retreat Withdraw -> Bool
-withdrawIntoOccupiedProvince occupation order = occupied target occupation
+withdrawIntoOccupiedProvince occupation order = zoneOccupied (Zone target) occupation
   where
     WithdrawObject target = orderObject order
 
@@ -491,7 +491,13 @@ unitCannotOccupy unit provinceTarget =
 --   routes; use @unitCannotConvoyFromTo@ for that.
 unitCannotMoveFromTo :: Unit -> ProvinceTarget -> ProvinceTarget -> Bool
 unitCannotMoveFromTo unit from to = unitCannotOccupy unit to || case unit of
-    Army -> not (isSameOrNeighbour to from)
+    -- Armies can convoy, so we consider all from/to pairs to be valid.
+    -- In the future, we may want to check that there is a convoy route between
+    -- these two places.
+    -- Since it's easy, we just get the case of non-adjacent provinces in which
+    -- at least one is inland (making a convoy impossible).
+    Army ->    not (isSameOrNeighbour to from)
+            && (isInland (ptProvince from) || isInland (ptProvince to))
     Fleet -> if isCoastal (ptProvince from) && isCoastal (ptProvince to)
              then not (isSameOrNeighbour to from) || null (commonCoasts from to)
              else not (isSameOrNeighbour to from)
