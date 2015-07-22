@@ -453,9 +453,8 @@ issueOrder aorder game = case validation of
         SurrenderObject -> validateSurrender greatPower dislodged order
           where
             dislodged = gameDislodged game
-        WithdrawObject _ -> validateWithdraw greatPower dislodged resolution order
+        WithdrawObject _ -> validateWithdraw greatPower occupation resolution order
           where
-            dislodged = gameDislodged game
             resolution = case game of
                 RetreatGame _ _ _ x _ _ _ -> x
         DisbandObject -> validateDisband greatPower occupation order
