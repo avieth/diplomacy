@@ -453,8 +453,9 @@ issueOrder aorder game = case validation of
         SurrenderObject -> validateSurrender greatPower dislodged order
           where
             dislodged = gameDislodged game
-        WithdrawObject _ -> validateWithdraw greatPower occupation resolution order
+        WithdrawObject _ -> validateWithdraw greatPower (dislodged `M.union` occupation) resolution order
           where
+            dislodged = gameDislodged game
             resolution = case game of
                 RetreatGame _ _ _ x _ _ _ -> x
         DisbandObject -> validateDisband greatPower occupation order
@@ -517,37 +518,32 @@ continue game = case game of
           where
             object = SurrenderObject
 
-        dislodged :: M.Map Zone (Aligned Unit)
-        nextOccupation :: Occupation
-        (dislodged, nextOccupation) = M.foldWithKey dislodgedAndOccupationFold (M.empty, M.empty) currentOccupation
-
-        -- We use this to fold over the current occupation.
-        -- At a given zone, we check whether a new unit occupies it (using
-        -- typicalChange) and if so, we dislodge the unit at that zone unless
-        -- it successfully moved away.
-        dislodgedAndOccupationFold
+        -- First, compute the occupation delta by checking for successful moves.
+        moveOccupation :: Occupation
+        stationaryOccupation :: Occupation
+        (moveOccupation, stationaryOccupation) = M.foldWithKey nextOccupationFold (M.empty, M.empty) currentOccupation
+        nextOccupationFold
             :: Zone
             -> Aligned Unit
-            -> (M.Map Zone (Aligned Unit), Occupation)
-            -> (M.Map Zone (Aligned Unit), Occupation)
-        dislodgedAndOccupationFold zone aunit (d, o) =
-            case (typicalChange zonedResolvedOrders zone, M.lookup zone zonedResolvedOrders) of
-                -- No change here; this unit still occupies... unless it did
-                -- a successful move.
-                (Nothing, Just (_, SomeResolved (MoveObject pt, Nothing))) ->
-                    (d, M.insert (Zone pt) aunit o)
-                (Nothing, _) ->
-                    (d, M.insert zone aunit o)
-                -- Change here; the incoming unit now occupies, and the unit
-                -- here is dislodged unless it moved away.
-                (Just asubj, Just (_, SomeResolved (MoveObject pt, Nothing))) ->
-                    (d, M.insert zone aunit' o)
-                  where
-                    aunit' = align (subjectUnit (alignedThing asubj)) (alignedGreatPower asubj)
-                (Just asubj, _) ->
-                    (M.insert zone aunit d, M.insert zone aunit' o)
-                  where
-                    aunit' = align (subjectUnit (alignedThing asubj)) (alignedGreatPower asubj)
+            -> (Occupation, Occupation)
+            -> (Occupation, Occupation)
+        nextOccupationFold zone aunit (move, stationary) = case M.lookup zone zonedResolvedOrders of
+            Just (_, SomeResolved (MoveObject pt, Nothing)) ->
+                (M.insert (Zone pt) aunit move, stationary)
+            _ ->
+                (move, M.insert zone aunit stationary)
+
+        -- The dislodgement is the left-biased intersection of the current
+        -- occupation with the change in occupation induced by successful
+        -- moves (moveOccupation), as these occupations have been upset by
+        -- the moves.
+        dislodged :: M.Map Zone (Aligned Unit)
+        dislodged = stationaryOccupation `M.intersection` moveOccupation
+
+        -- The next occupation is the left-biased union of the deltas with
+        -- the current occupation
+        nextOccupation :: Occupation
+        nextOccupation = moveOccupation `M.union` (stationaryOccupation `M.difference` dislodged)
 
         currentOccupation :: Occupation
         currentOccupation = M.map (\(a, _) -> a) zonedResolvedOrders
