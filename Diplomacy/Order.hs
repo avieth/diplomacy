@@ -41,7 +41,7 @@ import Diplomacy.Province
 
 newtype Order (phase :: Phase) (order :: OrderType) = Order {
     outOrder :: (Subject, OrderObject phase order)
-  } deriving (Eq, Show)
+  } deriving (Eq, Ord, Show)
 
 coerce' :: Order phase order -> (Subject, OrderObject phase order)
 coerce' = coerce

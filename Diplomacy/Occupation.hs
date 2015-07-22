@@ -17,10 +17,12 @@ module Diplomacy.Occupation (
   , emptyOccupation
   , occupy
   , occupier
+  , provinceOccupier
   , occupies
   , unitOccupies
   , occupied
   , zoneOccupied
+  , allSubjects
 
   ) where
 
@@ -31,6 +33,8 @@ import Diplomacy.Aligned
 import Diplomacy.Unit
 import Diplomacy.Province
 import Diplomacy.Zone
+import Diplomacy.Subject
+import Diplomacy.GreatPower
 
 -- | Each Zone is occupied by at most one Aligned Unit, but the functions on
 --   Occupation work with ProvinceTarget; the use of Zone as a key here is just
@@ -55,6 +59,14 @@ occupier pt occupation = case lookupWithKey (Zone pt) occupation of
         else Nothing
     _ -> Nothing
 
+provinceOccupier :: Province -> Occupation -> Maybe (Aligned Unit)
+provinceOccupier pr occupation = case lookupWithKey (Zone (Normal pr)) occupation of
+    Just (zone, value) ->
+        if zoneProvinceTarget zone == Normal pr
+        then Just value
+        else Nothing
+    _ -> Nothing
+
 occupies :: Aligned Unit -> ProvinceTarget -> Occupation -> Bool
 occupies aunit pt = (==) (Just aunit) . occupier pt
 
@@ -66,3 +78,12 @@ occupied pt = isJust . occupier pt
 
 zoneOccupied :: Zone -> Occupation -> Bool
 zoneOccupied zone = isJust . M.lookup zone
+
+allSubjects :: GreatPower -> Occupation -> [Subject]
+allSubjects greatPower = M.foldWithKey f []
+  where
+    f zone aunit =
+        let subject = (alignedThing aunit, zoneProvinceTarget zone)
+        in  if alignedGreatPower aunit == greatPower
+            then (:) subject
+            else id

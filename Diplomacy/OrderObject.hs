@@ -64,6 +64,17 @@ data OrderObject (phase :: Phase) (order :: OrderType) where
 deriving instance Eq (OrderObject phase order)
 deriving instance Show (OrderObject phase order)
 
+instance Ord (OrderObject phase order) where
+    x `compare` y = case (x, y) of
+        (MoveObject pt, MoveObject pt') -> pt `compare` pt'
+        (SupportObject subj pt, SupportObject subj' pt') -> (subj, pt) `compare` (subj, pt')
+        (ConvoyObject subj pt, ConvoyObject subj' pt') -> (subj, pt) `compare` (subj', pt')
+        (SurrenderObject, SurrenderObject) -> EQ
+        (WithdrawObject pt, WithdrawObject pt') -> pt `compare` pt'
+        (DisbandObject, DisbandObject) -> EQ
+        (BuildObject, BuildObject) -> EQ
+        (ContinueObject, ContinueObject) -> EQ
+
 orderObjectEqual :: OrderObject phase order -> OrderObject phase' order' -> Bool
 orderObjectEqual object1 object2 = case (object1, object2) of
     (MoveObject pt1, MoveObject pt2) -> pt1 == pt2
@@ -98,3 +109,16 @@ data SomeOrderObject phase where
     SomeOrderObject :: OrderObject phase order -> SomeOrderObject phase
 
 deriving instance Show (SomeOrderObject phase)
+
+{-
+instance Eq (SomeOrderObject phase) where
+    (SomeOrderObject x) == (SomeOrderObject y) = case (x, y) of
+        (MoveObject _, MoveObject _) -> x == y
+        (SupportObject _ _, SupportObject _ _) -> x == y
+        (ConvoyObject _ _, ConvoyObject _ _) -> x == y
+        (SurrenderObject, SurrenderObject) -> x == y
+        (WithdrawObject _, WithdrawObject _) -> x == y
+        (DisbandObject, DisbandObject) -> x == y
+        (BuildObject, BuildObject) -> x == y
+        (ContinueObject, ContinueObject) -> x == y
+-}

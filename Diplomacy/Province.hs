@@ -71,10 +71,13 @@ module Diplomacy.Province (
   , printProvince
   , printProvinceTarget
 
+  , paths
+
   ) where
 
 import Control.Monad (guard)
 import Control.Applicative
+import qualified Data.Set as S
 import Data.String (fromString, IsString)
 import Data.List (sort)
 import Diplomacy.GreatPower
@@ -854,3 +857,66 @@ printProvinceTarget = fromString . provinceTargetStringRepresentation
 
 printProvince :: IsString a => Province -> a
 printProvince = fromString . provinceStringRepresentation
+
+-- | A search from a list of Provinces, via 1 or more adjacent Provinces which
+--   satisfy some indicator, until another indicator is satisfied.
+--   This gives simple paths from those Provinces, via Provinces which satisfy
+--   the first indicator, to Provinces which satisfy the second indicator.
+--
+--   Example use case: convoy paths from a given Province.
+--
+--     convoyPaths
+--         :: Occupation
+--         -> Province
+--         -> [(Province, [Province])]
+--     convoyPaths occupation convoyingFrom =
+--         fmap
+--             (\(x, y, zs) -> (x, y : zs))
+--             (paths (occupiedByFleet occupation) (coastalIndicator) [convoyingFrom])
+--
+paths
+    :: (Province -> Bool)
+    -> (Province -> Maybe t)
+    -> [Province]
+    -> [(t, Province, [Province])]
+paths indicatorA indicatorB seeds = paths' [] indicatorA indicatorB (fmap (\x -> (x, [])) seeds)
+  where
+
+    paths'
+        :: [(t, Province, [Province])]
+        -> (Province -> Bool)
+        -> (Province -> Maybe t)
+        -> [(Province, [Province])]
+        -> [(t, Province, [Province])]
+    paths' found indicatorA indicatorB paths =
+        -- At each step we take the next vanguard, but we must have the previous
+        -- paths as well! Ok so why don't we just keep all of the paths?
+        let nextPaths = growPaths indicatorA paths
+            endpoints = takeEndpoints indicatorB nextPaths
+            found' = found ++ endpoints
+        in  case nextPaths of
+                [] -> found'
+                _ -> paths' found' indicatorA indicatorB nextPaths
+
+    growPaths
+        :: (Province -> Bool)
+        -> [(Province, [Province])]
+        -> [(Province, [Province])]
+    growPaths indicator paths = do
+        (first, theRest) <- paths
+        next <- adjacency first
+        let theRest' = first : theRest
+        guard (not (next `elem` theRest'))
+        guard (indicator next)
+        return (next, theRest')
+
+    takeEndpoints
+        :: (Province -> Maybe t)
+        -> [(Province, [Province])]
+        -> [(t, Province, [Province])]
+    takeEndpoints indicator candidates = do
+        (first, rest) <- candidates
+        x <- adjacency first
+        case indicator x of
+            Just y -> return (y, first, rest)
+            Nothing -> empty
