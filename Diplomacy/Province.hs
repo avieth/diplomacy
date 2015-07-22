@@ -785,7 +785,7 @@ provinceStringRepresentations pr = (principal, others)
         --   Helgoland
         -- according to Wikipedia.
         HeligolandBight -> ["Helgoland Bight", "Hel"]
-        MidAtlanticOcean -> ["Mid Atlantic Ocean"]
+        MidAtlanticOcean -> ["Mao", "Mid", "Mid Atlantic Ocean"]
         NorthAtlanticOcean -> ["NAt"]
         NorthSea -> ["Nth"]
         NorwegianSea -> ["Nrg"]
