@@ -185,12 +185,16 @@ validSupportSubjects occupation subject target = M.foldWithKey f [] occupation
 
 -- | Subjects which could act as convoyers: fleets in water.
 validConvoyers
-    :: Occupation
+    :: Maybe GreatPower
+    -> Occupation
     -> [Subject]
-validConvoyers = M.foldWithKey f []
+validConvoyers greatPower = M.foldWithKey f []
   where
     f zone aunit = case unit of
-        Fleet -> if isWater (ptProvince pt)
+        Fleet -> if    isWater (ptProvince pt)
+                    && (  greatPower == Nothing
+                       || greatPower == Just (alignedGreatPower aunit)
+                       )
                  then (:) (unit, pt)
                  else id
         _ -> id
@@ -226,6 +230,8 @@ validConvoyTargets occupation subjectConvoyer subjectConvoyed =
   where
     prConvoyer = ptProvince (subjectProvinceTarget subjectConvoyer)
     prConvoyed = ptProvince (subjectProvinceTarget subjectConvoyed)
+
+
 
 newtype Intersection t = Intersection [t]
 newtype Union t = Union [t]
@@ -553,14 +559,14 @@ moveVOD
     :: GreatPower
     -> Occupation
     -> VOD StringTag S.Set '[ProvinceTarget, Subject] (Order Typical Move)
-moveVOD greatPower occupation = (cons, uncons, tui)
+moveVOD greatPower occupation = (cons, uncons, vc)
   where
-    tui :: ValidityCharacterization StringTag S.Set '[ProvinceTarget, Subject]
-    tui = VCCons (\(ALCons (Identity (Identity subject)) ALNil) -> Intersection [
+    vc :: ValidityCharacterization StringTag S.Set '[ProvinceTarget, Subject]
+    vc = VCCons (\(ALCons (Identity (Identity subject)) ALNil) -> Intersection [
               ("UnitCanOccupy", Union [S.fromList (unitCanOccupy (subjectUnit subject))])
             , ("MoveAdjacent", Union [S.singleton (subjectProvinceTarget subject), S.fromList (validMoveAdjacency (Just occupation) subject)])
-          ])
-        . VCCons (\ALNil -> Intersection [("ValidSubject", Union [S.fromList (allSubjects greatPower occupation)])])
+            ])
+        . VCCons (\ALNil -> Intersection [("ValidSubject", Union [S.fromList (allSubjects (Just greatPower) occupation)])])
         $ VCNil
     cons :: ArgumentList Identity Identity '[ProvinceTarget, Subject] -> Order Typical Move
     cons argList = case argList of
@@ -569,6 +575,68 @@ moveVOD greatPower occupation = (cons, uncons, tui)
     uncons :: Order Typical Move -> ArgumentList Identity Identity '[ProvinceTarget, Subject]
     uncons (Order (subject, MoveObject pt)) =
         ALCons (return (return pt)) (ALCons (return (return subject)) ALNil)
+
+supportVOD
+    :: GreatPower
+    -> Occupation
+    -> VOD StringTag S.Set '[Subject, ProvinceTarget, Subject] (Order Typical Support)
+supportVOD greatPower occupation = (cons, uncons, vc)
+  where
+    vc :: ValidityCharacterization StringTag S.Set '[Subject, ProvinceTarget, Subject]
+    vc = -- Given a subject for the supporter, and a target for the support, we
+         -- characterize every valid subject which can be supported.
+         VCCons (\(ALCons (Identity (Identity pt)) (ALCons (Identity (Identity subject1)) ALNil)) -> Intersection [
+              ("SupportedAdjacent", Union [S.filter (/= subject1) (S.fromList (validSupportSubjects occupation subject1 pt))])
+              -- Would be nice to be able to declare "not in this set" without
+              -- having to construct the complement: instead of
+              --   xs `intersection` (complement ys)
+              -- we would say
+              --   xs `without` ys
+              -- but I suppose it's not necessary.
+            ])
+        -- Given a subject for the supporter, we check every place into which
+        -- that supporter could offer support; that's every place where it
+        -- could move without a convoy.
+        . VCCons (\(ALCons (Identity (Identity subject)) ALNil) -> Intersection [
+              ("SupporterUnitCanOccupy", Union [S.fromList (unitCanOccupy (subjectUnit subject))])
+            , ("SupporterAdjacent", Union [S.fromList (validSupportTargets subject)])
+            ])
+        . VCCons (\ALNil -> Intersection [("ValidSubject", Union [S.fromList (allSubjects (Just greatPower) occupation)])])
+        $ VCNil
+    cons :: ArgumentList Identity Identity '[Subject, ProvinceTarget, Subject] -> Order Typical Support
+    cons argList = case argList of
+        ALCons (Identity (Identity subject2)) (ALCons (Identity (Identity pt)) (ALCons (Identity (Identity subject1)) ALNil)) ->
+            Order (subject1, SupportObject subject2 pt)
+    uncons :: Order Typical Support -> ArgumentList Identity Identity '[Subject, ProvinceTarget, Subject]
+    uncons order = case order of
+        Order (subject1, SupportObject subject2 pt) ->
+            ALCons (Identity (Identity subject2)) (ALCons (Identity (Identity pt)) (ALCons (Identity (Identity subject1)) ALNil))
+
+convoyVOD
+    :: GreatPower
+    -> Occupation
+    -> VOD StringTag S.Set '[ProvinceTarget, Subject, Subject] (Order Typical Convoy)
+convoyVOD greatPower occupation = (cons, uncons, vc)
+  where
+    vc :: ValidityCharacterization StringTag S.Set '[ProvinceTarget, Subject, Subject]
+    vc =  VCCons (\(ALCons (Identity (Identity convoyed)) (ALCons (Identity (Identity convoyer)) ALNil)) -> Intersection [
+              ("ValidyConvoyTarget", Union [S.fromList (validConvoyTargets occupation convoyer convoyed)])
+            ])
+        . VCCons (\(ALCons (Identity (Identity subject)) ALNil) -> Intersection [
+              ("ValidConvoySubject", Union [S.fromList (validConvoySubjects occupation)])
+            ])
+        . VCCons (\ALNil -> Intersection [
+              ("ValidSubject", Union [S.fromList (validConvoyers (Just greatPower) occupation)])
+            ])
+        $ VCNil
+    cons :: ArgumentList Identity Identity '[ProvinceTarget, Subject, Subject] -> Order Typical Convoy
+    cons al = case al of
+        ALCons (Identity (Identity pt)) (ALCons (Identity (Identity convoyed)) (ALCons (Identity (Identity convoyer)) ALNil)) ->
+            Order (convoyer, ConvoyObject convoyed pt)
+    uncons :: Order Typical Convoy -> ArgumentList Identity Identity '[ProvinceTarget, Subject, Subject]
+    uncons order = case order of
+        Order (convoyer, ConvoyObject convoyed pt) ->
+            ALCons (Identity (Identity pt)) (ALCons (Identity (Identity convoyed)) (ALCons (Identity (Identity convoyer)) ALNil))
 
 {-
 type OrderValidation phase order =
