@@ -59,7 +59,16 @@ instance Eq (SomeOrder phase) where
     SomeOrder o1 == SomeOrder o2 = case (orderObject o1, orderObject o2) of
         (MoveObject _, MoveObject _) -> o1 == o2
         (SupportObject _ _, SupportObject _ _) -> o1 == o2
+        (ConvoyObject _ _, ConvoyObject _ _) -> o1 == o2
+        (SurrenderObject, SurrenderObject) -> o1 == o2
+        (WithdrawObject _, WithdrawObject _) -> o1 == o2
+        (DisbandObject, DisbandObject) -> o1 == o2
+        (BuildObject, BuildObject) -> o1 == o2
+        (ContinueObject, ContinueObject) -> o1 == o2
         _ -> False
+
+instance Ord (SomeOrder phase) where
+    SomeOrder o1 `compare` SomeOrder o2 = show o1 `compare` show o2
 
 deriving instance Show (SomeOrder phase)
 

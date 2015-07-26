@@ -34,6 +34,8 @@ data Unit where
 deriving instance Eq Unit
 deriving instance Ord Unit
 deriving instance Show Unit
+deriving instance Enum Unit
+deriving instance Bounded Unit
 
 parseUnit :: Parser Unit
 parseUnit = parseFleet <|> parseArmy

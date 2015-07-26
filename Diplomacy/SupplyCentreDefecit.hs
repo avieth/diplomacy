@@ -14,11 +14,35 @@ module Diplomacy.SupplyCentreDefecit (
 
     SupplyCentreDefecit
 
-  , isNegative
+  , supplyCentreDefecit
 
   ) where
 
+import qualified Data.Map as M
+import Diplomacy.GreatPower
+import Diplomacy.Occupation
+import Diplomacy.Control
+import Diplomacy.Province
+import Diplomacy.Aligned
+import Diplomacy.Unit
+
 type SupplyCentreDefecit = Int
 
-isNegative :: SupplyCentreDefecit -> Bool
-isNegative x = x < 0
+supplyCentreDefecit
+    :: GreatPower
+    -> Occupation
+    -> Control
+    -> SupplyCentreDefecit
+supplyCentreDefecit greatPower occupation control = unitCount - supplyCentreCount
+  where
+    unitCount = M.fold unitCountFold 0 occupation
+    supplyCentreCount = M.foldWithKey supplyCentreCountFold 0 control
+    unitCountFold :: Aligned Unit -> Int -> Int
+    unitCountFold aunit
+        | alignedGreatPower aunit == greatPower = (+) 1
+        | otherwise = id
+    supplyCentreCountFold :: Province -> GreatPower -> Int -> Int
+    supplyCentreCountFold pr greatPower'
+        |    greatPower' == greatPower
+          && elem pr supplyCentres = (+) 1
+        | otherwise = id

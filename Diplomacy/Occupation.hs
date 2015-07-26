@@ -79,11 +79,11 @@ occupied pt = isJust . occupier pt
 zoneOccupied :: Zone -> Occupation -> Bool
 zoneOccupied zone = isJust . M.lookup zone
 
-allSubjects :: GreatPower -> Occupation -> [Subject]
-allSubjects greatPower = M.foldWithKey f []
+allSubjects :: Maybe GreatPower -> Occupation -> [Subject]
+allSubjects maybeGreatPower = M.foldWithKey f []
   where
     f zone aunit =
         let subject = (alignedThing aunit, zoneProvinceTarget zone)
-        in  if alignedGreatPower aunit == greatPower
+        in  if maybeGreatPower == Nothing || Just (alignedGreatPower aunit) == maybeGreatPower
             then (:) subject
             else id

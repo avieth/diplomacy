@@ -6,16 +6,6 @@ Licence     : BSD3
 Maintainer  : aovieth@gmail.com
 Stability   : experimental
 Portability : non-portable (GHC only)
-
-A valid order is one which, in the absence of other orders to compete with it,
-would pass and lead one sane game state to another sane game state.
-
-TODO remove the use of Occupation and the InvalidSubject reason. At validation
-time, we should assume every subject is valid, as this can be enforced by
-judicious choice of data types for representing a diplomacy board: 
-
-  Map Zone (Aligned Unit, SomeOrderObject phase)
-
 -}
 
 {-# LANGUAGE AutoDeriveTypeable #-}
@@ -36,20 +26,29 @@ judicious choice of data types for representing a diplomacy board:
 
 module Diplomacy.OrderValidation (
 
-  {-
-    OrderValidation
-  , InvalidReason(..)
-  , SomeInvalidReason(..)
+    ValidityCharacterization(..)
+  , ArgumentList(..)
 
-  , validateMove
-  , validateSupport
-  , validateConvoy
-  , validateSurrender
-  , validateWithdraw
-  , validateDisband
-  , validateBuild
-  , validateContinue
-  -}
+  , ValidityCriterion(..)
+  , SomeValidityCriterion(..)
+  , AdjustSetValidityCriterion(..)
+  , ValidityTag
+  , AdjustSetValidityTag
+
+  , synthesize
+  , analyze
+
+  , moveVOC
+  , supportVOC
+  , convoyVOC
+  , surrenderVOC
+  , withdrawVOC
+
+  , AdjustSubjects(..)
+  , disbandSubjectVOC
+  , buildSubjectVOC
+  , continueSubjectVOC
+  , adjustSubjectsVOC
 
   ) where
 
@@ -74,7 +73,10 @@ import Diplomacy.OrderObject
 import Diplomacy.Order
 import Diplomacy.Province
 import Diplomacy.Zone
+import Diplomacy.ZonedSubject
 import Diplomacy.Occupation
+import Diplomacy.Dislodgement
+import Diplomacy.Control
 import Diplomacy.SupplyCentreDefecit
 import Diplomacy.Valid
 import Diplomacy.OrderResolution
@@ -82,34 +84,103 @@ import Diplomacy.OrderResolution
 import Debug.Trace
 
 -- Each one of these constructors is associated with a set.
-data ValidityCriterion (phase :: Phase) where
+data ValidityCriterion (phase :: Phase) (order :: OrderType) where
 
-    MoveUnitCanOccupy :: ValidityCriterion Typical
-    MoveReachable :: ValidityCriterion Typical
+    MoveValidSubject :: ValidityCriterion Typical Move
+    MoveUnitCanOccupy :: ValidityCriterion Typical Move
+    MoveReachable :: ValidityCriterion Typical Move
 
-    SupportValidSubject :: ValidityCriterion Typical
-    SupportValidTarget :: ValidityCriterion Typical
+    SupportValidSubject :: ValidityCriterion Typical Support
+    SupporterAdjacent :: ValidityCriterion Typical Support
+    SupporterCanOccupy :: ValidityCriterion Typical Support
+    SupportedCanDoMove :: ValidityCriterion Typical Support
 
-    ConvoyFleetInWater :: ValidityCriterion Typical
-    ConvoyValidSubject :: ValidityCriterion Typical
-    ConvoyValidTarget :: ValidityCriterion Typical
+    ConvoyValidSubject :: ValidityCriterion Typical Convoy
+    ConvoyValidConvoySubject :: ValidityCriterion Typical Convoy
+    ConvoyValidConvoyTarget :: ValidityCriterion Typical Convoy
 
-    WithdrawAdjacent :: ValidityCriterion Retreat
-    WithdrawUnoccupied :: ValidityCriterion Retreat
-    WithdrawUncontested :: ValidityCriterion Retreat
-    WithdrawNotAttacking :: ValidityCriterion Retreat
+    SurrenderValidSubject :: ValidityCriterion Retreat Surrender
 
-    CorrectNumberOfDisbands :: ValidityCriterion Adjust
-    AdmissibleNumberOfBuilds :: ValidityCriterion Adjust
+    WithdrawValidSubject :: ValidityCriterion Retreat Withdraw
+    WithdrawAdjacent :: ValidityCriterion Retreat Withdraw
+    WithdrawUnoccupiedZone :: ValidityCriterion Retreat Withdraw
+    WithdrawUncontestedZone :: ValidityCriterion Retreat Withdraw
+    WithdrawNotDislodgingZone :: ValidityCriterion Retreat Withdraw
 
-deriving instance Eq (ValidityCriterion phase)
-deriving instance Ord (ValidityCriterion phase)
+    ContinueValidSubject :: ValidityCriterion Adjust Continue
+    DisbandValidSubject :: ValidityCriterion Adjust Disband
+    BuildValidSubject :: ValidityCriterion Adjust Build
+
+deriving instance Show (ValidityCriterion phase order)
+deriving instance Eq (ValidityCriterion phase order)
+deriving instance Ord (ValidityCriterion phase order)
+
+data SomeValidityCriterion (phase :: Phase) where
+    SomeValidityCriterion :: ValidityCriterion phase order -> SomeValidityCriterion phase
+
+instance Show (SomeValidityCriterion phase) where
+    show (SomeValidityCriterion vc) = case vc of
+        MoveValidSubject -> show vc
+        MoveUnitCanOccupy -> show vc
+        MoveReachable -> show vc
+        SupportValidSubject -> show vc
+        SupporterAdjacent -> show vc
+        SupporterCanOccupy -> show vc
+        SupportedCanDoMove -> show vc
+        ConvoyValidSubject -> show vc
+        ConvoyValidConvoySubject -> show vc
+        ConvoyValidConvoyTarget -> show vc
+        SurrenderValidSubject -> show vc
+        WithdrawValidSubject -> show vc
+        WithdrawAdjacent -> show vc
+        WithdrawUnoccupiedZone -> show vc
+        WithdrawUncontestedZone -> show vc
+        WithdrawNotDislodgingZone -> show vc
+        ContinueValidSubject -> show vc
+        DisbandValidSubject -> show vc
+        BuildValidSubject -> show vc
+
+instance Eq (SomeValidityCriterion phase) where
+    SomeValidityCriterion vc1 == SomeValidityCriterion vc2 = case (vc1, vc2) of
+        (MoveValidSubject, MoveValidSubject) -> True
+        (MoveUnitCanOccupy, MoveUnitCanOccupy) -> True
+        (MoveReachable, MoveReachable) -> True
+        (SupportValidSubject, SupportValidSubject) -> True
+        (SupporterAdjacent, SupporterAdjacent) -> True
+        (SupporterCanOccupy, SupporterCanOccupy) -> True
+        (SupportedCanDoMove, SupportedCanDoMove) -> True
+        (ConvoyValidSubject, ConvoyValidSubject) -> True
+        (ConvoyValidConvoySubject, ConvoyValidConvoySubject) -> True
+        (ConvoyValidConvoyTarget, ConvoyValidConvoyTarget) -> True
+        (SurrenderValidSubject, SurrenderValidSubject) -> True
+        (WithdrawValidSubject, WithdrawValidSubject) -> True
+        (WithdrawAdjacent, WithdrawAdjacent) -> True
+        (WithdrawUnoccupiedZone, WithdrawUnoccupiedZone) -> True
+        (WithdrawUncontestedZone, WithdrawUncontestedZone) -> True
+        (WithdrawNotDislodgingZone, WithdrawNotDislodgingZone) -> True
+        (ContinueValidSubject, ContinueValidSubject) -> True
+        (DisbandValidSubject, DisbandValidSubject) -> True
+        (BuildValidSubject, BuildValidSubject) -> True
+        _ -> False
+
+instance Ord (SomeValidityCriterion phase) where
+    SomeValidityCriterion vc1 `compare` SomeValidityCriterion vc2 =
+        show vc1 `compare` show vc2
+
+data AdjustSetValidityCriterion where
+    RequiredNumberOfDisbands :: AdjustSetValidityCriterion
+    AdmissibleNumberOfBuilds :: AdjustSetValidityCriterion
+    OnlyContinues :: AdjustSetValidityCriterion
+
+deriving instance Eq AdjustSetValidityCriterion
+deriving instance Ord AdjustSetValidityCriterion
+deriving instance Show AdjustSetValidityCriterion
 
 -- | All ProvinceTargets which a unit can legally occupy.
-unitCanOccupy :: Unit -> [ProvinceTarget]
+unitCanOccupy :: Unit -> S.Set ProvinceTarget
 unitCanOccupy unit = case unit of
-    Army -> fmap Normal . filter (not . isWater) $ [minBound..maxBound]
-    Fleet -> do
+    Army -> S.map Normal . S.filter (not . isWater) $ S.fromList [minBound..maxBound]
+    Fleet -> S.fromList $ do
         pr <- [minBound..maxBound]
         guard (not (isInland pr))
         case provinceCoasts pr of
@@ -120,12 +191,12 @@ unitCanOccupy unit = case unit of
 --   occupation rules as specified by unitCanOccupy).
 --   The Occupation parameter is needed to determine which convoys are possible.
 --   If it's nothing, we don't consider convoy routes.
-validMoveAdjacency :: Maybe Occupation -> Subject -> [ProvinceTarget]
+validMoveAdjacency :: Maybe Occupation -> Subject -> S.Set ProvinceTarget
 validMoveAdjacency occupation subject = case subjectUnit subject of
     Army -> case occupation of
-        Nothing -> neighbours pt
-        Just o -> neighbours pt ++ (fmap Normal (convoyTargets o pr))
-    Fleet -> do
+        Nothing -> S.fromList $ neighbours pt
+        Just o -> (S.fromList $ neighbours pt) `S.union` (S.map Normal (convoyTargets o pr))
+    Fleet -> S.fromList $ do
         n <- neighbours pt
         let np = ptProvince n
         let ppt = ptProvince pt
@@ -146,23 +217,23 @@ convoyPaths occupation pr =
         _ -> False
     pickCoastal pr = if isCoastal pr then Just pr else Nothing
 
-convoyTargets :: Occupation -> Province -> [Province]
-convoyTargets occupation = fmap fst . convoyPaths occupation
+convoyTargets :: Occupation -> Province -> S.Set Province
+convoyTargets occupation = S.fromList . fmap fst . convoyPaths occupation
 
 validMoveTargets
     :: Maybe Occupation
     -> Subject
-    -> [ProvinceTarget]
+    -> S.Set ProvinceTarget
 validMoveTargets maybeOccupation subject =
     (validMoveAdjacency maybeOccupation subject)
-    `intersect`
+    `S.intersection`
     (unitCanOccupy (subjectUnit subject))
 
 -- | Valid support targets are any place where this subject could move without
 --   a convoy (this excludes the subject's province target).
 validSupportTargets
     :: Subject
-    -> [ProvinceTarget]
+    -> S.Set ProvinceTarget
 validSupportTargets = validMoveAdjacency Nothing
 
 -- | Valid support targets depend upon the support subject AND its chosen
@@ -172,13 +243,13 @@ validSupportSubjects
     :: Occupation
     -> Subject
     -> ProvinceTarget
-    -> [Subject]
-validSupportSubjects occupation subject target = M.foldWithKey f [] occupation
+    -> S.Set Subject
+validSupportSubjects occupation subject target = M.foldWithKey f S.empty occupation
   where
     pt = subjectProvinceTarget subject
     f zone aunit =
-        if elem target (validMoveTargets (Just occupation) subject')
-        then (:) subject'
+        if S.member target (validMoveTargets (Just occupation) subject')
+        then S.insert subject'
         else id
       where
         subject' = (alignedThing aunit, zoneProvinceTarget zone)
@@ -187,15 +258,15 @@ validSupportSubjects occupation subject target = M.foldWithKey f [] occupation
 validConvoyers
     :: Maybe GreatPower
     -> Occupation
-    -> [Subject]
-validConvoyers greatPower = M.foldWithKey f []
+    -> S.Set Subject
+validConvoyers greatPower = M.foldWithKey f S.empty
   where
     f zone aunit = case unit of
         Fleet -> if    isWater (ptProvince pt)
                     && (  greatPower == Nothing
                        || greatPower == Just (alignedGreatPower aunit)
                        )
-                 then (:) (unit, pt)
+                 then S.insert (unit, pt)
                  else id
         _ -> id
       where
@@ -205,11 +276,11 @@ validConvoyers greatPower = M.foldWithKey f []
 -- | Subjects which could be convoyed: armies on coasts.
 validConvoySubjects
     :: Occupation
-    -> [Subject]
-validConvoySubjects = M.foldWithKey f []
+    -> S.Set Subject
+validConvoySubjects = M.foldWithKey f S.empty
   where
     f zone aunit = if unit == Army && isCoastal (ptProvince pt)
-                   then (:) (unit, pt)
+                   then S.insert (unit, pt)
                    else id
       where
         unit = alignedThing aunit
@@ -222,16 +293,208 @@ validConvoyTargets
     :: Occupation
     -> Subject
     -> Subject
-    -> [ProvinceTarget]
+    -> S.Set ProvinceTarget
 validConvoyTargets occupation subjectConvoyer subjectConvoyed =
     let allConvoyPaths = convoyPaths occupation prConvoyed
         convoyPathsWithThis = filter (elem prConvoyer . snd) allConvoyPaths
-    in  fmap (Normal . fst) convoyPathsWithThis
+    in  S.fromList (fmap (Normal . fst) convoyPathsWithThis)
   where
     prConvoyer = ptProvince (subjectProvinceTarget subjectConvoyer)
     prConvoyed = ptProvince (subjectProvinceTarget subjectConvoyed)
 
+-- Would be nice to have difference, to simulate "not". Then we could say
+-- "not contested", "not attacking province" and "not occupied" and providing
+-- those contested, attacking province, and occupied sets, rather than
+-- providing their complements.
+--
+-- Ok, so for withdraw, we wish to say
+--
+--   subject : valid subject
+--   target :   valid unconvoyed move target
+--            & not contested area
+--            & not dislodging province (of subject's province target)
+--            & not occupied province
+setOfAllProvinceTargets :: S.Set ProvinceTarget
+setOfAllProvinceTargets = S.fromList allProvinceTargets
 
+setOfAllZones :: S.Set Zone
+setOfAllZones = S.map Zone setOfAllProvinceTargets
+
+zoneSetToProvinceTargetSet :: S.Set Zone -> S.Set ProvinceTarget
+zoneSetToProvinceTargetSet = S.fold f S.empty
+  where
+    f zone = S.union (S.fromList (provinceTargetCluster (zoneProvinceTarget zone)))
+
+occupiedZones :: Occupation -> S.Set Zone
+occupiedZones = S.map (Zone . snd) . S.fromList . allSubjects Nothing
+
+-- A zone is contested iff there is at least one move order to it, and no
+-- successful move order to it.
+contestedZones
+    :: M.Map Zone (Aligned Unit, SomeResolved OrderObject Typical)
+    -> S.Set Zone
+contestedZones = M.foldWithKey g S.empty . M.fold f M.empty
+  where
+
+    f :: (Aligned Unit, SomeResolved OrderObject Typical)
+      -> M.Map Zone Bool
+      -> M.Map Zone Bool
+    f (aunit, SomeResolved (object, res)) = case object of
+        MoveObject pt -> M.alter alteration (Zone pt)
+          where
+            alteration (Just bool) = case res of
+                Nothing -> Just False
+                _ -> Just bool
+            alteration Nothing = case res of
+                Nothing -> Just False
+                _ -> Just True
+        _ -> id
+
+    g :: Zone -> Bool -> S.Set Zone -> S.Set Zone
+    g zone bool = case bool of
+        True -> S.insert zone
+        False -> id
+
+dislodgingZones
+    :: M.Map Zone (Aligned Unit, SomeResolved OrderObject Typical)
+    -> Zone
+    -> S.Set Zone
+dislodgingZones resolved zone = M.foldWithKey f S.empty resolved
+  where
+    f :: Zone
+      -> (Aligned Unit, SomeResolved OrderObject Typical)
+      -> S.Set Zone
+      -> S.Set Zone
+    f zone' (aunit, SomeResolved (object, res)) = case object of
+        MoveObject pt ->
+            if Zone pt == zone
+            then case res of
+                Nothing -> S.insert zone'
+                _ -> id
+            else id
+        _ -> id
+
+{-
+data AdjustPhaseOrderSet where
+    AdjustPhaseOrderSet
+        :: Maybe (Either (S.Set (Order Adjust Build)) (S.Set (Order Adjust Disband)))
+        -> S.Set (Order Adjust Continue)
+        -> AdjustPhaseOrderSet
+
+validAdjustOrderSet
+    :: GreatPower
+    -> Occupation
+    -> Control
+    -> Maybe (Either (S.Set (Order Adjust Build)) (S.Set (Order Adjust Disband)))
+validAdjustOrderSet greatPower occupation control
+    -- All possible sets of build orders:
+    | defecit < 0 = Just . Left $ allBuildOrderSets
+    | defecit > 0 = Just . Right $ allDisbandOrderSets
+    | otherwise = Nothing
+  where
+    defecit = supplyCentreDefecit greatPower occupation control
+    -- To construct all build order sets, we take all subsets of the home
+    -- supply centres of cardinality at most |defecit| and for each of these,
+    -- make a subject for each kind of unit which can occupy that place. Note
+    -- that in the case of special areas like St. Petersburg, we have 3 options!
+    allBuildOrderSets = flattenSet $ (S.map . S.map) (\s -> Order (s, BuildObject)) allBuildOrderSubjects
+    -- To construct all disband order sets, we take all subsets of this great
+    -- power's subjects of cardinality exactly defecit.
+    -- All subsets of the home supply centres, for each unit which can go
+    -- there.
+    allDisbandOrderSets = S.empty
+    -- New strategy:
+    --   We have all of the valid ProvinceTargets.
+    --   For each of these, get the set of all pairs with units which can go
+    --     there.
+    --   Now pick from this set of sets; all ways to pick one from each set
+    --     without going over |defecit|
+    --allBuildOrderSubjects :: S.Set (S.Set Subject)
+    --allBuildOrderSubjects = S.map (S.filter (\(unit, pt) -> S.member pt (unitCanOccupy unit))) . (S.map (setCartesianProduct (S.fromList [minBound..maxBound]))) $ allBuildOrderProvinceTargetSets
+    allBuildOrderSubjects :: S.Set (S.Set Subject)
+    allBuildOrderSubjects = foldr (\i -> S.union (pickSet i candidateSubjectSets)) S.empty [0..(abs defecit)]
+    --allBuildOrderSubjects = S.filter ((flip (<=)) (abs defecit) . S.size) (powerSet candidateSubjects)
+    --candidateSubjects :: S.Set Subject
+    --candidateSubjects = S.filter (\(unit, pt) -> S.member pt (unitCanOccupy unit)) ((setCartesianProduct (S.fromList [minBound..maxBound])) candidateSupplyCentreSet)
+    candidateSubjectSets :: S.Set (S.Set Subject)
+    candidateSubjectSets = S.map (\pt -> S.filter (\(unit, pt) -> S.member pt (unitCanOccupy unit)) (setCartesianProduct (S.fromList [minBound..maxBound]) (S.singleton pt))) candidateSupplyCentreSet
+-}
+
+-- All continue order subjects which would make sense without any other orders
+-- in context.
+candidateContinueSubjects :: GreatPower -> Occupation -> S.Set Subject
+candidateContinueSubjects greatPower = S.fromList . allSubjects (Just greatPower)
+
+-- All disband order subjects which would make sense without any other orders
+-- in context.
+candidateDisbandSubjects :: GreatPower -> Occupation -> S.Set Subject
+candidateDisbandSubjects greatPower = S.fromList . allSubjects (Just greatPower)
+
+-- All build subjects which would make sense without any other adjust orders
+-- in context: unoccupied home supply centre controlled by this great power
+-- which the unit could legally occupy.
+candidateBuildSubjects :: GreatPower -> Occupation -> Control -> S.Set Subject
+candidateBuildSubjects greatPower occupation control =
+    let candidateTargets = S.fromList $ candidateSupplyCentreTargets greatPower occupation control
+        units :: S.Set Unit
+        units = S.fromList $ [minBound..maxBound]
+        candidateSubjects :: S.Set Subject
+        candidateSubjects = setCartesianProduct units candidateTargets
+    in  S.filter (\(u, pt) -> pt `S.member` unitCanOccupy u) candidateSubjects
+
+candidateSupplyCentreTargets :: GreatPower -> Occupation -> Control -> [ProvinceTarget]
+candidateSupplyCentreTargets greatPower occupation control = filter (not . (flip zoneOccupied) occupation . Zone) (controlledHomeSupplyCentreTargets greatPower control)
+
+controlledHomeSupplyCentreTargets :: GreatPower -> Control -> [ProvinceTarget]
+controlledHomeSupplyCentreTargets greatPower control = (controlledHomeSupplyCentres greatPower control >>= provinceTargets)
+
+controlledHomeSupplyCentres :: GreatPower -> Control -> [Province]
+controlledHomeSupplyCentres greatPower control = filter ((==) (Just greatPower) . (flip controller) control) (homeSupplyCentres greatPower)
+
+homeSupplyCentres :: GreatPower -> [Province]
+homeSupplyCentres greatPower = filter (isHome greatPower) supplyCentres
+
+setCartesianProduct :: (Ord t, Ord s) => S.Set t -> S.Set s -> S.Set (t, s)
+setCartesianProduct xs ys = S.foldr (\x -> S.union (S.map ((,) x) ys)) S.empty xs
+
+powerSet :: Ord a => S.Set a -> S.Set (S.Set a)
+powerSet = S.fold powerSetFold (S.singleton (S.empty))
+  where
+    powerSetFold :: Ord a => a -> S.Set (S.Set a) -> S.Set (S.Set a)
+    powerSetFold elem pset = S.union (S.map (S.insert elem) pset) pset
+
+flattenSet :: Ord a => S.Set (S.Set a) -> S.Set a
+flattenSet = S.foldr S.union S.empty
+
+setComplement :: Ord a => S.Set a -> S.Set a -> S.Set a
+setComplement relativeTo = S.filter (not . (flip S.member) relativeTo)
+
+-- Pick 1 thing from each of the sets to get a set of cardinality at most
+-- n.
+-- If there are m sets in the input set, you get a set of cardinality
+-- at most m.
+-- If n < 0 you get the empty set.
+pickSet :: Ord a => Int -> S.Set (S.Set a) -> S.Set (S.Set a)
+pickSet n sets
+    | n <= 0 = S.singleton S.empty
+    | otherwise = case S.size sets of
+        0 -> S.empty
+        m -> let xs = S.findMin sets
+                 xss = S.delete xs sets
+             in  case S.size xs of
+                     0 -> pickSet n xss
+                     l -> let rest = pickSet (n-1) xss
+                          in  S.map (\(y, ys) -> S.insert y ys) (setCartesianProduct xs rest) `S.union` pickSet n xss
+
+choose :: Ord a => Int -> S.Set a -> S.Set (S.Set a)
+choose n set
+    | n <= 0 = S.singleton (S.empty)
+    | otherwise = case S.size set of
+        0 -> S.empty
+        m -> let x = S.findMin set
+                 withoutX = choose n (S.delete x set)
+                 withX = S.map (S.insert x) (choose (n-1) (S.delete x set))
+             in  withX `S.union` withoutX
 
 newtype Intersection t = Intersection [t]
 newtype Union t = Union [t]
@@ -310,10 +573,7 @@ instance SuitableFunctor S.Set where
     suitableIntersect = S.intersection
     suitableMember = S.member
     suitableFmap = S.map
-    suitableBundle = cartesianProduct
-      where
-        cartesianProduct :: (Ord t, Ord s) => S.Set t -> S.Set s -> S.Set (t, s)
-        cartesianProduct xs ys = S.foldr (\x -> suitableUnion (S.map ((,) x) ys)) suitableEmpty xs
+    suitableBundle = setCartesianProduct
     suitablePure = S.singleton
     suitableJoin = S.foldr suitableUnion suitableEmpty
 
@@ -461,39 +721,7 @@ type family ValidityCharacterizationConstraint (f :: * -> *) (ts :: [*]) :: Cons
 type Constructor ts t = ArgumentList Identity Identity ts -> t
 type Deconstructor ts t = t -> ArgumentList Identity Identity ts
 
-type VOD g f ts t = (Constructor ts t, Deconstructor ts t, ValidityCharacterization g f ts)
-
-type family ArgumentListTuple (ts :: [*]) :: * where
-    ArgumentListTuple '[] = ()
-    ArgumentListTuple '[t] = Identity t
-    ArgumentListTuple (t ': ts) = (t, ArgumentListTuple ts)
-
-toArgumentListTuple :: ArgumentList Identity Identity ts -> ArgumentListTuple ts
-toArgumentListTuple al = case al of
-    ALNil -> ()
-    ALCons (Identity (Identity x)) rest -> case rest of
-        ALNil -> Identity x
-        ALCons _ _ -> (x, toArgumentListTuple rest)
-
-{-
-class FromArgumentListTuple (ts :: [*]) where
-    fromArgumentListTuple :: ArgumentListTuple ts -> ArgumentList Identity Identity ts
-
-instance FromArgumentListTuple '[] where
-    fromArgumentListTuple tuple = case tuple of
-        () -> ALNil
-
-instance FromArgumentListTuple '[x] where
-    fromArgumentListTuple (Identity x) = ALCons (Identity (Identity x)) ALNil
-
-instance FromArgumentListTuple xs => FromArgumentListTuple (x ': xs) where
-    fromArgumentListTuple tuple = case tuple of
-        -- Must show that xs is not '[] !!!!
-        (x, rest) -> case rest of
-            () -> ALCons (Identity (Identity x)) ALNil
-            Identity y -> ALCons (Identity (Identity x)) (ALCons (Identity (Identity y)) ALNil)
-            tuple' -> ALCons (Identity (Identity x)) (fromArgumentListTuple tuple')
--}
+type VOC g f ts t = (Constructor ts t, Deconstructor ts t, ValidityCharacterization g f ts)
 
 synthesize
     :: ( SuitableFunctor f
@@ -502,7 +730,7 @@ synthesize
        , ValidityCharacterizationConstraint f ts
        )
     => (forall s . g s -> Identity s)
-    -> VOD g f ts t
+    -> VOC g f ts t
     -> f t
 synthesize trans (cons, _, vc) =
     let fArgList = evalValidityCharacterization (validityCharacterizationTrans trans vc)
@@ -513,7 +741,7 @@ analyze
     -> (forall s . g s -> r)
     -> r
     -> (r -> r -> r)
-    -> VOD g f ts t
+    -> VOC g f ts t
     -> t
     -> r
 analyze exitG inMonoid mempty mappend (_, uncons, vd) x =
@@ -553,20 +781,22 @@ analyze exitG inMonoid mempty mappend (_, uncons, vd) x =
 
 -- Simple example case to see if things are working somewhat well.
 
-type StringTag = (,) String
+type ValidityTag phase order = (,) (ValidityCriterion phase order)
 
-moveVOD
+type AdjustSetValidityTag = (,) (AdjustSetValidityCriterion)
+
+moveVOC
     :: GreatPower
     -> Occupation
-    -> VOD StringTag S.Set '[ProvinceTarget, Subject] (Order Typical Move)
-moveVOD greatPower occupation = (cons, uncons, vc)
+    -> VOC (ValidityTag Typical Move) S.Set '[ProvinceTarget, Subject] (Order Typical Move)
+moveVOC greatPower occupation = (cons, uncons, vc)
   where
-    vc :: ValidityCharacterization StringTag S.Set '[ProvinceTarget, Subject]
+    vc :: ValidityCharacterization (ValidityTag Typical Move) S.Set '[ProvinceTarget, Subject]
     vc = VCCons (\(ALCons (Identity (Identity subject)) ALNil) -> Intersection [
-              ("UnitCanOccupy", Union [S.fromList (unitCanOccupy (subjectUnit subject))])
-            , ("MoveAdjacent", Union [S.singleton (subjectProvinceTarget subject), S.fromList (validMoveAdjacency (Just occupation) subject)])
+              (MoveUnitCanOccupy, Union [unitCanOccupy (subjectUnit subject)])
+            , (MoveReachable, Union [S.singleton (subjectProvinceTarget subject), validMoveAdjacency (Just occupation) subject])
             ])
-        . VCCons (\ALNil -> Intersection [("ValidSubject", Union [S.fromList (allSubjects (Just greatPower) occupation)])])
+        . VCCons (\ALNil -> Intersection [(MoveValidSubject, Union [S.fromList (allSubjects (Just greatPower) occupation)])])
         $ VCNil
     cons :: ArgumentList Identity Identity '[ProvinceTarget, Subject] -> Order Typical Move
     cons argList = case argList of
@@ -576,32 +806,26 @@ moveVOD greatPower occupation = (cons, uncons, vc)
     uncons (Order (subject, MoveObject pt)) =
         ALCons (return (return pt)) (ALCons (return (return subject)) ALNil)
 
-supportVOD
+supportVOC
     :: GreatPower
     -> Occupation
-    -> VOD StringTag S.Set '[Subject, ProvinceTarget, Subject] (Order Typical Support)
-supportVOD greatPower occupation = (cons, uncons, vc)
+    -> VOC (ValidityTag Typical Support) S.Set '[Subject, ProvinceTarget, Subject] (Order Typical Support)
+supportVOC greatPower occupation = (cons, uncons, vc)
   where
-    vc :: ValidityCharacterization StringTag S.Set '[Subject, ProvinceTarget, Subject]
+    vc :: ValidityCharacterization (ValidityTag Typical Support) S.Set '[Subject, ProvinceTarget, Subject]
     vc = -- Given a subject for the supporter, and a target for the support, we
          -- characterize every valid subject which can be supported.
          VCCons (\(ALCons (Identity (Identity pt)) (ALCons (Identity (Identity subject1)) ALNil)) -> Intersection [
-              ("SupportedAdjacent", Union [S.filter (/= subject1) (S.fromList (validSupportSubjects occupation subject1 pt))])
-              -- Would be nice to be able to declare "not in this set" without
-              -- having to construct the complement: instead of
-              --   xs `intersection` (complement ys)
-              -- we would say
-              --   xs `without` ys
-              -- but I suppose it's not necessary.
+              (SupportedCanDoMove, Union [S.filter (/= subject1) (validSupportSubjects occupation subject1 pt)])
             ])
         -- Given a subject for the supporter, we check every place into which
         -- that supporter could offer support; that's every place where it
         -- could move without a convoy.
         . VCCons (\(ALCons (Identity (Identity subject)) ALNil) -> Intersection [
-              ("SupporterUnitCanOccupy", Union [S.fromList (unitCanOccupy (subjectUnit subject))])
-            , ("SupporterAdjacent", Union [S.fromList (validSupportTargets subject)])
+              (SupporterCanOccupy, Union [unitCanOccupy (subjectUnit subject)])
+            , (SupporterAdjacent, Union [validSupportTargets subject])
             ])
-        . VCCons (\ALNil -> Intersection [("ValidSubject", Union [S.fromList (allSubjects (Just greatPower) occupation)])])
+        . VCCons (\ALNil -> Intersection [(SupportValidSubject, Union [S.fromList (allSubjects (Just greatPower) occupation)])])
         $ VCNil
     cons :: ArgumentList Identity Identity '[Subject, ProvinceTarget, Subject] -> Order Typical Support
     cons argList = case argList of
@@ -612,21 +836,21 @@ supportVOD greatPower occupation = (cons, uncons, vc)
         Order (subject1, SupportObject subject2 pt) ->
             ALCons (Identity (Identity subject2)) (ALCons (Identity (Identity pt)) (ALCons (Identity (Identity subject1)) ALNil))
 
-convoyVOD
+convoyVOC
     :: GreatPower
     -> Occupation
-    -> VOD StringTag S.Set '[ProvinceTarget, Subject, Subject] (Order Typical Convoy)
-convoyVOD greatPower occupation = (cons, uncons, vc)
+    -> VOC (ValidityTag Typical Convoy) S.Set '[ProvinceTarget, Subject, Subject] (Order Typical Convoy)
+convoyVOC greatPower occupation = (cons, uncons, vc)
   where
-    vc :: ValidityCharacterization StringTag S.Set '[ProvinceTarget, Subject, Subject]
+    vc :: ValidityCharacterization (ValidityTag Typical Convoy) S.Set '[ProvinceTarget, Subject, Subject]
     vc =  VCCons (\(ALCons (Identity (Identity convoyed)) (ALCons (Identity (Identity convoyer)) ALNil)) -> Intersection [
-              ("ValidyConvoyTarget", Union [S.fromList (validConvoyTargets occupation convoyer convoyed)])
+              (ConvoyValidConvoyTarget, Union [validConvoyTargets occupation convoyer convoyed])
             ])
         . VCCons (\(ALCons (Identity (Identity subject)) ALNil) -> Intersection [
-              ("ValidConvoySubject", Union [S.fromList (validConvoySubjects occupation)])
+              (ConvoyValidConvoySubject, Union [validConvoySubjects occupation])
             ])
         . VCCons (\ALNil -> Intersection [
-              ("ValidSubject", Union [S.fromList (validConvoyers (Just greatPower) occupation)])
+              (ConvoyValidSubject, Union [validConvoyers (Just greatPower) occupation])
             ])
         $ VCNil
     cons :: ArgumentList Identity Identity '[ProvinceTarget, Subject, Subject] -> Order Typical Convoy
@@ -638,476 +862,173 @@ convoyVOD greatPower occupation = (cons, uncons, vc)
         Order (convoyer, ConvoyObject convoyed pt) ->
             ALCons (Identity (Identity pt)) (ALCons (Identity (Identity convoyed)) (ALCons (Identity (Identity convoyer)) ALNil))
 
-{-
-type OrderValidation phase order =
-    Order phase order -> Maybe (InvalidReason phase order)
-
--- | Enumeration of reasons for the invalidity of an order.
-data InvalidReason (phase :: Phase) (order :: OrderType) where
-
-    -- | The subject specified is inconsistent with the state of the game: the
-    --   issuing country does not have a unit of the given type in the given
-    --   province target.
-    InvalidSubject
-      :: InvalidReason phase orderType
-
-    -- | The move cannot be achieved, even via convoy. A move to any
-    --   nonadjacent inland province, for example; or from an inland province
-    --   to any nonadjacent province; or a fleet moving to any nonadjacent
-    --   or inland province, etc.
-    MoveImpossible
-      :: InvalidReason Typical Move
-
-    -- | The support is directed to or from the supporting unit's province.
-    --   For example, the following two are invalid for this reason:
-    --
-    --     A Munich S A Munch - Berlin
-    --     A Paris S A Brest - Paris
-    --
-    SupportSelf
-      :: InvalidReason Typical Support
-
-    -- | The unit to support is not present.
-    SupportedUnitNotPresent
-      :: InvalidReason Typical Support
-
-    -- | The supported unit could not legally do the move that would be
-    --   supported.
-    SupportedCouldNotDoMove
-      :: InvalidReason Typical Move -- ^ The reason why the supported unit
-                                    --   cannot do the move
-      -> InvalidReason Typical Support
-
-    -- | The supporting unit could not attack the target of support.
-    --   This eliminates support through convoys.
-    SupporterCouldNotDoMove
-      :: InvalidReason Typical Support
-
-    ConvoyerIsNotFleet :: InvalidReason Typical Convoy
-
-    ConvoyingIsNotArmy :: InvalidReason Typical Convoy
-
-    ConvoyerNotInWater :: InvalidReason Typical Convoy
-
-    ConvoyingNotOnCoastal :: InvalidReason Typical Convoy
-
-    ConvoyingUnitNotPresent :: InvalidReason Typical Convoy
-
-    -- | The withdraw destination is not directly adjacent to the province
-    --   from which the unit withdraws.
-    WithdrawNonAdjacent
-      :: InvalidReason Retreat Withdraw
-
-    -- | The withdraw destination is the province from which the withdrawing
-    --   unit was dislodged.
-    WithdrawIntoAttackingProvince
-      :: InvalidReason Retreat Withdraw
-
-    WithdrawIntoContestedArea :: InvalidReason Retreat Withdraw
-
-    -- | The withdraw destination is occupied.
-    WithdrawIntoOccupiedProvince
-      :: InvalidReason Retreat Withdraw
-
-    -- | The unit to be built cannot legally occupy the destination province.
-    BuildUnitCannotOccupy
-      :: InvalidReason Adjust Build
-
-    -- | The unit is to be built in a non-home supply centre. This includes
-    --   provinces which are not supply centres at all, like
-    --     not (home && supplyCentre)
-    --   rather than
-    --     (not home) && supplyCentre
-    BuildNotInHomeSupplyCentre
-      :: InvalidReason Adjust Build
-
-    -- | The issuing power does not have enough supply centres to allow for a
-    --   new unit.
-    BuildInsufficientSupplyCentres
-      :: InvalidReason Adjust Build
-
-deriving instance Show (InvalidReason phase order)
-deriving instance Eq (InvalidReason phase order)
-
-data SomeInvalidReason (phase :: Phase) where
-    SomeInvalidReason :: InvalidReason phase order -> SomeInvalidReason phase
-
-deriving instance Show (SomeInvalidReason phase)
-
-valid :: OrderValidation phase order
-valid = const Nothing
-
--- | True implies invalid.
-implies
-  :: (a -> Bool)
-  -> b
-  -> (a -> Maybe b)
-implies fbool invalid order = case fbool order of
-    True -> Just invalid
-    False -> Nothing
-
--- | True implies valid.
-orElse
-  :: (a -> Bool)
-  -> b
-  -> (a -> Maybe b)
-orElse fbool = implies (not . fbool)
-
-also
-  :: (a -> Maybe b)
-  -> (a -> Maybe b)
-  -> (a -> Maybe b)
-also left right = (<|>) <$> left <*> right
-
-validateAs
-  :: (Order phase2 order2 -> Order phase1 order1)
-  -> (InvalidReason phase1 order1 -> InvalidReason phase2 order2)
-  -> OrderValidation phase1 order1
-  -> OrderValidation phase2 order2
-validateAs forder invalid validation1 order = case validation1 (forder order) of
-    Nothing -> Nothing
-    Just reason -> Just (invalid reason)
-
--- | Validation for the subject of an order.
-validateSubject :: GreatPower -> Occupation -> OrderValidation phase order
-validateSubject greatPower occupation order =
-    case occupies alignedUnit provinceTarget occupation of
-        True -> Nothing
-        False -> Just InvalidSubject
+surrenderVOC
+    :: GreatPower
+    -> Dislodgement
+    -> VOC (ValidityTag Retreat Surrender) S.Set '[Subject] (Order Retreat Surrender)
+surrenderVOC greatPower dislodgement = (cons, uncons, vc)
   where
-    subject = orderSubject order
-    alignedUnit = align (subjectUnit subject) greatPower
-    provinceTarget = subjectProvinceTarget subject
+    vc =  VCCons (\ALNil -> Intersection [
+              (SurrenderValidSubject, Union [S.fromList (allSubjects (Just greatPower) dislodgement)])
+            ])
+        $ VCNil
+    cons :: ArgumentList Identity Identity '[Subject] -> Order Retreat Surrender
+    cons al = case al of
+        ALCons (Identity (Identity subject)) ALNil ->
+            Order (subject, SurrenderObject)
+    uncons :: Order Retreat Surrender -> ArgumentList Identity Identity '[Subject]
+    uncons order = case order of
+        Order (subject, SurrenderObject) ->
+            ALCons (Identity (Identity subject)) ALNil
 
--- * Principal validations
-
--- | Validation for a move order.
-validateMove :: GreatPower -> Occupation -> OrderValidation Typical Move
-validateMove greatPower occupation =
-           validateSubject greatPower occupation
-    `also` validateMoveAdjacency
-
--- | Validation for a support order.
-validateSupport :: GreatPower -> Occupation -> OrderValidation Typical Support
-validateSupport greatPower occupation =
-           validateSubject greatPower occupation
-    `also` validateSupportSelf
-    `also` validateSupportedUnitPresent occupation
-    `also` validateSupporterCanDoMove
-    `also` validateSupportedCanDoMove
-
--- | Validation for a convoy order.
---   NB we do NOT check for convoys which are impossible, like a fleet in
---   the Black Sea convoying Finland to Sweden.
-validateConvoy :: GreatPower -> Occupation -> OrderValidation Typical Convoy
-validateConvoy greatPower occupation =
-           validateSubject greatPower occupation
-    `also` validateConvoyerIsFleet
-    `also` validateConvoyingIsArmy
-    `also` validateConvoyerInWater
-    `also` validateConvoyingOnCoastal
-    `also` validateConvoyingUnitPresent occupation
-
--- | Validation for a surrender order.
-validateSurrender :: GreatPower -> Occupation -> OrderValidation Retreat Surrender
-validateSurrender = validateSubject
-
--- | Validation for a withdraw order.
-validateWithdraw :: GreatPower -> Occupation -> TypicalResolution -> OrderValidation Retreat Withdraw
-validateWithdraw greatPower occupation resolved =
-           validateSubject greatPower occupation
-    `also` validateWithdrawNonAdjacent
-    `also` validateWithdrawIntoOccupiedProvince occupation
-    `also` validateWithdrawIntoAttackingProvince resolved
-    `also` validateWithdrawIntoContestedArea resolved
-
--- | Validation for a disband order.
-validateDisband :: GreatPower -> Occupation -> OrderValidation Adjust Disband
-validateDisband = validateSubject
-
--- | Validation for a build order.
-validateBuild :: GreatPower -> SupplyCentreDefecit -> OrderValidation Adjust Build
-validateBuild greatPower defecit =
-           validateBuildUnitCannotOccupy
-    `also` validateBuildInHomeSupplyCentre greatPower
-    `also` validateBuildRespectsDefecit defecit
-
-validateContinue :: GreatPower -> Occupation -> OrderValidation Adjust Continue
-validateContinue = validateSubject
-
--- * Sub-validations used to define principal validations.
-
-validateSupportSelf :: OrderValidation Typical Support
-validateSupportSelf =
-    supportSelf
-    `implies`
-    SupportSelf
+withdrawVOC
+    :: GreatPower
+    -> M.Map Zone (Aligned Unit, SomeResolved OrderObject Typical)
+    -> VOC (ValidityTag Retreat Withdraw) S.Set '[ProvinceTarget, Subject] (Order Retreat Withdraw)
+withdrawVOC greatPower resolved = (cons, uncons, vc)
   where
-    supportSelf order =
-        let supportAt = subjectProvinceTarget (orderSubject (order))
-        in     supportAt == supportTarget (orderObject order)
-            || supportAt == subjectProvinceTarget (supportedSubject (orderObject order))
+    (dislodgement, occupation) = dislodgementAndOccupation resolved
+    vc =  VCCons (\(ALCons (Identity (Identity subject)) ALNil) -> Intersection [
+              (WithdrawAdjacent, Union [validMoveTargets Nothing subject])
+            , (WithdrawNotDislodgingZone, Union [zoneSetToProvinceTargetSet $ S.difference setOfAllZones (dislodgingZones resolved (Zone (subjectProvinceTarget subject)))])
+            , (WithdrawUncontestedZone, Union [zoneSetToProvinceTargetSet $ S.difference setOfAllZones (contestedZones resolved)])
+            , (WithdrawUnoccupiedZone, Union [zoneSetToProvinceTargetSet $ S.difference setOfAllZones (occupiedZones occupation)])
+            ])
+        . VCCons (\ALNil -> Intersection [
+              (WithdrawValidSubject, Union [S.fromList (allSubjects (Just greatPower) dislodgement)])
+            ])
+        $ VCNil
+    cons :: ArgumentList Identity Identity '[ProvinceTarget, Subject] -> Order Retreat Withdraw
+    cons al = case al of
+        ALCons (Identity (Identity pt)) (ALCons (Identity (Identity subject)) ALNil) ->
+            Order (subject, WithdrawObject pt)
+    uncons :: Order Retreat Withdraw -> ArgumentList Identity Identity '[ProvinceTarget, Subject]
+    uncons order = case order of
+        Order (subject, WithdrawObject pt) ->
+            ALCons (Identity (Identity pt)) (ALCons (Identity (Identity subject)) ALNil)
 
-validateSupportedCanDoMove :: OrderValidation Typical Support
-validateSupportedCanDoMove order = fmap SupportedCouldNotDoMove (validateMoveAdjacency (makeMove order))
+continueSubjectVOC
+    :: GreatPower
+    -> Occupation
+    -> VOC (ValidityTag Adjust Continue) S.Set '[Subject] Subject
+continueSubjectVOC greatPower occupation = (cons, uncons, vc)
   where
-    makeMove :: Order Typical Support -> Order Typical Move
-    makeMove order =
-        let SupportObject subject to = orderObject order
-        --  It doesn't matter that the move we construct may have a different
-        --  issuing great power than the move being supported, because the
-        --  validity of a move is independent of the issuing power!
-        in  Order (subject, MoveObject to)
+    vc :: ValidityCharacterization (ValidityTag Adjust Continue) S.Set '[Subject]
+    vc =  VCCons (\ALNil -> Intersection [(ContinueValidSubject, Union [candidateContinueSubjects greatPower occupation])])
+        $ VCNil
+    cons :: ArgumentList Identity Identity '[Subject] -> Subject
+    cons al = case al of
+        ALCons (Identity (Identity subject)) ALNil -> subject
+    uncons :: Subject -> ArgumentList Identity Identity '[Subject]
+    uncons subject =
+        ALCons (Identity (Identity subject)) ALNil
 
-validateSupportedUnitPresent :: Occupation -> OrderValidation Typical Support
-validateSupportedUnitPresent occupation =
-    supportedUnitNotPresent occupation
-    `implies`
-    SupportedUnitNotPresent
-
-supportedUnitNotPresent :: Occupation -> Order Typical Support -> Bool
-supportedUnitNotPresent occupation order =
-    not (unitOccupies unit provinceTarget occupation)
+disbandSubjectVOC
+    :: GreatPower
+    -> Occupation
+    -> VOC (ValidityTag Adjust Disband) S.Set '[Subject] Subject
+disbandSubjectVOC greatPower occupation = (cons, uncons, vc)
   where
-    SupportObject supportedSubject to = orderObject order
-    unit = subjectUnit supportedSubject
-    provinceTarget = subjectProvinceTarget supportedSubject
+    vc :: ValidityCharacterization (ValidityTag Adjust Disband) S.Set '[Subject]
+    vc =  VCCons (\ALNil -> Intersection [(DisbandValidSubject, Union [candidateDisbandSubjects greatPower occupation])])
+        $ VCNil
+    cons :: ArgumentList Identity Identity '[Subject] -> Subject
+    cons al = case al of
+        ALCons (Identity (Identity subject)) ALNil -> subject
+    uncons :: Subject -> ArgumentList Identity Identity '[Subject]
+    uncons subject =
+        ALCons (Identity (Identity subject)) ALNil
 
-validateConvoyerIsFleet :: OrderValidation Typical Convoy
-validateConvoyerIsFleet =
-    convoyerIsFleet
-    `orElse`
-    ConvoyerIsNotFleet
+-- Not a very useful factoring. Oh well, can make it sharper later if needed.
+buildSubjectVOC
+    :: GreatPower
+    -> Occupation
+    -> Control
+    -> VOC (ValidityTag Adjust Build) S.Set '[Subject] Subject
+buildSubjectVOC greatPower occupation control = (cons, uncons, vc)
   where
-    convoyerIsFleet order = case subjectUnit (orderSubject order) of
-        Fleet -> True
-        Army -> False
+    vc :: ValidityCharacterization (ValidityTag Adjust Build) S.Set '[Subject]
+    vc =  VCCons (\ALNil -> Intersection [(BuildValidSubject, Union [candidateBuildSubjects greatPower occupation control])])
+        $ VCNil
+    cons :: ArgumentList Identity Identity '[Subject] -> Subject
+    cons al = case al of
+        ALCons (Identity (Identity subject)) ALNil -> subject
+    uncons :: Subject -> ArgumentList Identity Identity '[Subject]
+    uncons subject =
+        ALCons (Identity (Identity subject)) ALNil
 
-validateConvoyingIsArmy :: OrderValidation Typical Convoy
-validateConvoyingIsArmy =
-    convoyingIsArmy
-    `orElse`
-    ConvoyingIsNotArmy
+-- Next up: given the set of adjust orders (special datatype or really
+-- a set of SomeOrder?) give the valid subsets. Special datatype.
+data AdjustSubjects = AdjustSubjects {
+      buildSubjects :: S.Set Subject
+    , disbandSubjects :: S.Set Subject
+    , continueSubjects :: S.Set Subject
+    }
+    deriving (Eq, Ord, Show)
+
+-- Here we assume that all of the subjects are valid according to
+-- the characterizations with the SAME occupation, control, and great power.
+--
+-- Really though, what should be the output? Sets of SomeOrder are annoying,
+-- because the Ord instance there is not trivial. Why not sets of
+-- AdjustSubjects as we have here?
+-- For 0 defecit, we give the singleton set of the AdjustSubjects in
+-- which we make the build and disband sets empty.
+-- For > 0 defecit, we take all defecit-element subsets of the disband
+-- subjects, and for each of them we throw in the complement relative to
+-- the continue subjects, and no build subjects.
+-- For < 0 defecit, we take all (-defecit)-element or less subsets of the
+-- build subjects, and for each of them we throw in the complement relative
+-- to the continue subjects, and no disband subjects.
+adjustSubjectsVOC
+    :: GreatPower
+    -> Occupation
+    -> Control
+    -> AdjustSubjects
+    -> VOC AdjustSetValidityTag S.Set '[AdjustSubjects] AdjustSubjects
+adjustSubjectsVOC greatPower occupation control subjects = (cons, uncons, vc)
   where
-    convoyingIsArmy order = case orderObject order of
-        ConvoyObject (Army, _) _ -> True
-        _ -> False
-
-validateConvoyerInWater :: OrderValidation Typical Convoy
-validateConvoyerInWater =
-    convoyerInWater
-    `orElse`
-    ConvoyerNotInWater
-  where
-    convoyerInWater = isWater . ptProvince . subjectProvinceTarget . orderSubject
-
-validateConvoyingOnCoastal :: OrderValidation Typical Convoy
-validateConvoyingOnCoastal =
-    convoyingOnCoastal
-    `orElse`
-    ConvoyingNotOnCoastal
-  where
-    convoyingOnCoastal = isCoastal . ptProvince . subjectProvinceTarget . convoySubject . orderObject
-
-validateConvoyingUnitPresent :: Occupation -> OrderValidation Typical Convoy
-validateConvoyingUnitPresent occupation =
-    convoyingUnitNotPresent
-    `implies`
-    ConvoyingUnitNotPresent
-  where
-    convoyingUnitNotPresent order = not (unitOccupies (unit order) (provinceTarget order) occupation)
-    unit = subjectUnit . orderSubject
-    provinceTarget = subjectProvinceTarget . orderSubject
-
-validateWithdrawIntoOccupiedProvince :: Occupation -> OrderValidation Retreat Withdraw
-validateWithdrawIntoOccupiedProvince occupation =
-    withdrawIntoOccupiedProvince occupation
-    `implies`
-    WithdrawIntoOccupiedProvince
-
-withdrawIntoOccupiedProvince :: Occupation -> Order Retreat Withdraw -> Bool
-withdrawIntoOccupiedProvince occupation order = zoneOccupied (Zone target) occupation
-  where
-    WithdrawObject target = orderObject order
-
-validateWithdrawIntoAttackingProvince
-    :: TypicalResolution
-    -> OrderValidation Retreat Withdraw
-validateWithdrawIntoAttackingProvince resolved =
-    withdrawIntoAttackingProvince resolved
-    `implies`
-    WithdrawIntoAttackingProvince
-
-withdrawIntoAttackingProvince
-    :: TypicalResolution
-    -> Order Retreat Withdraw
-    -> Bool
-withdrawIntoAttackingProvince resolved order = case lookupWithKey (Zone target) resolved of
-    Nothing -> False
-    Just (key, (aunit, SomeResolved (someOrderObject, resolution))) ->
-        -- Must pattern match on the resolution, to know whether the move
-        -- succeeded (Nothing means no failure reason, so it succeeded).
-        -- We also must check the successful convoy routes. If this move has at
-        -- least one, then the withdraw is OK.
-        case (resolution, someOrderObject) of
-            (Nothing, MoveObject to) ->
-                if Zone to /= Zone from
-                then False
-                else case successfulConvoyRoutes (convoyRoutes resolved (alignedThing aunit, zoneProvinceTarget key) to) of
-                    [] -> True
-                    _ -> False
-            _ -> False
-  where
-    WithdrawObject target = orderObject order
-    from = subjectProvinceTarget (orderSubject order)
-
--- | A withdraw into an area where a standoff occurred is considered invalid.
-validateWithdrawIntoContestedArea :: TypicalResolution -> OrderValidation Retreat Withdraw
-validateWithdrawIntoContestedArea resolution =
-    invalidWithdrawIntoContestedArea resolution
-    `implies`
-    WithdrawIntoContestedArea
-
-invalidWithdrawIntoContestedArea :: TypicalResolution -> Order Retreat Withdraw -> Bool
-invalidWithdrawIntoContestedArea resolution order = M.fold folder False resolution
-  where
-    folder :: (Aligned Unit, SomeResolved OrderObject Typical) -> Bool -> Bool
-    folder (aunit, SomeResolved (object, thisResolution)) b = b || case object of
-        MoveObject movingTo ->
-            if Zone movingTo /= Zone (withdrawTarget (orderObject order))
-            then False
-            else case thisResolution of
-                -- careful: a move that's overpowered by a move from its
-                -- destination does not contest the area.
-                Just (MoveOverpowered overpowerers) ->
-                    all (\x -> Zone movingTo /= Zone (subjectProvinceTarget (alignedThing x))) (toList overpowerers)
-                Just (MoveBounced _) -> True
-                _ -> False
-        _ -> False
-
-validateWithdrawNonAdjacent :: OrderValidation Retreat Withdraw
-validateWithdrawNonAdjacent =
-    invalidWithdrawNonAdjacent
-    `implies`
-    WithdrawNonAdjacent
-
-invalidWithdrawNonAdjacent :: Order Retreat Withdraw -> Bool
-invalidWithdrawNonAdjacent order = unitCannotWithdrawFromTo unit from to
-  where
-    unit = subjectUnit (orderSubject order)
-    from = subjectProvinceTarget (orderSubject order)
-    WithdrawObject to = orderObject order
-
-validateBuildUnitCannotOccupy :: OrderValidation Adjust Build
-validateBuildUnitCannotOccupy = buildUnitCannotOccupy `implies` BuildUnitCannotOccupy
-
-validateBuildInHomeSupplyCentre :: GreatPower -> OrderValidation Adjust Build
-validateBuildInHomeSupplyCentre greatPower = notInHomeSupplyCentre greatPower `implies` BuildNotInHomeSupplyCentre
-
-validateBuildRespectsDefecit :: SupplyCentreDefecit -> OrderValidation Adjust Build
-validateBuildRespectsDefecit i = const (i >= 0) `implies` BuildInsufficientSupplyCentres
-
-buildUnitCannotOccupy :: Order Adjust Build -> Bool
-buildUnitCannotOccupy order = unitCannotOccupy unit target
-  where
-    unit = subjectUnit (orderSubject order)
-    target = subjectProvinceTarget (orderSubject order)
-
-notInHomeSupplyCentre :: GreatPower -> Order Adjust Build -> Bool
-notInHomeSupplyCentre greatPower order = not (supplyCentre province && isHome greatPower province)
-  where
-    province = ptProvince (subjectProvinceTarget (orderSubject order))
-
-validateMoveAdjacency :: OrderValidation Typical Move
-validateMoveAdjacency = invalidMoveAdjacency `implies` MoveImpossible
-
-invalidMoveAdjacency :: Order Typical Move -> Bool
-invalidMoveAdjacency order =
-       unitCannotMoveFromTo unit from to
-  where
-    unit = subjectUnit (orderSubject order)
-    from = subjectProvinceTarget (orderSubject order)
-    MoveObject to = orderObject order
-
-validateSupporterCanDoMove :: OrderValidation Typical Support
-validateSupporterCanDoMove =
-    invalidSupporterCanDoMove
-    `implies`
-    SupporterCouldNotDoMove
-
-invalidSupporterCanDoMove :: Order Typical Support -> Bool
-invalidSupporterCanDoMove order = unitCannotSupportFromTo unit from to
-  where
-    unit = subjectUnit (orderSubject order)
-    from = subjectProvinceTarget (orderSubject order)
-    SupportObject _ to = orderObject order
-
--- * Some utility functions.
-
--- | True if and only if the unit cannot not legally occupy the province target.
---   This keeps armies off the water, fleets away from inland, armies from
---   choosing a coastline on a multi-coast province, and fleets from
---   landing on a multi-coast province without choosing a coast.
-unitCannotOccupy :: Unit -> ProvinceTarget -> Bool
-unitCannotOccupy unit provinceTarget =
-    case unit of
-        Army -> isWater (ptProvince provinceTarget) || isSpecial provinceTarget
-        Fleet ->    isInland (ptProvince provinceTarget)
-                 || (  not (null (provinceCoasts (ptProvince (provinceTarget))))
-                    && not (isSpecial provinceTarget)
-                    )
-
--- | True if and only if the unit cannot legally move from the first province
---   target to the second. This *does* account for occupation rules as
---   determined by @unitCannotOccupy@. This *does not* account for convoy
---   routes; use @unitCannotConvoyFromTo@ for that.
-unitCannotMoveFromTo :: Unit -> ProvinceTarget -> ProvinceTarget -> Bool
-unitCannotMoveFromTo unit from to = unitCannotOccupy unit to || case unit of
-    -- Armies can convoy, so we consider all from/to pairs to be valid.
-    -- In the future, we may want to check that there is a convoy route between
-    -- these two places.
-    -- Since it's easy, we just get the case of non-adjacent provinces in which
-    -- at least one is inland (making a convoy impossible).
-    Army ->    not (isSameOrNeighbour to from)
-            && (isInland (ptProvince from) || isInland (ptProvince to))
-    Fleet -> if isCoastal (ptProvince from) && isCoastal (ptProvince to)
-             then not (isSameOrNeighbour to from) || null (commonCoasts from to)
-             else not (isSameOrNeighbour to from)
-
--- | True if and only if the unit stationed at the first province target
---   cannot legally support a move to the second province target.
---   This rules out support-through-convoy, and is careful to permit support
---   by coastal fleets to either coast of a multi-coast province.
-unitCannotSupportFromTo :: Unit -> ProvinceTarget -> ProvinceTarget -> Bool
-unitCannotSupportFromTo unit from to = case unit of
-    -- We use adjacent of Provinces rather than neighbourhood of ProvinceTargets
-    -- because an army can support into any special coast.
-    Army -> isWater (ptProvince to) || not (isSameOrAdjacent (ptProvince to) (ptProvince from))
-    -- The decision for fleet supports depends upon whether special coastlines
-    -- are involved.
-    Fleet ->
-        if isInland (ptProvince to)
-        then True
-        else if isWater (ptProvince to)
-        then unitCannotMoveFromTo unit from to
-        -- When supporting into a coastal ProvinceTarget,
-        -- unitCannotMoveFromTo is too strict: we must try it for every coast
-        -- of the province.
-        else all (unitCannotMoveFromTo Fleet from) (provinceTargetCluster to)
-
--- | True if and only if the unit cannot legally withdraw from the first
---   province target to the second. This is the same as for unconvoyed
---   movement.
-unitCannotWithdrawFromTo :: Unit -> ProvinceTarget -> ProvinceTarget -> Bool
-unitCannotWithdrawFromTo = unitCannotMoveFromTo
-
--- | True if and only if the unit cannot legally convoy from the first
---   province target to the second. This rules out any convoy of a fleet, as
---   well as convoys which form loops.
-unitCannotConvoyFromTo :: Unit -> ProvinceTarget -> ProvinceTarget -> Bool
-unitCannotConvoyFromTo unit from to = case unit of
-    Army -> elem to (convoyNeighbours from)
-    Fleet -> True
-  where
-    convoyNeighbours from = filter (/= from) (waterReachables from)
--}
+    defecit = supplyCentreDefecit greatPower occupation control
+    vc :: ValidityCharacterization AdjustSetValidityTag S.Set '[AdjustSubjects]
+    vc =  VCCons (\ALNil -> tiu)
+        $ VCNil
+    cons :: ArgumentList Identity Identity '[AdjustSubjects] -> AdjustSubjects
+    cons al = case al of
+        ALCons (Identity (Identity x)) ALNil -> x
+    uncons :: AdjustSubjects -> ArgumentList Identity Identity '[AdjustSubjects]
+    uncons x =
+        ALCons (Identity (Identity x)) ALNil
+    tiu :: TaggedIntersectionOfUnions AdjustSetValidityTag S.Set AdjustSubjects
+    tiu | defecit > 0 = let disbandSets = choose defecit disbands
+                            pairs = S.map (\xs -> (xs, continues `S.difference` xs)) disbandSets
+                            valids :: S.Set AdjustSubjects
+                            valids = S.map (\(disbands, continues) -> AdjustSubjects S.empty disbands continues) pairs
+                        in  Intersection [(RequiredNumberOfDisbands, Union (fmap S.singleton (S.toList valids)))]
+        | defecit < 0 = let buildSetsUnzoned :: [S.Set (S.Set Subject)]
+                            buildSetsUnzoned = fmap (\n -> choose n builds) [0..(-defecit)] 
+                            -- buildSetsUnzoned is not quite what we want; its
+                            -- member sets may include subjects of the same
+                            -- zone. A fleet in Marseilles and an army in
+                            -- Marseilles, for instance. To remedy this, we
+                            -- set-map each one to and from ZonedSubjectDull,
+                            -- whose Eq/Ord instances ignore the unit and uses
+                            -- zone-equality. Then, to rule out duplicate sets,
+                            -- we do this again with the ZonedSubjectSharp
+                            -- type, which uses zone-equality but does not
+                            -- ignore the unit. This ensure that, for instance,
+                            -- the sets {(Fleet, Marseilles)} and
+                            -- {(Army, Marseilles)} can coexist in buildSets.
+                            buildSets :: [S.Set (S.Set Subject)]
+                            buildSets =
+                                fmap
+                                    (S.map (S.map zonedSubjectSharp) . (S.map (S.map (ZonedSubjectSharp . zonedSubjectDull) . (S.map ZonedSubjectDull))))
+                                    buildSetsUnzoned
+                            pairs :: [S.Set (S.Set Subject, S.Set Subject)]
+                            pairs = (fmap . S.map) (\xs -> (xs, continues `S.difference` xs)) buildSets
+                            valids :: [S.Set AdjustSubjects]
+                            valids = (fmap . S.map) (\(builds, continues) -> AdjustSubjects builds S.empty continues) pairs
+                        in  Intersection [(AdmissibleNumberOfBuilds, Union valids)]
+        | otherwise = Intersection [(OnlyContinues, Union [S.singleton (AdjustSubjects S.empty S.empty continues)])]
+    builds = buildSubjects subjects
+    disbands = disbandSubjects subjects
+    continues = continueSubjects subjects
