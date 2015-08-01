@@ -230,11 +230,15 @@ validMoveTargets maybeOccupation subject =
     (unitCanOccupy (subjectUnit subject))
 
 -- | Valid support targets are any place where this subject could move without
---   a convoy (this excludes the subject's province target).
+--   a convoy (this excludes the subject's province target), and such that the
+--   common coast constraint is relaxed (a Fleet in Marseilles can support
+--   into Spain NC for example).
 validSupportTargets
     :: Subject
     -> S.Set ProvinceTarget
-validSupportTargets = validMoveAdjacency Nothing
+validSupportTargets subject = S.fromList $ do
+    x <- S.toList $ validMoveAdjacency Nothing subject
+    provinceTargetCluster x
 
 -- | Valid support targets depend upon the support subject AND its chosen
 --   target! For example, if we choose to support into Brest, then a fleet
@@ -328,8 +332,8 @@ zoneSetToProvinceTargetSet = S.fold f S.empty
 occupiedZones :: Occupation -> S.Set Zone
 occupiedZones = S.map (Zone . snd) . S.fromList . allSubjects Nothing
 
--- A zone is contested iff there is at least one move order to it, and no
--- successful move order to it.
+-- A zone is contested iff there is at least one bounced move order to it, and
+-- no successful move order to it.
 contestedZones
     :: M.Map Zone (Aligned Unit, SomeResolved OrderObject Typical)
     -> S.Set Zone
@@ -340,7 +344,9 @@ contestedZones = M.foldWithKey g S.empty . M.fold f M.empty
       -> M.Map Zone Bool
       -> M.Map Zone Bool
     f (aunit, SomeResolved (object, res)) = case object of
-        MoveObject pt -> M.alter alteration (Zone pt)
+        MoveObject pt -> case res of
+            Just (MoveBounced _) -> M.alter alteration (Zone pt)
+            _ -> id
           where
             alteration (Just bool) = case res of
                 Nothing -> Just False
@@ -355,6 +361,8 @@ contestedZones = M.foldWithKey g S.empty . M.fold f M.empty
         True -> S.insert zone
         False -> id
 
+-- | The Zone, if any, which dislodged a unit in this Zone, without the
+--   use of a convoy!
 dislodgingZones
     :: M.Map Zone (Aligned Unit, SomeResolved OrderObject Typical)
     -> Zone
@@ -368,10 +376,13 @@ dislodgingZones resolved zone = M.foldWithKey f S.empty resolved
     f zone' (aunit, SomeResolved (object, res)) = case object of
         MoveObject pt ->
             if Zone pt == zone
-            then case res of
-                Nothing -> S.insert zone'
+            then case (routes, res) of
+                ([], Nothing) -> S.insert zone'
                 _ -> id
             else id
+          where
+            routes = successfulConvoyRoutes (convoyRoutes resolved subject pt)
+            subject = (alignedThing aunit, zoneProvinceTarget zone')
         _ -> id
 
 {-
@@ -721,6 +732,7 @@ type family ValidityCharacterizationConstraint (f :: * -> *) (ts :: [*]) :: Cons
 type Constructor ts t = ArgumentList Identity Identity ts -> t
 type Deconstructor ts t = t -> ArgumentList Identity Identity ts
 
+-- | VOC is an acronym for Valid Order Characterization
 type VOC g f ts t = (Constructor ts t, Deconstructor ts t, ValidityCharacterization g f ts)
 
 synthesize

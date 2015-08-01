@@ -15,6 +15,7 @@ See http://web.inter.nl.net/users/L.B.Kruijswijk/#6
 {-# LANGUAGE GADTs #-}
 
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Control.Applicative
 import Data.Functor.Identity
 import Diplomacy.GreatPower
@@ -168,20 +169,14 @@ testRetreatResolution expectedRes = actualRes
     orders = M.map mapper expectedRes
     mapper (aunit, SomeResolved (object, _)) = (aunit, SomeOrderObject object)
 
-isMoveImpossible :: Maybe (InvalidReason Typical Move) -> Bool
-isMoveImpossible = maybe False (== MoveImpossible)
-
-isSupporterCouldNotDoMove :: Maybe (InvalidReason Typical Support) -> Bool
-isSupporterCouldNotDoMove = maybe False (== SupporterCouldNotDoMove)
-
 -- Moving to an area that is not a neighbour
 --
 -- England:
 --   F North Sea - Picardy
 sixA1 :: Test
-sixA1 = isMoveImpossible validation ~? "6.A.1"
+sixA1 = S.member MoveReachable validation ~? "6.A.1"
   where
-    validation = validateMove England occupation order
+    validation = analyze snd (S.singleton . fst) S.empty S.union (moveVOC England occupation) order
     occupation = occupy (Normal NorthSea) (Just $ align Fleet England) emptyOccupation
     order = Order ((Fleet, Normal NorthSea), MoveObject (Normal Picardy))
 
@@ -190,9 +185,9 @@ sixA1 = isMoveImpossible validation ~? "6.A.1"
 -- England:
 --   A Liverpool - Irish Sea
 sixA2 :: Test
-sixA2 = isMoveImpossible validation ~? "6.A.2"
+sixA2 = S.member MoveUnitCanOccupy validation ~? "6.A.2"
   where
-    validation = validateMove England occupation order
+    validation = analyze snd (S.singleton . fst) S.empty S.union (moveVOC England occupation) order
     occupation = occupy (Normal Liverpool) (Just $ align Army England) emptyOccupation
     order = Order ((Army, Normal Liverpool), MoveObject (Normal IrishSea))
 
@@ -201,9 +196,9 @@ sixA2 = isMoveImpossible validation ~? "6.A.2"
 -- Germany:
 --   F Kiel - Munich
 sixA3 :: Test
-sixA3 = isMoveImpossible validation ~? "6.A.3"
+sixA3 = S.member MoveUnitCanOccupy validation ~? "6.A.3"
   where
-    validation = validateMove Germany occupation order
+    validation = analyze snd (S.singleton . fst) S.empty S.union (moveVOC Germany occupation) order
     occupation = occupy (Normal Kiel) (Just $ align Fleet Germany) emptyOccupation
     order = Order ((Fleet, Normal Kiel), MoveObject (Normal Munich))
 
@@ -221,9 +216,9 @@ sixA3 = isMoveImpossible validation ~? "6.A.3"
 -- Italy:
 --   F Rome - Venice
 sixA9 :: Test
-sixA9 = isMoveImpossible validation ~? "6.A.9"
+sixA9 = S.member MoveReachable validation ~? "6.A.9"
   where
-    validation = validateMove Italy occupation order
+    validation = analyze snd (S.singleton . fst) S.empty S.union (moveVOC Italy occupation) order
     occupation = occupy (Normal Rome) (Just $ align Fleet Italy) emptyOccupation
     order = Order ((Fleet, Normal Rome), MoveObject (Normal Venice))
 
@@ -239,9 +234,9 @@ sixA9 = isMoveImpossible validation ~? "6.A.9"
 -- Support should fail, because Venice cannot be reached from Rome by a
 -- fleet.
 sixA10 :: Test
-sixA10 = isSupporterCouldNotDoMove validation ~? "6.A.10"
+sixA10 = S.member SupporterAdjacent validation ~? "6.A.10"
   where
-    validation = validateSupport Italy occupation order
+    validation = analyze snd (S.singleton . fst) S.empty S.union (supportVOC Italy occupation) order
     occupation = occupy (Normal Rome) (Just $ align Fleet Italy)
                . occupy (Normal Apulia) (Just $ align Army Italy)
                $ emptyOccupation
@@ -334,10 +329,10 @@ sixA12 = (expectedResolution == resolution) ~? "6.A.12"
 -- This tests validation AND resolution. Not only must the support be valid, it
 -- must also cause the French move to succeed and the Italian move to fail.
 sixB4 :: Test
-sixB4 = (supportValidation == Nothing && resolution == expectedResolution) ~? "6.B.4"
+sixB4 = (S.null supportValidation && resolution == expectedResolution) ~? "6.B.4"
   where
 
-    supportValidation = validateSupport France occupation supportOrder
+    supportValidation = analyze snd (S.singleton . fst) S.empty S.union (supportVOC France occupation) supportOrder
 
     supportOrder = Order ((Fleet, Normal Marseilles), SupportObject (Fleet, Normal Gascony) (Special SpainNorth))
 
@@ -376,10 +371,10 @@ sixB4 = (supportValidation == Nothing && resolution == expectedResolution) ~? "6
 -- the context of these test cases) undefined behaviour, since resolution
 -- respects the diplomacy rules only if the orders are valid.
 sixB5 :: Test
-sixB5 = isSupporterCouldNotDoMove validation ~? "6.B.5"
+sixB5 = S.member SupporterAdjacent validation ~? "6.B.5"
   where
 
-    validation = validateSupport France occupation support
+    validation = analyze snd (S.singleton . fst) S.empty S.union (supportVOC France occupation) support
  
     support = Order ((Fleet, Special SpainNorth), SupportObject (Fleet, Normal Marseilles) (Normal GulfOfLyon))
 
@@ -433,13 +428,11 @@ sixB6 = (expectedResolution == resolution) ~? "6.B.6"
 
 -- Cannot change coasts; this must fail.
 changeCoasts :: Test
-changeCoasts = isMoveImpossible validation ~? "changeCoasts"
+changeCoasts = S.member MoveReachable validation ~? "changeCoasts"
   where
-    validation =
-        validateMove
-          France
-          (occupy (Special SpainNorth) (Just (align Fleet France)) emptyOccupation)
-          (Order ((Fleet, Special SpainNorth), MoveObject (Special SpainSouth)))
+    validation = analyze snd (S.singleton . fst) S.empty S.union (moveVOC France occupation) order
+    occupation = occupy (Special SpainNorth) (Just (align Fleet France)) emptyOccupation
+    order = Order ((Fleet, Special SpainNorth), MoveObject (Special SpainSouth))
 
 -- 6.C.1. TEST CASE, THREE ARMY CIRCULAR MOVEMENT
 --
@@ -1304,14 +1297,14 @@ sixD21 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.
 -- The German move from Kiel to Munich is illegal (fleets can not go to Munich). Therefore, the support from Burgundy fails and the Russian army in Munich will dislodge the fleet in Kiel. Note that the failing of the support is not explicitly mentioned in the rulebooks (the DPTG is more clear about this point). If you take the rulebooks very literally, you might conclude that the fleet in Munich is not dislodged, but this is an incorrect interpretation.
 --
 -- Note: this case does not test our resolver, but our verifier. It deals
--- with orders which make no sense even in a vacuum, rather than with valid
+-- with orders which makes no sense even in a vacuum, rather than with valid
 -- orders which may fail depending upon the other orders given.
 -- You can give these orders to the resolver, and there will be a standoff, but
 -- that's not a failure of the resolver.
-sixD22 = (validation == Just (SupportedCouldNotDoMove MoveImpossible)) ~? "6.D.22"
+sixD22 = S.member SupportedCanDoMove validation ~? "6.D.22"
   where
 
-    validation = validateSupport Germany occupation supportOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (supportVOC Germany occupation) supportOrder
     supportOrder = Order ((Army, Normal Burgundy), SupportObject (Fleet, Normal Kiel) (Normal Munich))
     occupation =
           occupy (Normal Burgundy) (Just (align Army Germany))
@@ -1333,10 +1326,10 @@ sixD22 = (validation == Just (SupportedCouldNotDoMove MoveImpossible)) ~? "6.D.2
 -- The French move from Spain North Coast to Gulf of Lyon is illegal (wrong coast). Therefore, the support from Marseilles fails and the fleet in Spain is dislodged. 
 --
 -- Note: see 6.D.22; this one is also a test of the verifier, not resolver.
-sixD23 = (validation == Just (SupportedCouldNotDoMove MoveImpossible)) ~? "6.D.23"
+sixD23 = S.member SupportedCanDoMove validation ~? "6.D.23"
   where
 
-    validation = validateSupport France occupation supportOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (supportVOC France occupation) supportOrder
     supportOrder = Order ((Fleet, Normal Marseilles), SupportObject (Fleet, Special SpainNorth) (Normal GulfOfLyon))
     occupation =
           occupy (Normal Marseilles) (Just (align Fleet France))
@@ -1362,10 +1355,10 @@ sixD23 = (validation == Just (SupportedCouldNotDoMove MoveImpossible)) ~? "6.D.2
 --
 -- Note: see 6.D.23, 6.D.22; this is also a test of the verifier, not the
 -- resolver.
-sixD24 = (validation == Just (SupportedCouldNotDoMove MoveImpossible)) ~? "6.D.24"
+sixD24 = S.member SupportedCanDoMove validation ~? "6.D.24"
   where
 
-    validation = validateSupport France occupation supportOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (supportVOC France occupation) supportOrder
     supportOrder = Order ((Fleet, Special SpainSouth), SupportObject (Army, Normal Marseilles) (Normal GulfOfLyon))
     occupation =
           occupy (Normal Marseilles) (Just (align Army France))
@@ -1475,10 +1468,10 @@ sixD27 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.
 -- support as void and the Russian fleet would successfully move from Rumania
 -- to Holland. That's not a bug, though; the resolver does not demand valid
 -- orders.
-sixD28 = (validation == Just MoveImpossible) ~? "6.D.28"
+sixD28 = S.member MoveReachable validation ~? "6.D.28"
   where
 
-    validation = validateMove Russia occupation moveOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (moveVOC Russia occupation) moveOrder
     moveOrder = Order ((Fleet, Normal Rumania), MoveObject (Normal Holland))
     occupation =
           occupy (Normal Rumania) (Just (align Fleet Russia))
@@ -1502,10 +1495,10 @@ sixD28 = (validation == Just MoveImpossible) ~? "6.D.28"
 --
 -- Note: again we decimate a test case, ignoring resolutions and testing
 -- validations instead.
-sixD29 = (validation == Just MoveImpossible) ~? "6.D.29"
+sixD29 = S.member MoveReachable validation ~? "6.D.29"
   where
 
-    validation = validateMove Russia occupation moveOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (moveVOC Russia occupation) moveOrder
     moveOrder = Order ((Fleet, Normal Rumania), MoveObject (Special BulgariaSouth))
     occupation =
           occupy (Normal Rumania) (Just (align Fleet Russia))
@@ -1526,10 +1519,10 @@ sixD29 = (validation == Just MoveImpossible) ~? "6.D.29"
 -- A Bulgaria Supports F Black Sea - Constantinople
 --
 -- Again the order to the Russian fleet is with problems, because it does not specify the coast, while both coasts of Bulgaria are possible. If no default coast is taken (see issue 4.B.1), then also here it must be decided whether the order is "illegal" (see issue 4.E.1). If the move is "illegal" it must be ignored and that makes the hold support of the fleet in the Aegean Sea valid and the Russian fleet will not be dislodged. 
-sixD30 = (validation == Just MoveImpossible) ~? "6.D.30"
+sixD30 = S.member MoveUnitCanOccupy validation ~? "6.D.30"
   where
 
-    validation = validateMove Russia occupation moveOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (moveVOC Russia occupation) moveOrder
     moveOrder = Order ((Fleet, Normal Rumania), MoveObject (Normal Bulgaria))
     occupation =
           occupy (Normal Rumania) (Just (align Fleet Russia))
@@ -1619,13 +1612,16 @@ sixD33 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.
 --
 -- Note: this is validation, not resolution, since the resolver does not make
 -- an effort to default bogus orders.
-sixD34 = (validation == Just SupportSelf) ~? "6.D.34"
+sixD34 = S.member SupporterAdjacent validation ~? "6.D.34"
   where
 
-    validation = validateSupport Italy occupation supportOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (supportVOC Italy occupation) supportOrder
     supportOrder = Order ((Army, Normal Prussia), SupportObject (Army, Normal Livonia) (Normal Prussia))
     occupation =
           occupy (Normal Prussia) (Just (align Army Italy))
+        -- Must put the russian army in the occupation, else the support order
+        -- will fail for other reasons.
+        . occupy (Normal Livonia) (Just (align Army Russia))
         $ emptyOccupation
 
 -- 6.E.1. TEST CASE, DISLODGED UNIT HAS NO EFFECT ON ATTACKERS AREA
@@ -2106,10 +2102,10 @@ sixE13 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.
 -- Note: the Russian move is _invalid_, but the resolver doesn't know this. If
 -- we pass it through the resolver, we ought to get MoveBounced. So here we
 -- test the validation and the resolution.
-sixE14 = (expectedResolution == testTypicalResolution expectedResolution && validation == Just MoveImpossible) ~? "6.E.14"
+sixE14 = (expectedResolution == testTypicalResolution expectedResolution && S.member MoveReachable validation) ~? "6.E.14"
   where
 
-    validation = validateMove Russia occupation russianMove
+    validation = analyze snd (S.singleton . fst) S.empty S.union (moveVOC Russia occupation) russianMove
     occupation = occupy (Normal Edinburgh) (Just $ align Fleet Russia) emptyOccupation
     russianMove = Order ((Fleet, Normal Edinburgh), MoveObject (Normal Liverpool))
 
@@ -2191,10 +2187,10 @@ sixE15 = (expectedResolution == resolution) ~? "6.E.15"
 --
 -- Note: our resolver is not concerned with validity of orders; it will let these
 -- convoys go ahead. This test case is relevant to the validator.
-sixF1 = (validation == Just ConvoyerNotInWater) ~? "6.F.1"
+sixF1 = S.member ConvoyValidSubject validation ~? "6.F.1"
   where
 
-    validation = validateConvoy Turkey occupation convoyOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (convoyVOC Turkey occupation) convoyOrder
     convoyOrder = Order ((Fleet, Normal Constantinople), ConvoyObject (Army, Normal Greece) (Normal Sevastopol))
     occupation =
           occupy (Normal Constantinople) (Just $ align Fleet Turkey)
@@ -2350,11 +2346,11 @@ sixF6 = (expectedResolution == testTypicalResolution expectedResolution) ~? "6.F
 -- The dislodged English fleet can retreat to Holland. 
 --
 -- Note: this tests withdraw validation and typical resolution.
-sixF7 = (  validation == Nothing
+sixF7 = (  S.null validation
         && expectedResolution == resolution) ~? "6.F.7"
   where
 
-    validation = validateWithdraw England occupation resolution withdrawOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (withdrawVOC England resolution) withdrawOrder
     withdrawOrder = Order ((Fleet, Normal NorthSea), WithdrawObject (Normal Holland))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
@@ -3145,11 +3141,11 @@ sixH4 = True ~? "6.H.4"
 -- Note: this is principally a test of validation; we also have an implicit
 -- test of resolution, though, as retreat phase validation depends upon
 -- typical phase resolution.
-sixH5 = (  validation == Just WithdrawIntoAttackingProvince
+sixH5 = (  S.member WithdrawNotDislodgingZone validation
         && expectedResolution == resolution) ~? "6.H.5"
   where
 
-    validation = validateWithdraw Turkey occupation resolution withdrawOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (withdrawVOC Turkey resolution) withdrawOrder
     withdrawOrder = Order ((Fleet, Normal Ankara), WithdrawObject (Normal BlackSea))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
@@ -3178,11 +3174,11 @@ sixH5 = (  validation == Just WithdrawIntoAttackingProvince
 -- The Italian army in Vienna is dislodged. It may not retreat to Bohemia. 
 --
 -- Note: this tests validation and typical resolution.
-sixH6 = (  validation == Just WithdrawIntoContestedArea
+sixH6 = (  S.member WithdrawUncontestedZone validation
         && expectedResolution == resolution) ~? "6.H.6"
   where
 
-    validation = validateWithdraw Italy occupation resolution withdrawOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (withdrawVOC Italy resolution) withdrawOrder
     withdrawOrder = Order ((Army, Normal Vienna), WithdrawObject (Normal Bohemia))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
@@ -3283,11 +3279,10 @@ sixH8 = (expectedResolution == testRetreatResolution expectedResolution) ~? "6.H
 -- A Prussia - Berlin
 --
 -- The fleet in Kiel can retreat to Berlin. 
-sixH9 = (  validation == Nothing
-        && expectedResolution == resolution) ~? "6.H.9"
+sixH9 = (S.null validation && expectedResolution == resolution) ~? "6.H.9"
   where
 
-    validation = validateWithdraw Germany occupation resolution withdrawOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (withdrawVOC Germany resolution) withdrawOrder
     withdrawOrder = Order ((Fleet, Normal Kiel), WithdrawObject (Normal Berlin))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
@@ -3295,7 +3290,7 @@ sixH9 = (  validation == Nothing
         , (Zone (Normal Denmark), (align Fleet England, SomeResolved (SupportObject (Fleet, Normal HeligolandBight) (Normal Kiel), Nothing)))
 
         , (Zone (Normal Berlin), (align Army Germany, SomeResolved (MoveObject (Normal Prussia), Nothing)))
-        , (Zone (Normal Kiel), (align Army Germany, SomeResolved (MoveObject (Normal Kiel), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal HeligolandBight) England) VNil) [])))))
+        , (Zone (Normal Kiel), (align Fleet Germany, SomeResolved (MoveObject (Normal Kiel), Just (MoveOverpowered (AtLeast (VCons (align (Fleet, Normal HeligolandBight) England) VNil) [])))))
         , (Zone (Normal Silesia), (align Army Germany, SomeResolved (SupportObject (Army, Normal Berlin) (Normal Prussia), Nothing)))
 
         , (Zone (Normal Prussia), (align Army Russia, SomeResolved (MoveObject (Normal Berlin), Just (MoveOverpowered (AtLeast (VCons (align (Army, Normal Berlin) Germany) VNil) [])))))
@@ -3327,13 +3322,13 @@ sixH9 = (  validation == Nothing
 -- A Prussia - Berlin
 --
 -- The English retreat to Berlin is illegal and fails (the unit is disbanded). The German retreat to Berlin is successful and does not bounce on the English unit. 
-sixH10 = (  englishValidation == Just WithdrawIntoAttackingProvince
-         && germanValidation == Nothing
+sixH10 = (  S.member WithdrawNotDislodgingZone englishValidation
+         && S.null germanValidation
          && expectedResolution == resolution) ~? "6.H.10"
   where
 
-    englishValidation = validateWithdraw England occupation resolution englishWithdrawOrder
-    germanValidation = validateWithdraw Germany occupation resolution germanWithdrawOrder
+    englishValidation = analyze snd (S.singleton . fst) S.empty S.union (withdrawVOC England resolution) englishWithdrawOrder
+    germanValidation = analyze snd (S.singleton . fst) S.empty S.union (withdrawVOC Germany resolution) germanWithdrawOrder
     englishWithdrawOrder = Order ((Army, Normal Kiel), WithdrawObject (Normal Berlin))
     germanWithdrawOrder = Order ((Army, Normal Prussia), WithdrawObject (Normal Berlin))
     resolution = testTypicalResolution expectedResolution
@@ -3373,11 +3368,10 @@ sixH10 = (  englishValidation == Just WithdrawIntoAttackingProvince
 -- I prefer the 1982/2000 rule for convoying to adjacent places. This means that the move of Gascony happened by convoy. Furthermore, I prefer that the army in Marseilles may retreat to Gascony.
 --
 -- Note: we go with the 1982/2000 rule.
-sixH11 = (  validation == Nothing
-         && expectedResolution == resolution) ~? "6.H.11"
+sixH11 = (S.null validation && expectedResolution == resolution) ~? "6.H.11"
   where
 
-    validation = validateWithdraw Italy occupation resolution withdrawOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (withdrawVOC Italy resolution) withdrawOrder
     withdrawOrder = Order ((Army, Normal Marseilles), WithdrawObject (Normal Gascony))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
@@ -3494,11 +3488,11 @@ sixH14 = True ~? "6.H.14"
 -- F Mid-Atlantic Ocean Supports F Spain(sc) - Portugal
 --
 -- The English fleet in Portugal is destroyed and can not retreat to Spain(nc). 
-sixH15 = (  validation == Just WithdrawIntoAttackingProvince
+sixH15 = (  S.member WithdrawNotDislodgingZone validation
          && expectedResolution == resolution) ~? "6.H.15"
   where
 
-    validation = validateWithdraw England occupation resolution withdrawOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (withdrawVOC England resolution) withdrawOrder
     withdrawOrder = Order ((Fleet, Normal Portugal), WithdrawObject (Special SpainNorth))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
@@ -3523,11 +3517,11 @@ sixH15 = (  validation == Just WithdrawIntoAttackingProvince
 -- F Tyrrhenian Sea - Western Mediterranean
 --
 -- The French fleet in the Western Mediterranean can not retreat to Spain(sc). 
-sixH16 = (  validation == Just WithdrawIntoContestedArea
+sixH16 = (  S.member WithdrawUncontestedZone validation
          && expectedResolution == resolution) ~? "6.H.16"
   where
 
-    validation = validateWithdraw France occupation resolution withdrawOrder
+    validation = analyze snd (S.singleton . fst) S.empty S.union (withdrawVOC France resolution) withdrawOrder
     withdrawOrder = Order ((Fleet, Normal WesternMediterranean), WithdrawObject (Special SpainSouth))
     resolution = testTypicalResolution expectedResolution
     expectedResolution = M.fromList [
