@@ -20,6 +20,7 @@ cabal-version:       >=1.10
 library
   exposed-modules:     Diplomacy.OrderObject
                      , Diplomacy.Zone
+                     , Diplomacy.ZonedSubject
                      , Diplomacy.Turn
                      , Diplomacy.SupplyCentreDefecit
                      , Diplomacy.Valid
