@@ -30,6 +30,7 @@ library
                      , Diplomacy.OrderType
                      , Diplomacy.GreatPower
                      , Diplomacy.Occupation
+                     , Diplomacy.Dislodgement
                      , Diplomacy.Aligned
                      , Diplomacy.OrderValidation
                      , Diplomacy.Province
