@@ -36,7 +36,6 @@ module Diplomacy.Game (
   , gameOccupation
   , gameDislodged
   , gameControl
-  , gameSupplyCentreDefecit
   , gameTurn
   , gameRound
   , gameSeason
@@ -389,27 +388,6 @@ gameControl game = case game of
     RetreatGame _ _ _ _ _ _ c -> c
     AdjustGame _ _ _ _ c -> c
 
-gameSupplyCentreDefecit
-    :: GreatPower
-    -> Game round roundStatus
-    -> SupplyCentreDefecit
-gameSupplyCentreDefecit power game = case game of
-    AdjustGame _ Unresolved _ _ _ ->
-        (M.size controlledUnits - M.size issuedDisbands + M.size issuedBuilds) - M.size controlledSupplyCentres
-      where
-        issuedDisbands = M.filter isIssuedDisband (gameZonedOrders game)
-        issuedBuilds = M.filter isIssuedBuild (gameZonedOrders game)
-        isIssuedDisband (aunit, SomeOrderObject order) = case order of
-            DisbandObject -> alignedGreatPower aunit == power
-            _ -> False
-        isIssuedBuild (aunit, SomeOrderObject order) = case order of
-            BuildObject -> alignedGreatPower aunit == power
-            _ -> False
-    _ -> M.size controlledUnits - M.size controlledSupplyCentres
-  where
-    controlledUnits = M.filter (\aunit -> alignedGreatPower aunit == power) (gameOccupation game)
-    controlledSupplyCentres = M.filterWithKey (\p power' -> power == power' && supplyCentre p) (gameControl game)
-
 gameTurn :: Game round roundStatus -> Turn
 gameTurn game = case game of
     TypicalGame _ _ t _ _ -> t
@@ -452,102 +430,106 @@ gamePhase game = case game of
 -- has a set of reasons!
 
 type family ValidateOrdersOutput (phase :: Phase) :: * where
-    ValidateOrdersOutput Typical = M.Map Zone (Unit, SomeOrderObject Typical, S.Set (SomeValidityCriterion Typical))
-    ValidateOrdersOutput Retreat = M.Map Zone (Unit, SomeOrderObject Retreat, S.Set (SomeValidityCriterion Retreat))
-    ValidateOrdersOutput Adjust = (M.Map Zone (Unit, SomeOrderObject Adjust, S.Set (SomeValidityCriterion Adjust)), S.Set AdjustSetValidityCriterion)
+    ValidateOrdersOutput Typical = M.Map Zone (Aligned Unit, SomeOrderObject Typical, S.Set (SomeValidityCriterion Typical))
+    ValidateOrdersOutput Retreat = M.Map Zone (Aligned Unit, SomeOrderObject Retreat, S.Set (SomeValidityCriterion Retreat))
+    ValidateOrdersOutput Adjust = (M.Map Zone (Aligned Unit, SomeOrderObject Adjust, S.Set (SomeValidityCriterion Adjust)), M.Map GreatPower (S.Set AdjustSetValidityCriterion))
 
 -- | The game given as the second component of the return value will differ
 --   from the input game only if all orders are valid.
+--   NB for adjust phase we wipe all build orders; that's because there's
+--   no way to explicitly remove a build order by overwriting it with some
+--   other order.
 issueOrders
     :: forall round .
-       GreatPower
-    -> M.Map Zone (Unit, SomeOrderObject (RoundPhase round))
+       M.Map Zone (Aligned Unit, SomeOrderObject (RoundPhase round))
     -> Game round RoundUnresolved
     -> (ValidateOrdersOutput (RoundPhase round), Game round RoundUnresolved)
-issueOrders greatPower orders game =
-    let nextGame = issueOrdersUnsafe greatPower orders game
+issueOrders orders game =
+    let nextGame = case game of
+            AdjustGame AdjustRound _ _ _ _ -> issueOrdersUnsafe orders (removeBuildOrders game)
+            _ -> issueOrdersUnsafe orders game
         validation :: ValidateOrdersOutput (RoundPhase round)
         allValid :: Bool
         (validation, allValid) = case game of
             TypicalGame TypicalRoundOne _ _ _ _ ->
-                let validation = validateOrders greatPower orders game
+                let validation = validateOrders orders game
                     invalids = M.fold pickInvalids S.empty validation
                 in  (validation, S.null invalids)
             TypicalGame TypicalRoundTwo _ _ _ _ ->
-                let validation = validateOrders greatPower orders game
+                let validation = validateOrders orders game
                     invalids = M.fold pickInvalids S.empty validation
                 in  (validation, S.null invalids)
             RetreatGame RetreatRoundOne _ _ _ _ _ _ ->
-                let validation = validateOrders greatPower orders game
+                let validation = validateOrders orders game
                     invalids = M.fold pickInvalids S.empty validation
                 in  (validation, S.null invalids)
             RetreatGame RetreatRoundTwo _ _ _ _ _ _ ->
-                let validation = validateOrders greatPower orders game
+                let validation = validateOrders orders game
                     invalids = M.fold pickInvalids S.empty validation
                 in  (validation, S.null invalids)
             AdjustGame AdjustRound _ _ _ _ ->
-                let validation = validateOrders greatPower orders game
+                let validation = validateOrders orders game
                     invalids = M.fold pickInvalids S.empty (fst validation)
-                in  (validation, S.null invalids && S.null (snd validation))
+                    adjustSetInvalids = M.fold S.union S.empty (snd validation)
+                in  (validation, S.null invalids && S.null adjustSetInvalids)
     in  if allValid
         then (validation, nextGame)
         else (validation, game)
   where
     pickInvalids
-        :: (Unit, SomeOrderObject phase, S.Set (SomeValidityCriterion phase))
+        :: (Aligned Unit, SomeOrderObject phase, S.Set (SomeValidityCriterion phase))
         -> S.Set (SomeValidityCriterion phase)
         -> S.Set (SomeValidityCriterion phase)
     pickInvalids (_, _, x) = S.union x
 
 validateOrders
     :: forall round .
-       GreatPower
-    -> M.Map Zone (Unit, SomeOrderObject (RoundPhase round))
+       M.Map Zone (Aligned Unit, SomeOrderObject (RoundPhase round))
     -> Game round RoundUnresolved
     -> ValidateOrdersOutput (RoundPhase round)
-validateOrders greatPower orders game = case game of
+validateOrders orders game = case game of
     -- The form of validation depends upon the game phase:
     -- - Typical and Retreat orders are validated independently, so we can
     --   express validation as a fold.
     -- - Adjust orders are validated independently and then ensemble.
-    TypicalGame TypicalRoundOne _ _ _ _ -> M.mapWithKey (validateOrderTypical greatPower game) orders
-    TypicalGame TypicalRoundTwo _ _ _ _ -> M.mapWithKey (validateOrderTypical greatPower game) orders
-    RetreatGame RetreatRoundOne _ _ _ _ _ _ -> M.mapWithKey (validateOrderRetreat greatPower game) orders
-    RetreatGame RetreatRoundTwo _ _ _ _ _ _ -> M.mapWithKey (validateOrderRetreat greatPower game) orders
+    TypicalGame TypicalRoundOne _ _ _ _ -> M.mapWithKey (validateOrderTypical game) orders
+    TypicalGame TypicalRoundTwo _ _ _ _ -> M.mapWithKey (validateOrderTypical game) orders
+    RetreatGame RetreatRoundOne _ _ _ _ _ _ -> M.mapWithKey (validateOrderRetreat game) orders
+    RetreatGame RetreatRoundTwo _ _ _ _ _ _ -> M.mapWithKey (validateOrderRetreat game) orders
     AdjustGame AdjustRound _ _ _ _ ->
-        let independent = M.mapWithKey (validateOrderSubjectAdjust greatPower game) orders
-            ensemble = validateOrdersAdjust greatPower game orders
+        let independent = M.mapWithKey (validateOrderSubjectAdjust game) orders
+            ensemble = validateOrdersAdjust game orders
         in  (independent, ensemble)
   where
 
     validateOrderTypical
         :: forall round .
            ( RoundPhase round ~ Typical )
-        => GreatPower
-        -> Game round RoundUnresolved
+        => Game round RoundUnresolved
         -> Zone
-        -> (Unit, SomeOrderObject (RoundPhase round))
-        -> (Unit, SomeOrderObject (RoundPhase round), S.Set (SomeValidityCriterion Typical))
-    validateOrderTypical greatPower game zone (unit, SomeOrderObject object) =
-        (unit, SomeOrderObject object, validation)
+        -> (Aligned Unit, SomeOrderObject (RoundPhase round))
+        -> (Aligned Unit, SomeOrderObject (RoundPhase round), S.Set (SomeValidityCriterion Typical))
+    validateOrderTypical game zone (aunit, SomeOrderObject object) =
+        (aunit, SomeOrderObject object, validation)
       where
         validation = case object of
             MoveObject _ -> analyze snd (S.singleton . SomeValidityCriterion . fst) S.empty S.union (moveVOC greatPower occupation) (Order (subject, object))
             SupportObject _ _ -> analyze snd (S.singleton . SomeValidityCriterion . fst) S.empty S.union (supportVOC greatPower occupation) (Order (subject, object))
             ConvoyObject _ _ -> analyze snd (S.singleton . SomeValidityCriterion . fst) S.empty S.union (convoyVOC greatPower occupation) (Order (subject, object))
         occupation = gameOccupation game
+        greatPower = alignedGreatPower aunit
+        unit = alignedThing aunit
         subject = (unit, zoneProvinceTarget zone)
 
     validateOrderRetreat
         :: forall round .
            ( RoundPhase round ~ Retreat )
-        => GreatPower
-        -> Game round RoundUnresolved
+        => Game round RoundUnresolved
         -> Zone
-        -> (Unit, SomeOrderObject (RoundPhase round)) 
-        -> (Unit, SomeOrderObject (RoundPhase round), S.Set (SomeValidityCriterion Retreat))
-    validateOrderRetreat greatPower game zone (unit, SomeOrderObject object) =
-        (unit, SomeOrderObject object, validation)
+        -> (Aligned Unit, SomeOrderObject (RoundPhase round)) 
+        -> (Aligned Unit, SomeOrderObject (RoundPhase round), S.Set (SomeValidityCriterion Retreat))
+    validateOrderRetreat game zone (aunit, SomeOrderObject object) =
+        (aunit, SomeOrderObject object, validation)
       where
         validation = case object of
             SurrenderObject -> analyze snd (S.singleton . SomeValidityCriterion . fst) S.empty S.union (surrenderVOC greatPower dislodgement) (Order (subject, object))
@@ -555,6 +537,8 @@ validateOrders greatPower orders game = case game of
         occupation = gameOccupation game
         resolved = gameResolved game
         dislodgement = gameDislodged game
+        greatPower = alignedGreatPower aunit
+        unit = alignedThing aunit
         subject = (unit, zoneProvinceTarget zone)
 
     -- The above two functions give us single-order validations for typical
@@ -567,13 +551,12 @@ validateOrders greatPower orders game = case game of
     validateOrderSubjectAdjust
         :: forall round .
            ( RoundPhase round ~ Adjust )
-        => GreatPower
-        -> Game round RoundUnresolved
+        => Game round RoundUnresolved
         -> Zone
-        -> (Unit, SomeOrderObject (RoundPhase round))
-        -> (Unit, SomeOrderObject (RoundPhase round), S.Set (SomeValidityCriterion Adjust))
-    validateOrderSubjectAdjust greatPower game zone (unit, SomeOrderObject object) =
-        (unit, SomeOrderObject object, validation)
+        -> (Aligned Unit, SomeOrderObject (RoundPhase round))
+        -> (Aligned Unit, SomeOrderObject (RoundPhase round), S.Set (SomeValidityCriterion Adjust))
+    validateOrderSubjectAdjust game zone (aunit, SomeOrderObject object) =
+        (aunit, SomeOrderObject object, validation)
       where
         validation = case object of
             ContinueObject -> analyze snd (S.singleton . SomeValidityCriterion . fst) S.empty S.union (continueSubjectVOC greatPower occupation) subject
@@ -581,66 +564,104 @@ validateOrders greatPower orders game = case game of
             BuildObject -> analyze snd (S.singleton . SomeValidityCriterion . fst) S.empty S.union (buildSubjectVOC greatPower occupation control) subject
         occupation = gameOccupation game
         control = gameControl game
+        greatPower = alignedGreatPower aunit
+        unit = alignedThing aunit
         subject = (unit, zoneProvinceTarget zone)
 
+    -- Here we partition the subjects by GreatPower, because each power's set of
+    -- adjust orders must be analyzed ensemble to determine whether it makes
+    -- sense (enough disbands/not too many builds for instance).
     validateOrdersAdjust
         :: forall round .
            ( RoundPhase round ~ Adjust )
-        => GreatPower
-        -> Game round RoundUnresolved
-        -> M.Map Zone (Unit, SomeOrderObject (RoundPhase round))
-        -> S.Set AdjustSetValidityCriterion
-    validateOrdersAdjust greatPower game orders = validation
+        => Game round RoundUnresolved
+        -> M.Map Zone (Aligned Unit, SomeOrderObject (RoundPhase round))
+        -> M.Map GreatPower (S.Set AdjustSetValidityCriterion)
+    validateOrdersAdjust game orders = M.mapWithKey validation adjustSetsByGreatPower
       where
-        validation = analyze snd (S.singleton . fst) S.empty S.union (adjustSubjectsVOC greatPower occupation control subjects) subjects
+        validation
+            :: GreatPower
+            -> AdjustSubjects
+            -> S.Set AdjustSetValidityCriterion
+        validation greatPower subjects = analyze snd (S.singleton . fst) S.empty S.union (adjustSubjectsVOC greatPower occupation control subjects) subjects
+        adjustSetsByGreatPower :: M.Map GreatPower AdjustSubjects
+        adjustSetsByGreatPower = M.foldWithKey pickSubject M.empty orders
+        pickSubject
+            :: Zone
+            -> (Aligned Unit, SomeOrderObject (RoundPhase round))
+            -> M.Map GreatPower AdjustSubjects
+            -> M.Map GreatPower AdjustSubjects
+        pickSubject zone (aunit, SomeOrderObject object) = case object of
+            ContinueObject -> M.alter (alterContinue subject) greatPower
+            BuildObject -> M.alter (alterBuild subject) greatPower
+            DisbandObject -> M.alter (alterDisband subject) greatPower
+          where
+            subject = (alignedThing aunit, zoneProvinceTarget zone)
+            greatPower = alignedGreatPower aunit
+        alterContinue
+            :: Subject
+            -> Maybe AdjustSubjects
+            -> Maybe AdjustSubjects
+        alterContinue subject x = Just $ case x of
+            Nothing -> AdjustSubjects S.empty S.empty (S.singleton subject)
+            Just x' -> x' { continueSubjects = S.insert subject (continueSubjects x') }
+        alterBuild
+            :: Subject
+            -> Maybe AdjustSubjects
+            -> Maybe AdjustSubjects
+        alterBuild subject x = Just $ case x of
+            Nothing -> AdjustSubjects (S.singleton subject) S.empty S.empty
+            Just x' -> x' { buildSubjects = S.insert subject (buildSubjects x') }
+        alterDisband
+            :: Subject
+            -> Maybe AdjustSubjects
+            -> Maybe AdjustSubjects
+        alterDisband subject x = Just $ case x of
+            Nothing -> AdjustSubjects S.empty (S.singleton subject) S.empty
+            Just x' -> x' { disbandSubjects = S.insert subject (disbandSubjects x') }
         occupation = gameOccupation game
         control = gameControl game
-        subjects = AdjustSubjects buildSubjects disbandSubjects continueSubjects
-        buildSubjects = M.foldWithKey pickBuildSubject S.empty orders
-        disbandSubjects = M.foldWithKey pickDisbandSubject S.empty orders
-        continueSubjects = M.foldWithKey pickContinueSubject S.empty orders
-        pickBuildSubject :: Zone -> (Unit, SomeOrderObject Adjust) -> S.Set Subject -> S.Set Subject
-        pickBuildSubject zone (unit, SomeOrderObject object) = case object of
-            BuildObject -> S.insert (unit, zoneProvinceTarget zone)
-            _ -> id
-        pickDisbandSubject :: Zone -> (Unit, SomeOrderObject Adjust) -> S.Set Subject -> S.Set Subject
-        pickDisbandSubject zone (unit, SomeOrderObject object) = case object of
-            DisbandObject -> S.insert (unit, zoneProvinceTarget zone)
-            _ -> id
-        pickContinueSubject :: Zone -> (Unit, SomeOrderObject Adjust) -> S.Set Subject -> S.Set Subject
-        pickContinueSubject zone (unit, SomeOrderObject object) = case object of
-            ContinueObject -> S.insert (unit, zoneProvinceTarget zone)
-            _ -> id
 
 -- | Issue orders without validating them. Do not use this with orders which
 --   have not been validated!
 issueOrdersUnsafe
     :: forall round .
-       GreatPower
-    -> M.Map Zone (Unit, SomeOrderObject (RoundPhase round))
+       M.Map Zone (Aligned Unit, SomeOrderObject (RoundPhase round))
     -> Game round RoundUnresolved
     -> Game round RoundUnresolved
-issueOrdersUnsafe greatPower validOrders game = M.foldWithKey (issueOrderUnsafe greatPower) game validOrders
+issueOrdersUnsafe validOrders game = M.foldWithKey issueOrderUnsafe game validOrders
   where
     issueOrderUnsafe
         :: forall round .
-           GreatPower
-        -> Zone
-        -> (Unit, SomeOrderObject (RoundPhase round))
+           Zone
+        -> (Aligned Unit, SomeOrderObject (RoundPhase round))
         -> Game round RoundUnresolved
         -> Game round RoundUnresolved
-    issueOrderUnsafe greatPower zone (unit, someObject) game = case game of
+    issueOrderUnsafe zone (aunit, someObject) game = case game of
         TypicalGame TypicalRoundOne s t zonedOrders v -> TypicalGame TypicalRoundOne s t (insertOrder zonedOrders) v
         TypicalGame TypicalRoundTwo s t zonedOrders v -> TypicalGame TypicalRoundTwo s t (insertOrder zonedOrders) v
         RetreatGame RetreatRoundOne s t res zonedOrders o c -> RetreatGame RetreatRoundOne s t res (insertOrder zonedOrders) o c
         RetreatGame RetreatRoundTwo s t res zonedOrders o c -> RetreatGame RetreatRoundTwo s t res (insertOrder zonedOrders) o c
         AdjustGame AdjustRound s t zonedOrders c -> AdjustGame AdjustRound s t (insertOrder zonedOrders) c
       where
-        aunit = align unit greatPower
         insertOrder
             :: M.Map Zone (Aligned Unit, SomeOrderObject (RoundPhase round))
             -> M.Map Zone (Aligned Unit, SomeOrderObject (RoundPhase round))
         insertOrder = M.alter (const (Just (aunit, someObject))) zone
+
+removeBuildOrders
+    :: (RoundPhase round ~ Adjust)
+    => Game round RoundUnresolved
+    -> Game round RoundUnresolved
+removeBuildOrders game = case game of
+    AdjustGame AdjustRound s t zonedOrders c ->
+        let zonedOrders' = M.filter (not . isBuild) zonedOrders
+        in  AdjustGame AdjustRound s t zonedOrders' c
+  where
+    isBuild :: (Aligned Unit, SomeOrderObject Adjust) -> Bool
+    isBuild (_, SomeOrderObject object) = case object of
+        BuildObject -> True
+        _ -> False
 
 resolve
     :: Game round RoundUnresolved
@@ -759,9 +780,9 @@ continue game = case game of
             -> S.Set Zone
             -> S.Set Zone
         -- take behaves as we want it to with negative numbers.
-        foldDisbands power zones = S.union (S.fromList (take defecit zones))
+        foldDisbands greatPower zones = S.union (S.fromList (take defecit zones))
           where
-            defecit = gameSupplyCentreDefecit power game
+            defecit = supplyCentreDefecit greatPower nextOccupation nextControl
 
         giveDefaultAdjustOrder
             :: Zone
