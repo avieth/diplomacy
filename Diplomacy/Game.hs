@@ -30,6 +30,8 @@ module Diplomacy.Game (
   , RoundPhase
   , RoundOrderConstructor
   , roundToInt
+  , nextRound
+  , prevRound
 
   , gameZonedOrders
   , gameZonedResolvedOrders
@@ -79,9 +81,27 @@ data Round where
 deriving instance Show Round
 deriving instance Enum Round
 deriving instance Bounded Round
+deriving instance Eq Round
+deriving instance Ord Round
 
 roundToInt :: Round -> Int
 roundToInt = fromEnum
+
+nextRound :: Round -> Round
+nextRound round = case round of
+    RoundOne -> RoundTwo
+    RoundTwo -> RoundThree
+    RoundThree -> RoundFour
+    RoundFour -> RoundFive
+    RoundFive -> RoundOne
+
+prevRound :: Round -> Round
+prevRound round = case round of
+    RoundOne -> RoundFive
+    RoundTwo -> RoundOne
+    RoundThree -> RoundTwo
+    RoundFour -> RoundThree
+    RoundFive -> RoundFour
 
 data RoundStatus where
     RoundUnresolved :: RoundStatus
