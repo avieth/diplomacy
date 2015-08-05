@@ -55,12 +55,11 @@ fromList :: [t] -> AtLeast Z t
 fromList xs = AtLeast VNil xs
 
 toList :: AtLeast n t -> [t]
-toList (AtLeast vs xs) = xs ++ vectToList vs
+toList (AtLeast vs xs) = vectToList vs ++ xs
 
 head :: AtLeast One t -> t
 head (AtLeast vs xs) = case (vs, xs) of
-    (VCons x _, []) -> x
-    (_, x : _) -> x
+    (VCons x _, _) -> x
 
 newtype Weaken t n = Weaken {
     unWeaken :: AtLeast n t
