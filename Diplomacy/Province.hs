@@ -768,7 +768,7 @@ provinceStringRepresentation province = case province of
     NorthSea -> "North Sea"
     NorwegianSea -> "Norwegian Sea"
     Skagerrak -> "Skagerrak"
-    TyrrhenianSea -> "TyrrhenianSea"
+    TyrrhenianSea -> "Tyrrhenian Sea"
     WesternMediterranean -> "Western Mediterranean"
 
 provinceStringRepresentations :: Province -> (String, [String])
@@ -796,17 +796,25 @@ provinceStringRepresentations pr = (principal, others)
         _ -> [take 3 principal]
 
 parseProvince :: Parser Province
-parseProvince = choice parsers
+parseProvince = choice (longParsers ++ shortParsers)
   where
-    parsers :: [Parser Province]
-    parsers = fmap makeParser provincesWithReps
+    longParsers :: [Parser Province]
+    longParsers = fmap makeParser provinceLongReps
+    shortParsers :: [Parser Province]
+    shortParsers = fmap makeParser provinceShortReps
+    provinces :: [Province]
     provinces = [minBound..maxBound]
-    provincesWithReps = fmap bundleReps provinces
-    bundleReps :: Province -> (Province, [String])
-    bundleReps pr = let (s, ss) = provinceStringRepresentations pr
-                    in  (pr, s : ss)
-    makeParser :: (Province, [String]) -> Parser Province
-    makeParser (p, ss) = choice (fmap (try . string) ss) *> pure p
+    provinceReps :: [(Province, String, [String])]
+    provinceReps = fmap reps provinces
+    provinceLongReps :: [(Province, String)]
+    provinceLongReps = fmap (\(pr, x, _) -> (pr, x)) provinceReps
+    provinceShortReps :: [(Province, String)]
+    provinceShortReps = provinceReps >>= \(pr, _, xs) -> fmap (\x -> (pr, x)) xs
+    reps :: Province -> (Province, String, [String])
+    reps pr = let (s, ss) = provinceStringRepresentations pr
+              in  (pr, s, ss)
+    makeParser :: (Province, String) -> Parser Province
+    makeParser (p, s) = try (string s) *> pure p
 
 provinceCoastStringRepresentations :: ProvinceCoast -> [String]
 provinceCoastStringRepresentations pc = provinceReps >>= addSuffix
