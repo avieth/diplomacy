@@ -230,8 +230,8 @@ validMoveTargets maybeOccupation subject =
     (unitCanOccupy (subjectUnit subject))
 
 -- | Valid support targets are any place where this subject could move without
---   a convoy (this excludes the subject's province target), and such that the
---   common coast constraint is relaxed (a Fleet in Marseilles can support
+--   a convoy (this excludes the subject's own province target), and such that
+--   the common coast constraint is relaxed (a Fleet in Marseilles can support
 --   into Spain NC for example).
 validSupportTargets
     :: Subject
@@ -252,7 +252,10 @@ validSupportSubjects occupation subject target = M.foldWithKey f S.empty occupat
   where
     pt = subjectProvinceTarget subject
     f zone aunit =
-        if S.member target (validMoveTargets (Just occupation) subject')
+        -- validMoveTargets will give us non-hold targets, so we explicitly
+        -- handle the case of a hold.
+        if    target == zoneProvinceTarget zone
+           || S.member target (validMoveTargets (Just occupation) subject')
         then S.insert subject'
         else id
       where
