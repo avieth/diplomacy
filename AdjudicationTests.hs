@@ -146,6 +146,9 @@ tests = TestList [
     , sixH14
     , sixH15
     , sixH16
+
+    , custom1
+    , custom2
     ]
 
 -- | A helper for testing typical phase resolutions. Give the orders and their
@@ -3533,3 +3536,51 @@ sixH16 = (  S.member WithdrawUncontestedZone validation
         , (Zone (Normal TyrrhenianSea), (align Fleet Italy, SomeResolved (MoveObject (Normal WesternMediterranean), Nothing)))
         ]
     occupation = occupy (Normal WesternMediterranean) (Just (align Fleet France)) emptyOccupation
+
+-- Not in the DATC.
+-- 
+-- England:
+-- F North Sea C A Edinburgh - Norway
+-- F Norwegian Sea C A Edinburgh - Norway
+-- A Edinburgh - Norway
+--
+-- Both convoys should succeed.
+custom1 = (expectedResolution == resolution) ~? "custom 1"
+  where
+
+    resolution = testTypicalResolution expectedResolution
+    expectedResolution = M.fromList [
+          (Zone (Normal NorthSea), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal Edinburgh) (Normal Norway), Nothing)))
+        , (Zone (Normal NorwegianSea), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal Edinburgh) (Normal Norway), Nothing)))
+        , (Zone (Normal Edinburgh), (align Army England, SomeResolved (MoveObject (Normal Norway), Nothing)))
+        ]
+
+-- Not in the DATC.
+-- 
+-- England:
+-- F North Sea C A Edinburgh - Norway
+-- F Skagerrak C A Edinburgh - Norway
+-- A Edinburgh - Norway
+--
+-- Again, both convoys should succeed.
+-- This test is quite different from custom1, because the convoy routes are
+--
+--   [ North Sea ]
+--   [ North Sea, Skagerrak ]
+--
+-- Compare at those for custom1:
+--
+--   [ North Sea ]
+--   [ Norwegian Sea ]
+--
+-- In custom2 we have one route contained in the other. This has revealed a
+-- bug in the resolver: the suffix of the longer route is judged to fail.
+custom2 = (expectedResolution == resolution) ~? "custom 2"
+  where
+
+    resolution = testTypicalResolution expectedResolution
+    expectedResolution = M.fromList [
+          (Zone (Normal NorthSea), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal Edinburgh) (Normal Norway), Nothing)))
+        , (Zone (Normal Skagerrak), (align Fleet England, SomeResolved (ConvoyObject (Army, Normal Edinburgh) (Normal Norway), Nothing)))
+        , (Zone (Normal Edinburgh), (align Army England, SomeResolved (MoveObject (Normal Norway), Nothing)))
+        ]

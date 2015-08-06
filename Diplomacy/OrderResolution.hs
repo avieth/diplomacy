@@ -53,6 +53,7 @@ import Data.TypeNat.Vect
 import Data.Functor.Identity
 import Data.Traversable (sequenceA)
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.MapUtil
 import Control.Monad
 import Control.Applicative
@@ -411,20 +412,23 @@ rawConvoyRoutes
     -> Subject
     -> ProvinceTarget
     -> [ConvoyRoute]
-rawConvoyRoutes resolution (unit, ptFrom) ptTo = do
-    let pool = viableConvoyZones
-    let starters = filter isStarter pool
-    s <- starters
-    let routes = paths pool ptTo s
+rawConvoyRoutes resolution (unit, ptFrom) ptTo =
     (fmap . fmap) tagWithChange routes
-
   where
+    
+    -- We knock off the last element of the third parameter, because it is the
+    -- Province where the convoy began (the coastal one).
+    routes :: [[Province]]
+    routes = fmap (\(_, y, ys) -> y : init ys) discoveredPaths
 
-    tagWithChange :: Zone -> (Zone, Maybe (Aligned Subject))
-    tagWithChange zone = (zone, typicalChange resolution zone)
+    discoveredPaths :: [((), Province, [Province])]
+    discoveredPaths = paths ((flip S.member) viableConvoyProvinces) (\p -> if p == ptProvince ptTo then Just () else Nothing) [ptProvince ptFrom]
 
-    viableConvoyZones :: [Zone]
-    viableConvoyZones = M.keys (M.filter isViableConvoy resolution)
+    tagWithChange :: Province -> (Zone, Maybe (Aligned Subject))
+    tagWithChange pr = (Zone (Normal pr), typicalChange resolution (Zone (Normal pr)))
+
+    viableConvoyProvinces :: S.Set Province
+    viableConvoyProvinces = S.fromList (fmap (ptProvince . zoneProvinceTarget) (M.keys (M.filter isViableConvoy resolution)))
 
     isViableConvoy
         :: (Aligned Unit, SomeResolved OrderObject Typical)
@@ -435,23 +439,6 @@ rawConvoyRoutes resolution (unit, ptFrom) ptTo = do
             && ptFrom == convoyingFrom
             && ptTo == convoyingTo
         _ -> False
-
-    isStarter :: Zone -> Bool
-    isStarter zone = adjacent (ptProvince (zoneProvinceTarget zone)) (ptProvince ptFrom)
-
-    paths
-        :: [Zone]
-        -> ProvinceTarget
-        -> Zone
-        -> [[Zone]]
-    paths pool target zone =
-        case adjacent (ptProvince (zoneProvinceTarget zone)) (ptProvince target) of
-            True -> [[zone]]
-            False -> do
-                let shrunkenPool = pool \\ [zone]
-                let neighbourZones = fmap Zone (neighbours (zoneProvinceTarget zone))
-                n <- neighbourZones `intersect` shrunkenPool
-                fmap ((:) zone) (paths shrunkenPool target n)
 
 convoyRoutes
     :: TypicalResolution
