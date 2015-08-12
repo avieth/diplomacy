@@ -29,7 +29,6 @@ import Diplomacy.OrderType
 import Diplomacy.Order
 import Diplomacy.Subject
 import Diplomacy.OrderObject
-import Diplomacy.Valid
 import Diplomacy.OrderValidation
 import Diplomacy.OrderResolution
 import Test.HUnit
@@ -155,8 +154,8 @@ tests = TestList [
 --   expected resolutions once, and get back the actual resolution of those
 --   orders.
 testTypicalResolution
-    :: TypicalResolution 
-    -> TypicalResolution
+    :: Resolution Typical 
+    -> Resolution Typical
 testTypicalResolution expectedRes = actualRes
   where
     actualRes = typicalResolution orders
@@ -352,7 +351,7 @@ sixB4 = (S.null supportValidation && resolution == expectedResolution) ~? "6.B.4
         , (Zone (Normal WesternMediterranean), (align Fleet Italy, SomeOrderObject (MoveObject (Special SpainNorth))))
         ]
 
-    expectedResolution :: TypicalResolution
+    expectedResolution :: Resolution Typical
     expectedResolution = M.fromList [
           (Zone (Normal Gascony), (align Fleet France, SomeResolved (MoveObject (Special SpainNorth), Nothing)))
         , (Zone (Normal Marseilles), (align Fleet France, SomeResolved (SupportObject (Fleet, Normal Gascony) (Special SpainNorth), Nothing)))
