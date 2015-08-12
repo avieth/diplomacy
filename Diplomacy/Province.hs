@@ -1,6 +1,6 @@
 {-|
 Module      : Diplomacy.Province
-Description : Definition of Province, ProvinceTarget.
+Description : Definitions related to places on the diplomacy board.
 Copyright   : (c) Alexander Vieth, 2015
 Licence     : BSD3
 Maintainer  : aovieth@gmail.com
@@ -15,7 +15,6 @@ Portability : non-portable (GHC only)
 module Diplomacy.Province (
 
     Province(..)
-  , allProvinces
 
   , adjacency
   , adjacent
@@ -27,8 +26,6 @@ module Diplomacy.Province (
   , provinceCommonCoasts
   , commonNeighbours
   , commonCoasts
-  , provinceWaterReachables
-  , waterReachables
 
   , ProvinceType(..)
   , provinceType
@@ -42,24 +39,19 @@ module Diplomacy.Province (
   , country
   , isHome
 
-  -- Verification
-  , symmetryCheck
-  , antireflexivityCheck
+  , ProvinceCoast(..)
+  , pcProvince 
+  , provinceCoasts
 
   , ProvinceTarget(..)
-  , ProvinceCoast(..)
 
   , isNormal
   , isSpecial
 
-  , pcProvince 
-  , provinceCoasts
   , ptProvince
 
   , provinceTargets
-  , properProvinceTargets
   , provinceTargetCluster
-  , allProvinceTargets
 
   , shortestPath
   , distance
@@ -84,90 +76,87 @@ import Diplomacy.GreatPower
 import Text.Parsec hiding ((<|>))
 import Text.Parsec.Text
 
--- | Exhaustive enumeration of the places on the diplomacy board.
---   Refernce: https://www.wizards.com/avalonhill/rules/diplomacy.pdf
+-- | Enumeration of the places on the diplomacy board.
 data Province
-  = Bohemia
-  | Budapest
-  | Galicia
-  | Trieste
-  | Tyrolia
-  | Vienna
-  | Clyde
-  | Edinburgh
-  | Liverpool
-  | London
-  | Wales
-  | Yorkshire
-  | Brest
-  | Burgundy
-  | Gascony
-  | Marseilles
-  | Paris
-  | Picardy
-  | Berlin
-  | Kiel
-  | Munich
-  | Prussia
-  | Ruhr
-  | Silesia
-  | Apulia
-  | Naples
-  | Piedmont
-  | Rome
-  | Tuscany
-  | Venice
-  | Livonia
-  | Moscow
-  | Sevastopol
-  | StPetersburg
-  | Ukraine
-  | Warsaw
-  | Ankara
-  | Armenia
-  | Constantinople
-  | Smyrna
-  | Syria
-  | Albania
-  | Belgium
-  | Bulgaria
-  | Finland
-  | Greece
-  | Holland
-  | Norway
-  | NorthAfrica
-  | Portugal
-  | Rumania
-  | Serbia
-  | Spain
-  | Sweden
-  | Tunis
-  | Denmark
-  | AdriaticSea
-  | AegeanSea
-  | BalticSea
-  | BarentsSea
-  | BlackSea
-  | EasternMediterranean
-  | EnglishChannel
-  | GulfOfBothnia
-  | GulfOfLyon
-  | HeligolandBight
-  | IonianSea
-  | IrishSea
-  | MidAtlanticOcean
-  | NorthAtlanticOcean
-  | NorthSea
-  | NorwegianSea
-  | Skagerrak
-  | TyrrhenianSea
-  | WesternMediterranean
+    = Bohemia
+    | Budapest
+    | Galicia
+    | Trieste
+    | Tyrolia
+    | Vienna
+    | Clyde
+    | Edinburgh
+    | Liverpool
+    | London
+    | Wales
+    | Yorkshire
+    | Brest
+    | Burgundy
+    | Gascony
+    | Marseilles
+    | Paris
+    | Picardy
+    | Berlin
+    | Kiel
+    | Munich
+    | Prussia
+    | Ruhr
+    | Silesia
+    | Apulia
+    | Naples
+    | Piedmont
+    | Rome
+    | Tuscany
+    | Venice
+    | Livonia
+    | Moscow
+    | Sevastopol
+    | StPetersburg
+    | Ukraine
+    | Warsaw
+    | Ankara
+    | Armenia
+    | Constantinople
+    | Smyrna
+    | Syria
+    | Albania
+    | Belgium
+    | Bulgaria
+    | Finland
+    | Greece
+    | Holland
+    | Norway
+    | NorthAfrica
+    | Portugal
+    | Rumania
+    | Serbia
+    | Spain
+    | Sweden
+    | Tunis
+    | Denmark
+    | AdriaticSea
+    | AegeanSea
+    | BalticSea
+    | BarentsSea
+    | BlackSea
+    | EasternMediterranean
+    | EnglishChannel
+    | GulfOfBothnia
+    | GulfOfLyon
+    | HeligolandBight
+    | IonianSea
+    | IrishSea
+    | MidAtlanticOcean
+    | NorthAtlanticOcean
+    | NorthSea
+    | NorwegianSea
+    | Skagerrak
+    | TyrrhenianSea
+    | WesternMediterranean
     deriving (Eq, Ord, Enum, Bounded, Show)
 
--- | The type of a province is important as it determines which units
---   can occupy it.
 data ProvinceType = Inland | Water | Coastal
-  deriving (Eq, Ord, Enum, Bounded, Show)
+    deriving (Eq, Ord, Enum, Bounded, Show)
 
 provinceType :: Province -> ProvinceType
 provinceType Bohemia = Inland
@@ -246,9 +235,8 @@ provinceType Skagerrak = Water
 provinceType TyrrhenianSea = Water
 provinceType WesternMediterranean = Water
 
--- | This function describes adjacency between provinces.
---   TODO verify; I'm confused about the adjacency surrounding
---   Denmark.
+-- | A Province @p@ is adjacent to (borders) all Provinces in @adjacency p@.
+--   This is symmetric and antireflexive.
 adjacency :: Province -> [Province]
 adjacency Bohemia = [Munich, Tyrolia, Vienna, Silesia, Galicia]
 adjacency Budapest = [Vienna, Galicia, Rumania, Serbia, Trieste]
@@ -269,7 +257,6 @@ adjacency Marseilles = [GulfOfLyon, Spain, Gascony, Burgundy, Piedmont]
 adjacency Paris = [Brest, Picardy, Burgundy, Gascony]
 adjacency Picardy = [EnglishChannel, Belgium, Burgundy, Paris, Brest]
 adjacency Berlin = [BalticSea, Prussia, Silesia, Munich, Kiel]
--- TODO verify this one!
 adjacency Kiel = [HeligolandBight, Berlin, Munich, Ruhr, Holland, Denmark, BalticSea]
 adjacency Munich = [Ruhr, Kiel, Berlin, Silesia, Bohemia, Tyrolia, Burgundy]
 adjacency Prussia = [BalticSea, Livonia, Warsaw, Silesia, Berlin]
@@ -333,32 +320,7 @@ adjacent prv0 prv1 = prv0 `elem` (adjacency prv1)
 isSameOrAdjacent :: Province -> Province -> Bool
 isSameOrAdjacent prv0 prv1 = prv0 == prv1 || adjacent prv0 prv1
 
-allProvinces :: [Province]
-allProvinces = [minBound .. maxBound]
-
--- | A list of all pairs for which adjacency is not symmetric.
---   Should be []
-symmetryCheck :: [(Province, Province)]
-symmetryCheck = filter (not . adjacencyIsSymmetric) (pairs allProvinces)
-
-pairs :: [a] -> [(a, a)]
-pairs [] = []
-pairs l@(x:xs) = (map ((,) x) l) ++ (pairs xs)
-
-adjacencyIsSymmetric :: (Province, Province) -> Bool
-adjacencyIsSymmetric (p1, p2) =
-  if adjacent p1 p2
-  then adjacent p2 p1
-  else not $ adjacent p2 p1
-
--- | A list of all pairs for which adjacency is reflexive (we want it to be
---   antireflexive).
-antireflexivityCheck :: [Province]
-antireflexivityCheck = filter (not . adjacencyIsAntireflexive) allProvinces
-
-adjacencyIsAntireflexive :: Province -> Bool
-adjacencyIsAntireflexive p = not $ p `adjacent` p
-
+-- | Indicates whether a Province is a supply centre.
 supplyCentre :: Province -> Bool
 supplyCentre Norway = True
 supplyCentre Sweden = True
@@ -396,12 +358,15 @@ supplyCentre Liverpool = True
 supplyCentre Edinburgh = True
 supplyCentre _ = False
 
+-- | All supply centres.
 supplyCentres :: [Province]
 supplyCentres = filter supplyCentre [minBound..maxBound]
 
 -- | Some provinces belong to a country.
 --   This is useful in conjunction with supplyCentre to determine which
 --   provinces can be used by a given country to build a unit.
+--   It is distinct from the in-game notion of control. Although Brest
+--   belongs to France, it may be controlled by some other power.
 country :: Province -> Maybe GreatPower
 country Bohemia = Just Austria
 country Budapest = Just Austria
@@ -482,19 +447,63 @@ country WesternMediterranean = Nothing
 isHome :: GreatPower -> Province -> Bool
 isHome c p = maybe False ((==) c) (country p)
 
--- | Province does not express all move order targets, like the north coast
---   of StPetersburg.
+-- | These are the special coasts, for @Province@s which have more than one
+--   coast.
+data ProvinceCoast
+    = StPetersburgNorth
+    | StPetersburgSouth
+    | SpainNorth
+    | SpainSouth
+    | BulgariaEast
+    | BulgariaSouth
+    deriving (Eq, Ord, Enum, Bounded)
+
+instance Show ProvinceCoast where
+    show StPetersburgNorth = "StP NC"
+    show StPetersburgSouth = "StP SC"
+    show SpainNorth = "Spa NC"
+    show SpainSouth = "Spa SC"
+    show BulgariaEast = "Bul EC"
+    show BulgariaSouth = "Bul SC"
+
+-- | The @Province@ to which a @ProvinceCoast@ belongs.
+pcProvince :: ProvinceCoast -> Province
+pcProvince StPetersburgNorth = StPetersburg
+pcProvince StPetersburgSouth = StPetersburg
+pcProvince SpainNorth = Spain
+pcProvince SpainSouth = Spain
+pcProvince BulgariaEast = Bulgaria
+pcProvince BulgariaSouth = Bulgaria
+
+-- | The @ProvinceCoast@s which belong to a @Province@.
+provinceCoasts :: Province -> [ProvinceCoast]
+provinceCoasts StPetersburg = [StPetersburgNorth, StPetersburgSouth]
+provinceCoasts Spain = [SpainNorth, SpainSouth]
+provinceCoasts Bulgaria = [BulgariaEast, BulgariaSouth]
+provinceCoasts _ = []
+
+-- | This type contains all places where some unit could be stationed.
 data ProvinceTarget
-  = Normal Province
-  -- TBD rename Special to MultiCoast or something else more descriptive?
-  | Special ProvinceCoast
+    = Normal Province
+    | Special ProvinceCoast
     deriving (Eq, Ord)
 
--- TODO should define a parser for ProvinceTarget as well, in such a way
--- that show pt always parses to pt.
 instance Show ProvinceTarget where
-  show (Normal province) = show province
-  show (Special provinceCoast) = show provinceCoast
+    show (Normal province) = show province
+    show (Special provinceCoast) = show provinceCoast
+
+instance Enum ProvinceTarget where
+    fromEnum pt = case pt of
+        Normal pr -> fromEnum pr
+        Special pc -> fromEnum (maxBound :: Province) + fromEnum pc
+    toEnum n | n < fromEnum (minBound :: Province) = error "ProvinceTarget.toEnum : index too small."
+             | n <= fromEnum (maxBound :: Province) = Normal (toEnum n)
+             | n <= fromEnum (maxBound :: Province) + fromEnum (maxBound :: ProvinceCoast) + 1 = Special (toEnum (n - fromEnum (maxBound :: Province) - 1))
+             | otherwise = error "ProvinceTarget.toEnum : index too large."
+
+instance Bounded ProvinceTarget where
+    minBound = Normal minBound
+    maxBound = Special maxBound
 
 isSpecial :: ProvinceTarget -> Bool
 isSpecial (Special _) = True
@@ -504,46 +513,15 @@ isNormal :: ProvinceTarget -> Bool
 isNormal (Normal _) = True
 isNormal _ = False
 
-allProvinceTargets :: [ProvinceTarget]
-allProvinceTargets = map Normal allProvinces ++ map Special (allProvinces >>= provinceCoasts)
-
--- | Like allProvinceTargets but those ProvinceTargets which have ProvinceCoasts
---   associated are eliminated from the list.
-properProvinceTargets :: [ProvinceTarget]
-properProvinceTargets = do
-  Normal p <- map Normal allProvinces
-  let cs = provinceCoasts p
-  if null cs then [Normal p] else map Special cs
-
+-- | All @ProvinceTarget@s associated with a @Province@. For @Province@s with
+--   0 or 1 coast, @provinceTargets p = [Normal p]@.
 provinceTargets :: Province -> [ProvinceTarget]
 provinceTargets x = Normal x : (map Special (provinceCoasts x))
 
+-- | All @ProvinceTarget@s which belong to the same @Province@ as this one.
 provinceTargetCluster :: ProvinceTarget -> [ProvinceTarget]
 provinceTargetCluster (Normal x) = provinceTargets x
 provinceTargetCluster (Special c) = (Normal $ pcProvince c) : (map Special (provinceCoasts (pcProvince c)))
-
-data ProvinceCoast
-  = StPetersburgNorth
-  | StPetersburgSouth
-  | SpainNorth
-  | SpainSouth
-  | BulgariaEast
-  | BulgariaSouth
-    deriving (Eq, Ord, Enum, Bounded)
-
-pcProvince :: ProvinceCoast -> Province
-pcProvince StPetersburgNorth = StPetersburg
-pcProvince StPetersburgSouth = StPetersburg
-pcProvince SpainNorth = Spain
-pcProvince SpainSouth = Spain
-pcProvince BulgariaEast = Bulgaria
-pcProvince BulgariaSouth = Bulgaria
-
-provinceCoasts :: Province -> [ProvinceCoast]
-provinceCoasts StPetersburg = [StPetersburgNorth, StPetersburgSouth]
-provinceCoasts Spain = [SpainNorth, SpainSouth]
-provinceCoasts Bulgaria = [BulgariaEast, BulgariaSouth]
-provinceCoasts _ = []
 
 ptProvince :: ProvinceTarget -> Province
 ptProvince (Normal p) = p
@@ -582,58 +560,16 @@ blacklist p (Special c) = coastBlacklist p c
     coastBlacklist _ _ = False
 blacklist _ _ = False
 
--- TODO TODAY!!!
--- Define LISTS of valid moves and convoys from a given ProvinceTarget, then
--- redefine the above few methods in terms of this and `elem`.
--- commonCoast, as well.
--- Yes here we have definitions for Provinces which should be usable to
--- implement anoalogues for ProvinceTargets.
-
 provinceCommonNeighbours :: Province -> Province -> [Province]
 provinceCommonNeighbours province1 province2 =
     [ x | x <- adjacency province1, y <- adjacency province2, x == y ]
 
--- Fact: always [] if either argument is inland.
 provinceCommonCoasts :: Province -> Province -> [Province]
 provinceCommonCoasts province1 province2 =
     filter isWater (provinceCommonNeighbours province1 province2)
 
--- | List containing all Provinces reachable by a path through 1 or more
---   water territories. This can and often does include the input province.
---   Fact: if input is inland, output is empty.
---   Fact: if input is not inland, output contains no inland.
-provinceWaterReachables :: Province -> [Province]
-provinceWaterReachables province = provinceWaterReachables' waterNeighbours waterNeighbours
-
-  where
-
-    waterNeighbours = filter isWater (adjacency province)
-
-    provinceWaterReachables' seenSoFar vanguard =
-        let nextVanguard = [ y | x <- vanguard, y <- adjacency x, isWater y, not (elem y seenSoFar) ]
-        in case nextVanguard of
-             -- In this case seenSoFar consists only of water provinces. Grab
-             -- all of their non-water (coastal) neighbours too.
-             [] -> [ y | x <- seenSoFar, y <- adjacency x, not (isWater y) ] ++ seenSoFar
-             _ -> provinceWaterReachables' (nextVanguard ++ seenSoFar) nextVanguard
-
--- | Exactly the same as provinceWaterReachables but we use neighbours instead
---   of adjacency.
-waterReachables :: ProvinceTarget -> [ProvinceTarget]
-waterReachables pt = waterReachables' waterNeighbours waterNeighbours
-
-  where
-
-    waterNeighbours = filter (isWater . ptProvince) (neighbours pt)
-
-    waterReachables' seenSoFar vanguard =
-        let nextVanguard = [ y | x <- vanguard, y <- neighbours x, isWater (ptProvince y), not (elem y seenSoFar) ]
-        in case nextVanguard of
-             [] -> [ y | x <- seenSoFar, y <- neighbours x, not (isWater (ptProvince y)) ] ++ seenSoFar
-             _ -> waterReachables' (nextVanguard ++ seenSoFar) nextVanguard
-
--- | ProvinceTarget neighbours; this is like adjacency but for ProvinceTargets,
---   using the blacklist to handle the special coasts.
+-- | This is like adjacency but for @ProvinceTargets@,
+--   and takes into consideration the special cases of multi-coast @Province@s.
 neighbours :: ProvinceTarget -> [ProvinceTarget]
 neighbours pt1 = do
   x <- adjacency (ptProvince pt1)
@@ -654,18 +590,9 @@ commonCoasts :: ProvinceTarget -> ProvinceTarget -> [ProvinceTarget]
 commonCoasts pt1 pt2 =
     filter (isWater . ptProvince) (commonNeighbours pt1 pt2)
 
-instance Show ProvinceCoast where
-  show StPetersburgNorth = "StP NC"
-  show StPetersburgSouth = "StP SC"
-  show SpainNorth = "Spa NC"
-  show SpainSouth = "Spa SC"
-  show BulgariaEast = "Bul EC"
-  show BulgariaSouth = "Bul SC"
-
 distance :: Province -> Province -> Int
 distance pr1 pr2 = length (shortestPath pr1 pr2)
 
--- Not particularly efficient, but it should be OK...
 shortestPath :: Province -> Province -> [Province]
 shortestPath pr1 pr2 =
     if pr1 == pr2

@@ -322,7 +322,7 @@ validConvoyTargets occupation subjectConvoyer subjectConvoyed =
 --            & not dislodging province (of subject's province target)
 --            & not occupied province
 setOfAllProvinceTargets :: S.Set ProvinceTarget
-setOfAllProvinceTargets = S.fromList allProvinceTargets
+setOfAllProvinceTargets = S.fromList [minBound..maxBound]
 
 setOfAllZones :: S.Set Zone
 setOfAllZones = S.map Zone setOfAllProvinceTargets
