@@ -800,6 +800,7 @@ printProvince = fromString . provinceStringRepresentation
 --
 --   Example use case: convoy paths from a given Province.
 --
+--   @
 --     convoyPaths
 --         :: Occupation
 --         -> Province
@@ -808,6 +809,7 @@ printProvince = fromString . provinceStringRepresentation
 --         fmap
 --             (\(x, y, zs) -> (x, y : zs))
 --             (paths (occupiedByFleet occupation) (coastalIndicator) [convoyingFrom])
+--   @
 --
 paths
     :: (Province -> Bool)

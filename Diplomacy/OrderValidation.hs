@@ -77,8 +77,7 @@ import Diplomacy.ZonedSubject
 import Diplomacy.Occupation
 import Diplomacy.Dislodgement
 import Diplomacy.Control
-import Diplomacy.SupplyCentreDefecit
-import Diplomacy.Valid
+import Diplomacy.SupplyCentreDeficit
 import Diplomacy.OrderResolution
 
 import Debug.Trace
@@ -402,18 +401,18 @@ validAdjustOrderSet
     -> Maybe (Either (S.Set (Order Adjust Build)) (S.Set (Order Adjust Disband)))
 validAdjustOrderSet greatPower occupation control
     -- All possible sets of build orders:
-    | defecit < 0 = Just . Left $ allBuildOrderSets
-    | defecit > 0 = Just . Right $ allDisbandOrderSets
+    | deficit < 0 = Just . Left $ allBuildOrderSets
+    | deficit > 0 = Just . Right $ allDisbandOrderSets
     | otherwise = Nothing
   where
-    defecit = supplyCentreDefecit greatPower occupation control
+    deficit = supplyCentreDeficit greatPower occupation control
     -- To construct all build order sets, we take all subsets of the home
-    -- supply centres of cardinality at most |defecit| and for each of these,
+    -- supply centres of cardinality at most |deficit| and for each of these,
     -- make a subject for each kind of unit which can occupy that place. Note
     -- that in the case of special areas like St. Petersburg, we have 3 options!
     allBuildOrderSets = flattenSet $ (S.map . S.map) (\s -> Order (s, BuildObject)) allBuildOrderSubjects
     -- To construct all disband order sets, we take all subsets of this great
-    -- power's subjects of cardinality exactly defecit.
+    -- power's subjects of cardinality exactly deficit.
     -- All subsets of the home supply centres, for each unit which can go
     -- there.
     allDisbandOrderSets = S.empty
@@ -422,12 +421,12 @@ validAdjustOrderSet greatPower occupation control
     --   For each of these, get the set of all pairs with units which can go
     --     there.
     --   Now pick from this set of sets; all ways to pick one from each set
-    --     without going over |defecit|
+    --     without going over |deficit|
     --allBuildOrderSubjects :: S.Set (S.Set Subject)
     --allBuildOrderSubjects = S.map (S.filter (\(unit, pt) -> S.member pt (unitCanOccupy unit))) . (S.map (setCartesianProduct (S.fromList [minBound..maxBound]))) $ allBuildOrderProvinceTargetSets
     allBuildOrderSubjects :: S.Set (S.Set Subject)
-    allBuildOrderSubjects = foldr (\i -> S.union (pickSet i candidateSubjectSets)) S.empty [0..(abs defecit)]
-    --allBuildOrderSubjects = S.filter ((flip (<=)) (abs defecit) . S.size) (powerSet candidateSubjects)
+    allBuildOrderSubjects = foldr (\i -> S.union (pickSet i candidateSubjectSets)) S.empty [0..(abs deficit)]
+    --allBuildOrderSubjects = S.filter ((flip (<=)) (abs deficit) . S.size) (powerSet candidateSubjects)
     --candidateSubjects :: S.Set Subject
     --candidateSubjects = S.filter (\(unit, pt) -> S.member pt (unitCanOccupy unit)) ((setCartesianProduct (S.fromList [minBound..maxBound])) candidateSupplyCentreSet)
     candidateSubjectSets :: S.Set (S.Set Subject)
@@ -987,12 +986,12 @@ data AdjustSubjects = AdjustSubjects {
 -- Really though, what should be the output? Sets of SomeOrder are annoying,
 -- because the Ord instance there is not trivial. Why not sets of
 -- AdjustSubjects as we have here?
--- For 0 defecit, we give the singleton set of the AdjustSubjects in
+-- For 0 deficit, we give the singleton set of the AdjustSubjects in
 -- which we make the build and disband sets empty.
--- For > 0 defecit, we take all defecit-element subsets of the disband
+-- For > 0 deficit, we take all deficit-element subsets of the disband
 -- subjects, and for each of them we throw in the complement relative to
 -- the continue subjects, and no build subjects.
--- For < 0 defecit, we take all (-defecit)-element or less subsets of the
+-- For < 0 deficit, we take all (-deficit)-element or less subsets of the
 -- build subjects, and for each of them we throw in the complement relative
 -- to the continue subjects, and no disband subjects.
 adjustSubjectsVOC
@@ -1003,7 +1002,7 @@ adjustSubjectsVOC
     -> VOC AdjustSetValidityTag S.Set '[AdjustSubjects] AdjustSubjects
 adjustSubjectsVOC greatPower occupation control subjects = (cons, uncons, vc)
   where
-    defecit = supplyCentreDefecit greatPower occupation control
+    deficit = supplyCentreDeficit greatPower occupation control
     vc :: ValidityCharacterization AdjustSetValidityTag S.Set '[AdjustSubjects]
     vc =  VCCons (\ALNil -> tiu)
         $ VCNil
@@ -1014,13 +1013,13 @@ adjustSubjectsVOC greatPower occupation control subjects = (cons, uncons, vc)
     uncons x =
         ALCons (Identity (Identity x)) ALNil
     tiu :: TaggedIntersectionOfUnions AdjustSetValidityTag S.Set AdjustSubjects
-    tiu | defecit > 0 = let disbandSets = choose defecit disbands
+    tiu | deficit > 0 = let disbandSets = choose deficit disbands
                             pairs = S.map (\xs -> (xs, continues `S.difference` xs)) disbandSets
                             valids :: S.Set AdjustSubjects
                             valids = S.map (\(disbands, continues) -> AdjustSubjects S.empty disbands continues) pairs
                         in  Intersection [(RequiredNumberOfDisbands, Union (fmap S.singleton (S.toList valids)))]
-        | defecit < 0 = let buildSetsUnzoned :: [S.Set (S.Set Subject)]
-                            buildSetsUnzoned = fmap (\n -> choose n builds) [0..(-defecit)] 
+        | deficit < 0 = let buildSetsUnzoned :: [S.Set (S.Set Subject)]
+                            buildSetsUnzoned = fmap (\n -> choose n builds) [0..(-deficit)] 
                             -- buildSetsUnzoned is not quite what we want; its
                             -- member sets may include subjects of the same
                             -- zone. A fleet in Marseilles and an army in

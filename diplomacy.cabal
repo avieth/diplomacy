@@ -22,8 +22,7 @@ library
                      , Diplomacy.Zone
                      , Diplomacy.ZonedSubject
                      , Diplomacy.Turn
-                     , Diplomacy.SupplyCentreDefecit
-                     , Diplomacy.Valid
+                     , Diplomacy.SupplyCentreDeficit
                      , Diplomacy.Order
                      , Diplomacy.Season
                      , Diplomacy.Control

@@ -1,6 +1,6 @@
 {-|
 Module      : Diplomacy.Game
-Description : 
+Description : State of a Diplomacy game.
 Copyright   : (c) Alexander Vieth, 2015
 Licence     : BSD3
 Maintainer  : aovieth@gmail.com
@@ -67,7 +67,7 @@ import Diplomacy.Occupation
 import Diplomacy.Dislodgement
 import Diplomacy.Control
 import Diplomacy.Subject
-import Diplomacy.SupplyCentreDefecit
+import Diplomacy.SupplyCentreDeficit
 import Diplomacy.OrderResolution
 import Diplomacy.OrderValidation
 
@@ -167,10 +167,10 @@ data Game (round :: Round) (roundStatus :: RoundStatus) where
         :: RetreatRound round
         -> Status roundStatus
         -> Turn
-        -> TypicalResolution
-        -- ^ Resolutions of the previous typical phase.
+        -> Resolution Typical
+        -- Resolutions of the previous typical phase.
         -> M.Map Zone (Aligned Unit, RoundOrderConstructor roundStatus Retreat)
-        -- ^ Dislodged units, which have orders.
+        -- Dislodged units, which have orders.
         -> Occupation
         -> Control
         -> Game round roundStatus
@@ -752,19 +752,19 @@ continue game = case game of
         nextZonedOrders = M.mapWithKey giveDefaultAdjustOrder nextOccupation
 
         -- This one is not so trivial... what IS the default adjust order?
-        -- It depends upon the defecit, and the distance of the unit from
+        -- It depends upon the deficit, and the distance of the unit from
         -- its home supply centre! That's because our goal is to enforce that
         -- the issued orders in a Game are always valid. So we can't just throw
         -- a bunch of Continue objects onto the order set here; the great power
         -- may need to disband some units!
-        -- NB a player need not have a defecit of 0; it's ok to have a negative
-        -- defecit, since the rule book states that a player may decline to
+        -- NB a player need not have a deficit of 0; it's ok to have a negative
+        -- deficit, since the rule book states that a player may decline to
         -- build a unit that she is entitled to.
         --
-        -- First, let's calculate the defecits for each great power.
+        -- First, let's calculate the deficits for each great power.
         -- Then, we'll order their units by minimum distance from home supply
         -- centre.
-        -- Then, we give as many disband orders as the defecit if it's positive,
+        -- Then, we give as many disband orders as the deficit if it's positive,
         -- using the list order; other units get ContinueObject.
         --
         -- Associate every country with a list of the zones it occupies,
@@ -800,9 +800,9 @@ continue game = case game of
             -> S.Set Zone
             -> S.Set Zone
         -- take behaves as we want it to with negative numbers.
-        foldDisbands greatPower zones = S.union (S.fromList (take defecit zones))
+        foldDisbands greatPower zones = S.union (S.fromList (take deficit zones))
           where
-            defecit = supplyCentreDefecit greatPower nextOccupation nextControl
+            deficit = supplyCentreDeficit greatPower nextOccupation nextControl
 
         giveDefaultAdjustOrder
             :: Zone

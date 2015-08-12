@@ -1,6 +1,6 @@
 {-|
 Module      : Diplomacy.Aligned
-Description : Align datatypes to GreatPowers
+Description : Align a value to a 'GreatPower'.
 Copyright   : (c) Alexander Vieth, 2015
 Licence     : BSD3
 Maintainer  : aovieth@gmail.com
@@ -23,6 +23,7 @@ module Diplomacy.Aligned (
 
 import Diplomacy.GreatPower
 
+-- | Something aligned to a @GreatPower@.
 data Aligned t where
     Aligned :: t -> GreatPower -> Aligned t
 

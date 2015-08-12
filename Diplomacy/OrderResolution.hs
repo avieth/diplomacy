@@ -1,6 +1,6 @@
 {-|
 Module      : Diplomacy.OrderResolution
-Description : 
+Description : Definition of the resolution of orders (adjudication).
 Copyright   : (c) Alexander Vieth, 2015
 Licence     : BSD3
 Maintainer  : aovieth@gmail.com
@@ -29,15 +29,18 @@ module Diplomacy.OrderResolution (
 
   , FailureReason(..)
 
-  , TypicalResolution
+  , Resolution
+
   , typicalResolution
   , retreatResolution
   , adjustResolution
 
+  , typicalChange
+
+  , ConvoyRoutes(..)
+  , ConvoyRoute
   , convoyRoutes
   , successfulConvoyRoutes
-
-  , typicalChange
 
   ) where
 
@@ -67,10 +70,9 @@ import Diplomacy.OrderObject
 import Diplomacy.Order
 import Diplomacy.Province
 import Diplomacy.Zone
-import Diplomacy.Valid
 import Diplomacy.Subject
 
-type TypicalResolution = M.Map Zone (Aligned Unit, SomeResolved OrderObject Typical)
+type Resolution phase = M.Map Zone (Aligned Unit, SomeResolved OrderObject phase)
 
 -- Left means assumed resolution, right means no resolution assumed.
 type TypicalResolutionInput
@@ -89,7 +91,7 @@ preserveAssumptions = M.map makeInput
         Left y -> (aunit, Left y)
         Right (SomeResolved (x, _)) -> (aunit, Right $ SomeOrderObject x)
 
-dropAssumptionTags :: TypicalResolutionOutput -> TypicalResolution
+dropAssumptionTags :: TypicalResolutionOutput -> Resolution Typical
 dropAssumptionTags = M.map dropTag
   where
     dropTag (aunit, x) = case x of
@@ -136,16 +138,14 @@ noAssumptions
     -> TypicalResolutionInput
 noAssumptions = M.map (\(x, y) -> (x, Right y))
 
-typicalResolution
-    :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
-    -> TypicalResolution
-typicalResolution = dropAssumptionTags . typicalResolutionAssuming . noAssumptions
-
 data RequiresConvoy
     = RequiresConvoy
     | DoesNotRequireConvoy
     deriving (Show)
 
+-- | First component indicates that there is a convoying 'Fleet' at this
+--   'Zone', second component indicates whether something dislodged it, and if
+--   so, who it was.
 type ConvoyRoute = [(Zone, Maybe (Aligned Subject))]
 
 data ConvoyRoutes = ConvoyRoutes {
@@ -408,7 +408,7 @@ classify resolution zone (aunit, MoveObject movingTo) =
 --   composese the route) as well as an indication of whether it was
 --   dislodged (Just means it was dislodged by that subject).
 rawConvoyRoutes
-    :: TypicalResolution
+    :: Resolution Typical
     -> Subject
     -> ProvinceTarget
     -> [ConvoyRoute]
@@ -441,7 +441,7 @@ rawConvoyRoutes resolution (unit, ptFrom) ptTo =
         _ -> False
 
 convoyRoutes
-    :: TypicalResolution
+    :: Resolution Typical
     -> Subject
     -> ProvinceTarget
     -> ConvoyRoutes
@@ -452,7 +452,7 @@ convoyRoutes resolution subject pt =
 
 -- | A void convoy is one for which there is no matching move order.
 isVoidConvoy
-    :: TypicalResolution
+    :: Resolution Typical
     -> Subject
     -> ProvinceTarget
     -> Bool
@@ -472,7 +472,7 @@ isVoidConvoy resolution subject convoyingTo = case M.lookup convoyingFrom resolu
 --   This accounts for simple paradox routes as well as the so-called
 --   second order paradoxes.
 isParadoxRoute
-    :: TypicalResolution
+    :: Resolution Typical
     -> ProvinceTarget -- ^ The destination of the route.
     -> [Zone] -- ^ The zones in the route.
     -> Bool
@@ -997,9 +997,10 @@ resolveSomeOrderTypical resolution zone (aunit, SomeOrderObject object) =
     in  thisResolution
 
 -- | Changes to a board as the result of a typical phase.
---   Nothing means no change, Just means the unit belonging to the great power
---   now lies at this Zone, and used to lie at the given ProvinceTarget.
-typicalChange :: TypicalResolution -> Zone -> Maybe (Aligned Subject)
+--   @Nothing@ means no change, @Just pt@ means the unit belonging to the great
+--   power now lies the input 'Zone', and used to lie at the given
+--   'ProvinceTarget' @pt@.
+typicalChange :: Resolution Typical -> Zone -> Maybe (Aligned Subject)
 typicalChange res zone = M.foldWithKey folder Nothing res
   where
     folder
@@ -1022,12 +1023,16 @@ typicalChange res zone = M.foldWithKey folder Nothing res
                      _ -> b
         _ -> b
 
--- | Retreat phase resolution groups all withdraws by target, and fails elements
---   of groups with size > 1.
---   All surrenders of course succeed.
+-- | Resolution for the Typical phase.
+typicalResolution
+    :: M.Map Zone (Aligned Unit, SomeOrderObject Typical)
+    -> Resolution Typical
+typicalResolution = dropAssumptionTags . typicalResolutionAssuming . noAssumptions
+
+-- | Resolution for the Retreat phase.
 retreatResolution
     :: M.Map Zone (Aligned Unit, SomeOrderObject Retreat)
-    -> M.Map Zone (Aligned Unit, SomeResolved OrderObject Retreat)
+    -> Resolution Retreat
 retreatResolution zonedOrders = M.mapWithKey (resolveRetreat zonedWithdraws) zonedOrders
   where
     -- At each Zone we have a list of the zones from which a withdraw attempt
@@ -1065,13 +1070,10 @@ retreatResolution zonedOrders = M.mapWithKey (resolveRetreat zonedWithdraws) zon
       where
         thisSubject = align (alignedThing aunit, zoneProvinceTarget zone) (alignedGreatPower aunit)
 
--- | Adjust phase is resolved very easily, as self-consistent disband and
---   build orders always succeed (defecit control is handled by validation,
---   because orders are validated in a defined order (unfortunate homonym) and
---   so the defecit is well-defined locally for each order).
+-- | Resolution for the Adjust phase.
 adjustResolution
     :: M.Map Zone (Aligned Unit, SomeOrderObject Adjust)
-    -> M.Map Zone (Aligned Unit, SomeResolved OrderObject Adjust)
+    -> Resolution Adjust
 adjustResolution = M.map (\(aunit, SomeOrderObject object) -> (aunit, SomeResolved (object, Nothing)))
 
 type Resolved (k :: Phase -> OrderType -> *) (phase :: Phase) (order :: OrderType) =
@@ -1103,23 +1105,26 @@ data FailureReason (phase :: Phase) (order :: OrderType) where
 
     MoveBounced :: AtLeast One (Aligned Subject) -> FailureReason Typical Move
 
-    -- | The move would dislodge the player's own unit.
+    -- The move would dislodge the player's own unit.
+    -- TBD the rules are ambigious for games where one player controls many
+    -- great powers. Is it ok for a player's unit to dislodge a unit which
+    -- belongs to a different great power which he controls? We allow it.
     MoveFriendlyDislodge :: Unit -> FailureReason Typical Move
 
     MoveNoConvoy :: FailureReason Typical Move
 
     MoveConvoyParadox :: FailureReason Typical Move
 
-    -- | The supported unit did not give an order consistent with the support
-    --   order.
+    -- The supported unit did not give an order consistent with the support
+    -- order.
     SupportVoid :: FailureReason Typical Support
 
-    -- | The supporting unit was attacked from a province other than the one
-    --   into which the support was directed.
+    -- The supporting unit was attacked from a province other than the one
+    -- into which the support was directed.
     SupportCut :: AtLeast One (Aligned Subject) -> FailureReason Typical Support
 
-    -- | The supporting unit was overpowered by a move from the province into
-    --   which the support was directed.
+    -- The supporting unit was overpowered by a move from the province into
+    -- which the support was directed.
     SupportDislodged :: Aligned Subject -> FailureReason Typical Support
 
     ConvoyVoid :: FailureReason Typical Convoy
@@ -1128,7 +1133,7 @@ data FailureReason (phase :: Phase) (order :: OrderType) where
 
     ConvoyRouteCut :: [(Zone, Aligned Subject)] ->  FailureReason Typical Convoy
 
-    -- | The unit withdraws into the same province as some other unit(s).
+    -- The unit withdraws into the same province as some other unit(s).
     WithdrawCollision :: AtLeast One (Aligned Subject) -> FailureReason Retreat Withdraw
 
     -- Surrender orders and adjust phase orders can never fail; if they're

@@ -1,6 +1,6 @@
 {-|
-Module      : Diplomacy.SupplyCentreDefecit
-Description : 
+Module      : Diplomacy.SupplyCentreDeficit
+Description : Compute the supply centre deficit for a 'GreatPower'.
 Copyright   : (c) Alexander Vieth, 2015
 Licence     : BSD3
 Maintainer  : aovieth@gmail.com
@@ -10,11 +10,11 @@ Portability : non-portable (GHC only)
 
 {-# LANGUAGE AutoDeriveTypeable #-}
 
-module Diplomacy.SupplyCentreDefecit (
+module Diplomacy.SupplyCentreDeficit (
 
-    SupplyCentreDefecit
+    SupplyCentreDeficit
 
-  , supplyCentreDefecit
+  , supplyCentreDeficit
 
   ) where
 
@@ -26,14 +26,14 @@ import Diplomacy.Province
 import Diplomacy.Aligned
 import Diplomacy.Unit
 
-type SupplyCentreDefecit = Int
+type SupplyCentreDeficit = Int
 
-supplyCentreDefecit
+supplyCentreDeficit
     :: GreatPower
     -> Occupation
     -> Control
-    -> SupplyCentreDefecit
-supplyCentreDefecit greatPower occupation control = unitCount - supplyCentreCount
+    -> SupplyCentreDeficit
+supplyCentreDeficit greatPower occupation control = unitCount - supplyCentreCount
   where
     unitCount = M.fold unitCountFold 0 occupation
     supplyCentreCount = M.foldWithKey supplyCentreCountFold 0 control

@@ -1,6 +1,6 @@
 {-|
 Module      : Diplomacy.Turn
-Description : 
+Description : Definition of a turn in a game of Diplomacy.
 Copyright   : (c) Alexander Vieth, 2015
 Licence     : BSD3
 Maintainer  : aovieth@gmail.com

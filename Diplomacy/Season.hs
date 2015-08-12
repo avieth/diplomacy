@@ -1,6 +1,6 @@
 {-|
 Module      : Diplomacy.Season
-Description : 
+Description : Definition of the three seasons of Diplomacy.
 Copyright   : (c) Alexander Vieth, 2015
 Licence     : BSD3
 Maintainer  : aovieth@gmail.com
@@ -17,4 +17,4 @@ module Diplomacy.Season (
   ) where
 
 data Season = Spring | Fall | Winter
-  deriving (Eq, Show)
+    deriving (Eq, Show)
