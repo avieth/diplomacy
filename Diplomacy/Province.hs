@@ -72,6 +72,7 @@ import Control.Applicative
 import qualified Data.Set as S
 import Data.String (fromString, IsString)
 import Data.List (sort)
+import Data.Char (toUpper, toLower)
 import Diplomacy.GreatPower
 import Text.Parsec hiding ((<|>))
 import Text.Parsec.Text
@@ -741,7 +742,7 @@ parseProvince = choice (longParsers ++ shortParsers)
     reps pr = let (s, ss) = provinceStringRepresentations pr
               in  (pr, s, ss)
     makeParser :: (Province, String) -> Parser Province
-    makeParser (p, s) = try (string s) *> pure p
+    makeParser (p, s) = try (ciString s) *> pure p
 
 provinceCoastStringRepresentations :: ProvinceCoast -> [String]
 provinceCoastStringRepresentations pc = provinceReps >>= addSuffix
@@ -774,7 +775,7 @@ parseCoast = choice parsers
     bundleReps pc = let ss = provinceCoastStringRepresentations pc
                     in  (pc, ss)
     makeParser :: (ProvinceCoast, [String]) -> Parser ProvinceCoast
-    makeParser (pc, ss) = choice (fmap (try . string) ss) *> pure pc
+    makeParser (pc, ss) = choice (fmap (try . ciString) ss) *> pure pc
 
 parseProvinceTarget :: Parser ProvinceTarget
 parseProvinceTarget = try parseSpecial <|> parseNormal
@@ -857,3 +858,10 @@ paths indicatorA indicatorB seeds = paths' [] indicatorA indicatorB (fmap (\x ->
         case indicator x of
             Just y -> return (y, first, rest)
             Nothing -> empty
+
+-- case-insensitive string parser.
+ciString :: String -> Parser String
+ciString = mapM ciChar
+
+ciChar :: Char -> Parser Char
+ciChar c = char (toLower c) <|> char (toUpper c)
