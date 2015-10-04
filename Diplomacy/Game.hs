@@ -456,9 +456,13 @@ type family ValidateOrdersOutput (phase :: Phase) :: * where
 
 -- | The game given as the second component of the return value will differ
 --   from the input game only if all orders are valid.
---   NB for adjust phase we wipe all build orders; that's because there's
+--
+--   NB for adjust phase we wipe all build orders for every great power with
+--   at least one order appearing in the input order set; that's because there's
 --   no way to explicitly remove a build order by overwriting it with some
---   other order.
+--   other order. This is due to the way we represent build orders: they are
+--   in the game map alongside a unit which doesn't really exist yet. Removing
+--   this order involves removing that entry in the map.
 issueOrders
     :: forall round .
        M.Map Zone (Aligned Unit, SomeOrderObject (RoundPhase round))
@@ -466,7 +470,7 @@ issueOrders
     -> (ValidateOrdersOutput (RoundPhase round), Game round RoundUnresolved)
 issueOrders orders game =
     let nextGame = case game of
-            AdjustGame AdjustRound _ _ _ _ -> issueOrdersUnsafe orders (removeBuildOrders game)
+            AdjustGame AdjustRound _ _ _ _ -> issueOrdersUnsafe orders (removeBuildOrders orders game)
             _ -> issueOrdersUnsafe orders game
         validation :: ValidateOrdersOutput (RoundPhase round)
         allValid :: Bool
@@ -671,17 +675,25 @@ issueOrdersUnsafe validOrders game = M.foldWithKey issueOrderUnsafe game validOr
 
 removeBuildOrders
     :: (RoundPhase round ~ Adjust)
-    => Game round RoundUnresolved
+    => M.Map Zone (Aligned Unit, SomeOrderObject (RoundPhase round))
     -> Game round RoundUnresolved
-removeBuildOrders game = case game of
+    -> Game round RoundUnresolved
+removeBuildOrders orders game = case game of
     AdjustGame AdjustRound s t zonedOrders c ->
-        let zonedOrders' = M.filter (not . isBuild) zonedOrders
+        let zonedOrders' = M.filter (not . shouldRemove) zonedOrders
         in  AdjustGame AdjustRound s t zonedOrders' c
   where
-    isBuild :: (Aligned Unit, SomeOrderObject Adjust) -> Bool
-    isBuild (_, SomeOrderObject object) = case object of
-        BuildObject -> True
+    shouldRemove :: (Aligned Unit, SomeOrderObject Adjust) -> Bool
+    shouldRemove (aunit, SomeOrderObject object) = case (S.member greatPower greatPowers, object) of
+        (True, BuildObject) -> True
         _ -> False
+      where
+        greatPower = alignedGreatPower aunit
+    -- All great powers who have an order in the orders set.
+    greatPowers :: S.Set GreatPower
+    greatPowers = M.fold pickGreatPower S.empty orders
+    pickGreatPower :: (Aligned Unit, t) -> S.Set GreatPower -> S.Set GreatPower
+    pickGreatPower (aunit, _) = S.insert (alignedGreatPower aunit)
 
 resolve
     :: Game round RoundUnresolved
