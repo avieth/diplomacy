@@ -237,24 +237,29 @@ validSupportTargets
     -> S.Set ProvinceTarget
 validSupportTargets subject = S.fromList $ do
     x <- S.toList $ validMoveAdjacency Nothing subject
+    guard (S.member x (unitCanOccupy (subjectUnit subject)))
     provinceTargetCluster x
 
--- | Valid support targets depend upon the support subject AND its chosen
---   target! For example, if we choose to support into Brest, then a fleet
---   in the Tyrrhenian Sea cannot be the support subject.
+-- | Given two ProvinceTargets--the place from which support comes, and the
+--   place to which support is directed--we can use an Occupation to discover
+--   every subject which could be supported by this hypothetical supporter.
 validSupportSubjects
     :: Occupation
-    -> Subject
-    -> ProvinceTarget
+    -> ProvinceTarget -- ^ Source
+    -> ProvinceTarget -- ^ Target
     -> S.Set Subject
-validSupportSubjects occupation subject target = M.foldWithKey f S.empty occupation
+validSupportSubjects occupation source target = M.foldWithKey f S.empty occupation
   where
-    pt = subjectProvinceTarget subject
     f zone aunit =
-        -- validMoveTargets will give us non-hold targets, so we explicitly
-        -- handle the case of a hold.
-        if    target == zoneProvinceTarget zone
-           || S.member target (validMoveTargets (Just occupation) subject')
+        if    Zone source /= zone
+           -- validMoveTargets will give us non-hold targets, so we explicitly
+           -- handle the case of a hold.
+           && (Zone target == zone
+           -- If the subject here could move to the target, then it's a valid
+           -- support target. We are careful *not* to use Zone-equality here,
+           -- because in the case of supporting fleets into coastal territories,
+           -- we want to rule out supporting to an unreachable coast.
+           || S.member target (validMoveTargets (Just occupation) subject'))
         then S.insert subject'
         else id
       where
@@ -830,14 +835,14 @@ supportVOC greatPower occupation = (cons, uncons, vc)
     vc = -- Given a subject for the supporter, and a target for the support, we
          -- characterize every valid subject which can be supported.
          VCCons (\(ALCons (Identity (Identity pt)) (ALCons (Identity (Identity subject1)) ALNil)) -> Intersection [
-              (SupportedCanDoMove, Union [S.filter (/= subject1) (validSupportSubjects occupation subject1 pt)])
+              (SupportedCanDoMove, Union [S.filter (/= subject1) (validSupportSubjects occupation (subjectProvinceTarget subject1) pt)])
             ])
-        -- Given a subject for the supporter, we check every place into which
-        -- that supporter could offer support; that's every place where it
-        -- could move without a convoy.
+        -- Given a subject (the one who offers support), we check every place
+        -- into which that supporter could offer support; that's every place
+        -- where it could move without a convoy (or one of the special coasts
+        -- of that place).
         . VCCons (\(ALCons (Identity (Identity subject)) ALNil) -> Intersection [
-              (SupporterCanOccupy, Union [unitCanOccupy (subjectUnit subject)])
-            , (SupporterAdjacent, Union [validSupportTargets subject])
+              (SupporterAdjacent, Union [validSupportTargets subject])
             ])
         . VCCons (\ALNil -> Intersection [(SupportValidSubject, Union [S.fromList (allSubjects (Just greatPower) occupation)])])
         $ VCNil
