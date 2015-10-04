@@ -42,6 +42,7 @@ module Diplomacy.Game (
   , gameRound
   , gameSeason
   , issueOrders
+  , removeBuildOrders
   , resolve
   , continue
   , newGame
@@ -470,7 +471,13 @@ issueOrders
     -> (ValidateOrdersOutput (RoundPhase round), Game round RoundUnresolved)
 issueOrders orders game =
     let nextGame = case game of
-            AdjustGame AdjustRound _ _ _ _ -> issueOrdersUnsafe orders (removeBuildOrders orders game)
+            AdjustGame AdjustRound _ _ _ _ -> issueOrdersUnsafe orders (removeBuildOrders greatPowers game)
+              where
+                -- All great powers who have an order in the orders set.
+                greatPowers :: S.Set GreatPower
+                greatPowers = M.fold pickGreatPower S.empty orders
+                pickGreatPower :: (Aligned Unit, t) -> S.Set GreatPower -> S.Set GreatPower
+                pickGreatPower (aunit, _) = S.insert (alignedGreatPower aunit)
             _ -> issueOrdersUnsafe orders game
         validation :: ValidateOrdersOutput (RoundPhase round)
         allValid :: Bool
@@ -675,10 +682,10 @@ issueOrdersUnsafe validOrders game = M.foldWithKey issueOrderUnsafe game validOr
 
 removeBuildOrders
     :: (RoundPhase round ~ Adjust)
-    => M.Map Zone (Aligned Unit, SomeOrderObject (RoundPhase round))
+    => S.Set GreatPower
     -> Game round RoundUnresolved
     -> Game round RoundUnresolved
-removeBuildOrders orders game = case game of
+removeBuildOrders greatPowers game = case game of
     AdjustGame AdjustRound s t zonedOrders c ->
         let zonedOrders' = M.filter (not . shouldRemove) zonedOrders
         in  AdjustGame AdjustRound s t zonedOrders' c
@@ -689,11 +696,6 @@ removeBuildOrders orders game = case game of
         _ -> False
       where
         greatPower = alignedGreatPower aunit
-    -- All great powers who have an order in the orders set.
-    greatPowers :: S.Set GreatPower
-    greatPowers = M.fold pickGreatPower S.empty orders
-    pickGreatPower :: (Aligned Unit, t) -> S.Set GreatPower -> S.Set GreatPower
-    pickGreatPower (aunit, _) = S.insert (alignedGreatPower aunit)
 
 resolve
     :: Game round RoundUnresolved
