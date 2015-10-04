@@ -41,9 +41,9 @@ parseUnit :: Parser Unit
 parseUnit = parseFleet <|> parseArmy
   where
     parseFleet :: Parser Unit
-    parseFleet = char 'F' *> pure Fleet
+    parseFleet = (char 'F' <|> char 'f') *> pure Fleet
     parseArmy :: Parser Unit
-    parseArmy = char 'A' *> pure Army
+    parseArmy = (char 'A' <|> char 'a') *> pure Army
 
 printUnit :: IsString a => Unit -> a
 printUnit unit = case unit of
