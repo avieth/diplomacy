@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                diplomacy
-version:             0.1.0.0
+version:             0.2.0.0
 synopsis:            The board game Diplomacy, spoken in Haskell
 -- description:         
 homepage:            https://github.com/avieth/diplomacy
@@ -59,7 +59,7 @@ library
                      , RankNTypes
                      , PatternSynonyms
 
-  build-depends:       base >=4.7 && <4.9
+  build-depends:       base >=4.7 && <4.10
                      , containers >=0.5 && <0.6
                      , transformers >=0.3 && <0.5
                      , HUnit >=1.2 && <1.3
