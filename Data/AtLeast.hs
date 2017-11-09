@@ -38,7 +38,7 @@ import Data.Ord
 import Data.TypeNat.Nat
 import Data.TypeNat.Vect
 
-data AtLeast (n :: Nat) (t :: *) = AtLeast (Vect t n) [t]
+data AtLeast (n :: Nat) (t :: *) = AtLeast (Vect n t) [t]
 
 -- Equality ignores order of elements.
 instance Eq t => Eq (AtLeast n t) where

@@ -4,14 +4,14 @@
 name:                diplomacy
 version:             0.2.0.0
 synopsis:            The board game Diplomacy, spoken in Haskell
--- description:         
+description:         Library for Diplomacy the board game
 homepage:            https://github.com/avieth/diplomacy
 license:             BSD3
 license-file:        LICENSE
 author:              Alexander Vieth
 maintainer:          aovieth@gmail.com
 -- copyright:           
--- category:            
+category:            Games
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
@@ -59,11 +59,11 @@ library
                      , RankNTypes
                      , PatternSynonyms
 
-  build-depends:       base >=4.7 && <4.10
+  build-depends:       base >=4.7 && <4.11
                      , containers >=0.5 && <0.6
-                     , transformers >=0.3 && <0.5
+                     , transformers >=0.3 && <0.6
                      , HUnit >=1.2 && <1.3
-                     , TypeNat >=0.4 && <0.5
+                     , TypeNat >=0.5 && <0.6
                      , parsec >= 3.1 && <3.2
   -- hs-source-dirs:      
   default-language:    Haskell2010
