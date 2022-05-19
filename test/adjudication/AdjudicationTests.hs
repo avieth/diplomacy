@@ -14,6 +14,8 @@ See http://web.inter.nl.net/users/L.B.Kruijswijk/#6
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 
+module AdjudicationTests where
+
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Applicative
