@@ -8,8 +8,7 @@ Stability   : experimental
 Portability : non-portable (GHC only)
 -}
 
-{-# LANGUAGE AutoDeriveTypeable #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTSyntax #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
 module Diplomacy.Phase (

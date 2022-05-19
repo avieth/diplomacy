@@ -8,7 +8,6 @@ Stability   : experimental
 Portability : non-portable (GHC only)
 -}
 
-{-# LANGUAGE AutoDeriveTypeable #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
@@ -266,7 +265,7 @@ showGameMetadata game = concat . intersperse "\n" $ [
     phase = gamePhase game
 
 showOccupation :: Occupation -> String
-showOccupation = concat . intersperse "\n" . M.foldWithKey foldShowAlignedUnit []
+showOccupation = concat . intersperse "\n" . M.foldrWithKey foldShowAlignedUnit []
   where
     foldShowAlignedUnit zone aunit b =
         concat [show provinceTarget, ": ", show greatPower, " ", show unit] : b
@@ -276,7 +275,7 @@ showOccupation = concat . intersperse "\n" . M.foldWithKey foldShowAlignedUnit [
         unit = alignedThing aunit
 
 showZonedOrders :: M.Map Zone (Aligned Unit, SomeOrderObject phase) -> String
-showZonedOrders = concat . intersperse "\n" . M.foldWithKey foldShowOrder []
+showZonedOrders = concat . intersperse "\n" . M.foldrWithKey foldShowOrder []
   where
     foldShowOrder zone (aunit, SomeOrderObject object) b =
         concat [show provinceTarget, ": ", show greatPower, " ", show unit, " ", objectString] : b
@@ -304,7 +303,7 @@ showZonedOrders = concat . intersperse "\n" . M.foldWithKey foldShowOrder []
             ContinueObject -> "continue"
 
 showZonedResolvedOrders :: M.Map Zone (Aligned Unit, SomeResolved OrderObject phase) -> String
-showZonedResolvedOrders = concat . intersperse "\n" . M.foldWithKey foldShowResolvedOrder []
+showZonedResolvedOrders = concat . intersperse "\n" . M.foldrWithKey foldShowResolvedOrder []
   where
     foldShowResolvedOrder
         :: Zone
@@ -340,7 +339,7 @@ showZonedResolvedOrders = concat . intersperse "\n" . M.foldWithKey foldShowReso
             Just reason -> "✗ " ++ show reason
 
 showControl :: Control -> String
-showControl = concat . intersperse "\n" . M.foldWithKey foldShowControl []
+showControl = concat . intersperse "\n" . M.foldrWithKey foldShowControl []
   where
     foldShowControl province greatPower b = concat [show province, ": ", show greatPower] : b
 
@@ -475,7 +474,7 @@ issueOrders orders game =
               where
                 -- All great powers who have an order in the orders set.
                 greatPowers :: S.Set GreatPower
-                greatPowers = M.fold pickGreatPower S.empty orders
+                greatPowers = M.foldr pickGreatPower S.empty orders
                 pickGreatPower :: (Aligned Unit, t) -> S.Set GreatPower -> S.Set GreatPower
                 pickGreatPower (aunit, _) = S.insert (alignedGreatPower aunit)
             _ -> issueOrdersUnsafe orders game
@@ -484,24 +483,24 @@ issueOrders orders game =
         (validation, allValid) = case game of
             TypicalGame TypicalRoundOne _ _ _ _ ->
                 let validation = validateOrders orders game
-                    invalids = M.fold pickInvalids S.empty validation
+                    invalids = M.foldr pickInvalids S.empty validation
                 in  (validation, S.null invalids)
             TypicalGame TypicalRoundTwo _ _ _ _ ->
                 let validation = validateOrders orders game
-                    invalids = M.fold pickInvalids S.empty validation
+                    invalids = M.foldr pickInvalids S.empty validation
                 in  (validation, S.null invalids)
             RetreatGame RetreatRoundOne _ _ _ _ _ _ ->
                 let validation = validateOrders orders game
-                    invalids = M.fold pickInvalids S.empty validation
+                    invalids = M.foldr pickInvalids S.empty validation
                 in  (validation, S.null invalids)
             RetreatGame RetreatRoundTwo _ _ _ _ _ _ ->
                 let validation = validateOrders orders game
-                    invalids = M.fold pickInvalids S.empty validation
+                    invalids = M.foldr pickInvalids S.empty validation
                 in  (validation, S.null invalids)
             AdjustGame AdjustRound _ _ _ _ ->
                 let validation = validateOrders orders game
-                    invalids = M.fold pickInvalids S.empty (fst validation)
-                    adjustSetInvalids = M.fold S.union S.empty (snd validation)
+                    invalids = M.foldr pickInvalids S.empty (fst validation)
+                    adjustSetInvalids = M.foldr S.union S.empty (snd validation)
                 in  (validation, S.null invalids && S.null adjustSetInvalids)
     in  if allValid
         then (validation, nextGame)
@@ -616,7 +615,7 @@ validateOrders orders game = case game of
             -> S.Set AdjustSetValidityCriterion
         validation greatPower subjects = analyze snd (S.singleton . fst) S.empty S.union (adjustSubjectsVOC greatPower occupation control subjects) subjects
         adjustSetsByGreatPower :: M.Map GreatPower AdjustSubjects
-        adjustSetsByGreatPower = M.foldWithKey pickSubject M.empty orders
+        adjustSetsByGreatPower = M.foldrWithKey pickSubject M.empty orders
         pickSubject
             :: Zone
             -> (Aligned Unit, SomeOrderObject (RoundPhase round))
@@ -660,7 +659,7 @@ issueOrdersUnsafe
        M.Map Zone (Aligned Unit, SomeOrderObject (RoundPhase round))
     -> Game round RoundUnresolved
     -> Game round RoundUnresolved
-issueOrdersUnsafe validOrders game = M.foldWithKey issueOrderUnsafe game validOrders
+issueOrdersUnsafe validOrders game = M.foldrWithKey issueOrderUnsafe game validOrders
   where
     issueOrderUnsafe
         :: forall round .
@@ -747,7 +746,7 @@ continue game = case game of
         -- Every dislodged unit which successfully withdraws is added to the
         -- next occupation value; all others are forgotten.
         nextOccupation :: Occupation
-        nextOccupation = M.foldWithKey occupationFold occupation zonedResolvedOrders
+        nextOccupation = M.foldrWithKey occupationFold occupation zonedResolvedOrders
 
         occupationFold
             :: Zone
@@ -790,7 +789,7 @@ continue game = case game of
         zonesByDistance =
             M.mapWithKey
               (\k -> sortWith (distanceFromHomeSupplyCentre k . ptProvince . zoneProvinceTarget))
-              (M.foldWithKey foldZonesByDistance M.empty occupation)
+              (M.foldrWithKey foldZonesByDistance M.empty occupation)
 
         sortWith f = sortBy (\x y -> f x `compare` f y)
 
@@ -806,7 +805,7 @@ continue game = case game of
                 Just zs -> Just (zone : zs)
 
         disbands :: S.Set Zone
-        disbands = M.foldWithKey foldDisbands S.empty zonesByDistance
+        disbands = M.foldrWithKey foldDisbands S.empty zonesByDistance
 
         foldDisbands
             :: GreatPower
@@ -829,7 +828,7 @@ continue game = case game of
         -- Every dislodged unit which successfully withdraws is added to the
         -- next occupation value; all others are forgotten.
         nextOccupation :: Occupation
-        nextOccupation = M.foldWithKey occupationFold occupation zonedResolvedOrders
+        nextOccupation = M.foldrWithKey occupationFold occupation zonedResolvedOrders
 
         occupationFold
             :: Zone
@@ -844,7 +843,7 @@ continue game = case game of
         -- Every unit in @nextOccupation@ takes control of the Province where it
         -- lies.
         nextControl :: Control
-        nextControl = M.foldWithKey controlFold thisControl nextOccupation
+        nextControl = M.foldrWithKey controlFold thisControl nextOccupation
 
         controlFold
             :: Zone

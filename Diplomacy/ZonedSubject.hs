@@ -8,7 +8,6 @@ Stability   : experimental
 Portability : non-portable (GHC only)
 -}
 
-{-# LANGUAGE AutoDeriveTypeable #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
 module Diplomacy.ZonedSubject (

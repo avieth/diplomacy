@@ -8,7 +8,6 @@ Stability   : experimental
 Portability : non-portable (GHC only)
 -}
 
-{-# LANGUAGE AutoDeriveTypeable #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE PolyKinds #-}
@@ -248,7 +247,7 @@ validSupportSubjects
     -> ProvinceTarget -- ^ Source
     -> ProvinceTarget -- ^ Target
     -> S.Set Subject
-validSupportSubjects occupation source target = M.foldWithKey f S.empty occupation
+validSupportSubjects occupation source target = M.foldrWithKey f S.empty occupation
   where
     f zone aunit =
         if    Zone source /= zone
@@ -270,7 +269,7 @@ validConvoyers
     :: Maybe GreatPower
     -> Occupation
     -> S.Set Subject
-validConvoyers greatPower = M.foldWithKey f S.empty
+validConvoyers greatPower = M.foldrWithKey f S.empty
   where
     f zone aunit = case unit of
         Fleet -> if    isWater (ptProvince pt)
@@ -288,7 +287,7 @@ validConvoyers greatPower = M.foldWithKey f S.empty
 validConvoySubjects
     :: Occupation
     -> S.Set Subject
-validConvoySubjects = M.foldWithKey f S.empty
+validConvoySubjects = M.foldrWithKey f S.empty
   where
     f zone aunit = if unit == Army && isCoastal (ptProvince pt)
                    then S.insert (unit, pt)
@@ -344,7 +343,7 @@ occupiedZones = S.map (Zone . snd) . S.fromList . allSubjects Nothing
 contestedZones
     :: M.Map Zone (Aligned Unit, SomeResolved OrderObject Typical)
     -> S.Set Zone
-contestedZones = M.foldWithKey g S.empty . M.fold f M.empty
+contestedZones = M.foldrWithKey g S.empty . M.foldr f M.empty
   where
 
     f :: (Aligned Unit, SomeResolved OrderObject Typical)
@@ -374,7 +373,7 @@ dislodgingZones
     :: M.Map Zone (Aligned Unit, SomeResolved OrderObject Typical)
     -> Zone
     -> S.Set Zone
-dislodgingZones resolved zone = M.foldWithKey f S.empty resolved
+dislodgingZones resolved zone = M.foldrWithKey f S.empty resolved
   where
     f :: Zone
       -> (Aligned Unit, SomeResolved OrderObject Typical)

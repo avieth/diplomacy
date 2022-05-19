@@ -8,7 +8,6 @@ Stability   : experimental
 Portability : non-portable (GHC only)
 -}
 
-{-# LANGUAGE AutoDeriveTypeable #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 
@@ -45,7 +44,7 @@ dislodgementAndOccupation zonedResolvedOrders = (dislodgement, occupation)
     -- First, compute the occupation delta by checking for successful moves.
     moveOccupation :: Occupation
     stationaryOccupation :: Occupation
-    (moveOccupation, stationaryOccupation) = M.foldWithKey nextOccupationFold (M.empty, M.empty) currentOccupation
+    (moveOccupation, stationaryOccupation) = M.foldrWithKey nextOccupationFold (M.empty, M.empty) currentOccupation
     nextOccupationFold
         :: Zone
         -> Aligned Unit

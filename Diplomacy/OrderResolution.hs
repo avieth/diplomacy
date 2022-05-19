@@ -8,7 +8,6 @@ Stability   : experimental
 Portability : non-portable (GHC only)
 -}
 
-{-# LANGUAGE AutoDeriveTypeable #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE PolyKinds #-}
@@ -177,7 +176,7 @@ type Supports = [Aligned Subject]
 --   that ProvinceTarget (or support/convoy/hold in case it's the same as the
 --   Subject's), calculate the supporters of that order.
 support :: TypicalResolutionOutput -> Subject -> ProvinceTarget -> Supports
-support resolution subject goingTo = M.foldWithKey selector [] (dropAssumptionTags resolution)
+support resolution subject goingTo = M.foldrWithKey selector [] (dropAssumptionTags resolution)
   where
     selector
         :: Zone
@@ -248,7 +247,7 @@ competingMoves
     -> Zone
     -> Zone
     -> CompetingMoves
-competingMoves resolution zoneFrom zoneTo = M.foldWithKey selector [] (dropAssumptionTags resolution')
+competingMoves resolution zoneFrom zoneTo = M.foldrWithKey selector [] (dropAssumptionTags resolution')
   where
     -- It is ESSENTIAL that we forget about the order at THIS zone when we
     -- compute the competing moves. If we don't, the program may not terminate.
@@ -1001,7 +1000,7 @@ resolveSomeOrderTypical resolution zone (aunit, SomeOrderObject object) =
 --   power now lies the input 'Zone', and used to lie at the given
 --   'ProvinceTarget' @pt@.
 typicalChange :: Resolution Typical -> Zone -> Maybe (Aligned Subject)
-typicalChange res zone = M.foldWithKey folder Nothing res
+typicalChange res zone = M.foldrWithKey folder Nothing res
   where
     folder
         :: Zone
@@ -1038,7 +1037,7 @@ retreatResolution zonedOrders = M.mapWithKey (resolveRetreat zonedWithdraws) zon
     -- At each Zone we have a list of the zones from which a withdraw attempt
     -- is made.
     zonedWithdraws :: M.Map Zone [Aligned Subject]
-    zonedWithdraws = M.foldWithKey folder M.empty zonedOrders
+    zonedWithdraws = M.foldrWithKey folder M.empty zonedOrders
       where
         folder
             :: Zone

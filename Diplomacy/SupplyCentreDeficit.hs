@@ -8,8 +8,6 @@ Stability   : experimental
 Portability : non-portable (GHC only)
 -}
 
-{-# LANGUAGE AutoDeriveTypeable #-}
-
 module Diplomacy.SupplyCentreDeficit (
 
     SupplyCentreDeficit
@@ -35,8 +33,8 @@ supplyCentreDeficit
     -> SupplyCentreDeficit
 supplyCentreDeficit greatPower occupation control = unitCount - supplyCentreCount
   where
-    unitCount = M.fold unitCountFold 0 occupation
-    supplyCentreCount = M.foldWithKey supplyCentreCountFold 0 control
+    unitCount = M.foldr unitCountFold 0 occupation
+    supplyCentreCount = M.foldrWithKey supplyCentreCountFold 0 control
     unitCountFold :: Aligned Unit -> Int -> Int
     unitCountFold aunit
         | alignedGreatPower aunit == greatPower = (+) 1

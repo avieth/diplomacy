@@ -10,7 +10,7 @@ license:             BSD3
 license-file:        LICENSE
 author:              Alexander Vieth
 maintainer:          aovieth@gmail.com
--- copyright:           
+copyright:           BSD3
 category:            Games
 build-type:          Simple
 extra-source-files:  README.md
@@ -45,7 +45,6 @@ library
                      , Data.AtLeast
   -- other-modules:       
   other-extensions:    GADTs
-                     , AutoDeriveTypeable
                      , DataKinds
                      , ImpredicativeTypes
                      , MultiParamTypeClasses
@@ -62,8 +61,8 @@ library
                      , RankNTypes
                      , PatternSynonyms
 
-  build-depends:       base >=4.7 && <4.11
-                     , containers >=0.5 && <0.6
+  build-depends:       base >=4.7 && <5
+                     , containers >=0.5 && <0.7
                      , transformers >=0.3 && <0.6
                      , HUnit >=1.2 && <1.6
                      , TypeNat >=0.5 && <0.6

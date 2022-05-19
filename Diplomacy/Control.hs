@@ -8,8 +8,6 @@ Stability   : experimental
 Portability : non-portable (GHC only)
 -}
 
-{-# LANGUAGE AutoDeriveTypeable #-}
-
 module Diplomacy.Control (
 
     Control

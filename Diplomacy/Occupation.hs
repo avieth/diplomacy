@@ -8,8 +8,6 @@ Stability   : experimental
 Portability : non-portable (GHC only)
 -}
 
-{-# LANGUAGE AutoDeriveTypeable #-}
-
 module Diplomacy.Occupation (
 
     Occupation
@@ -80,7 +78,7 @@ zoneOccupied :: Zone -> Occupation -> Bool
 zoneOccupied zone = isJust . M.lookup zone
 
 allSubjects :: Maybe GreatPower -> Occupation -> [Subject]
-allSubjects maybeGreatPower = M.foldWithKey f []
+allSubjects maybeGreatPower = M.foldrWithKey f []
   where
     f zone aunit =
         let subject = (alignedThing aunit, zoneProvinceTarget zone)
