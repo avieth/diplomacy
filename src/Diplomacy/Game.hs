@@ -28,6 +28,7 @@ module Diplomacy.Game (
   , NextRound
   , RoundPhase
   , RoundOrderConstructor
+  , ValidateOrdersOutput
   , roundToInt
   , nextRound
   , prevRound
@@ -46,6 +47,7 @@ module Diplomacy.Game (
   , continue
   , newGame
   , showGame
+  , greatPowerAssignments
 
   ) where
 
@@ -182,6 +184,62 @@ data Game (round :: Round) (roundStatus :: RoundStatus) where
         -> M.Map Zone (Aligned Unit, RoundOrderConstructor roundStatus Adjust)
         -> Control
         -> Game round roundStatus
+
+
+-- | Depending on the number of players, we assign the great powers in different
+-- ways. If the list is too short (fewer than 3) or too long (more than 7) then
+-- Nothing is given. If Just is given, then the resulintg list is the same size
+-- as the given list; each provided set is non-empty.
+greatPowerAssignments :: [(S.Set GreatPower -> player)] -> Maybe [player]
+greatPowerAssignments players = case players of
+
+    -- Full game: each player controls one power.
+    [p1,p2,p3,p4,p5,p6,p7] -> Just
+      [ (p1 $ S.singleton England)
+      , (p2 $ S.singleton Austria)
+      , (p3 $ S.singleton France)
+      , (p4 $ S.singleton Turkey)
+      , (p5 $ S.singleton Russia)
+      , (p6 $ S.singleton Italy)
+      , (p7 $ S.singleton Germany)
+      ]
+
+    -- Italy is not used.
+    [p1,p2,p3,p4,p5,p6] -> Just
+      [ (p1 $ S.singleton England)
+      , (p2 $ S.singleton Austria)
+      , (p3 $ S.singleton France)
+      , (p4 $ S.singleton Turkey)
+      , (p5 $ S.singleton Russia)
+      , (p6 $ S.singleton Italy)
+      ]
+
+    -- Germany and Italy are not used.
+    [p1,p2,p3,p4,p5] -> Just
+      [ (p1 $ S.singleton England)
+      , (p2 $ S.singleton Austria)
+      , (p3 $ S.singleton France)
+      , (p4 $ S.singleton Turkey)
+      , (p5 $ S.singleton Russia)
+      ]
+
+    -- England is solo, other players each get 2 powers.
+    [p1,p2,p3,p4] -> Just
+      [ (p1 $ S.singleton England)
+      , (p2 $ S.fromList [Austria, France])
+      , (p3 $ S.fromList [Germany, Turkey])
+      , (p4 $ S.fromList [Italy, Russia])
+      ]
+
+    -- England/Gemrany/Austria vs. Russia/Italy vs. France/Turkey
+    [p1,p2,p3] -> Just
+      [ (p1 $ S.fromList [England, Germany, Austria])
+      , (p2 $ S.fromList [Russia, Italy])
+      , (p3 $ S.fromList [France, Turkey])
+      ]
+
+    -- Cannot play.
+    _ -> Nothing
 
 newGame :: Game RoundOne RoundUnresolved
 newGame = TypicalGame TypicalRoundOne Unresolved firstTurn zonedOrders thisControl
