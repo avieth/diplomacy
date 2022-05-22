@@ -14,6 +14,7 @@ Portability : non-portable (GHC only)
 module Diplomacy.GreatPower (
 
     GreatPower(..)
+  , allGreatPowers
 
   ) where
 
@@ -32,3 +33,6 @@ deriving instance Show GreatPower
 deriving instance Read GreatPower
 deriving instance Enum GreatPower
 deriving instance Bounded GreatPower
+
+allGreatPowers :: [GreatPower]
+allGreatPowers = [minBound..maxBound]

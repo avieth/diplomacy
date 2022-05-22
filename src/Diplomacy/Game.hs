@@ -73,11 +73,17 @@ import Diplomacy.SupplyCentreDeficit
 import Diplomacy.OrderResolution
 import Diplomacy.OrderValidation
 
+-- | A Turn consists of 5 rounds.
 data Round where
+    -- Typical
     RoundOne :: Round
+    -- Retreat
     RoundTwo :: Round
+    -- Typical
     RoundThree :: Round
+    -- Retreat
     RoundFour :: Round
+    -- Adjust
     RoundFive :: Round
 
 deriving instance Show Round
@@ -119,6 +125,7 @@ type family RoundOrderConstructor (roundStatus :: RoundStatus) :: Phase -> * whe
     RoundOrderConstructor RoundUnresolved = SomeOrderObject
     RoundOrderConstructor RoundResolved = SomeResolved OrderObject
 
+-- | Rounds 1 and 3 are Typical.
 data TypicalRound (round :: Round) where
     TypicalRoundOne :: TypicalRound RoundOne
     TypicalRoundTwo :: TypicalRound RoundThree
@@ -130,12 +137,14 @@ nextRetreatRound typicalRound = case typicalRound of
     TypicalRoundOne -> RetreatRoundOne
     TypicalRoundTwo -> RetreatRoundTwo
 
+-- | Rounds 2 and 4 are Retreat
 data RetreatRound (round :: Round) where
     RetreatRoundOne :: RetreatRound RoundTwo
     RetreatRoundTwo :: RetreatRound RoundFour
 
 deriving instance Show (RetreatRound round)
 
+-- | Round 5 is Adjust.
 data AdjustRound (round :: Round) where
     AdjustRound :: AdjustRound RoundFive
 

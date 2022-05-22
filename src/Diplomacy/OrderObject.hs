@@ -54,11 +54,17 @@ data OrderObject (phase :: Phase) (order :: OrderType) where
     WithdrawObject :: ProvinceTarget -> OrderObject Retreat Withdraw
     SurrenderObject :: OrderObject Retreat Surrender
 
-    DisbandObject :: OrderObject Adjust Disband
+    -- Adjust phase is a bit weird because the BuildObject is for units which
+    -- don't actually exist. You can undo a Disband by giving a Continue, but
+    -- you can't undo a Build by giving anything.
+    -- FIXME we could probably do better, by having build orders held in
+    -- a separate structure. For now, a game server implementation can require
+    -- that all build orders be given in a batch, clearing any previous ones.
     BuildObject :: OrderObject Adjust Build
-    ContinueObject :: OrderObject Adjust Continue
-    -- This is convenient because with it, every unit always has an
+    DisbandObject :: OrderObject Adjust Disband
+    -- | This is convenient because with it, every unit always has an
     -- order in every phase.
+    ContinueObject :: OrderObject Adjust Continue
 
 deriving instance Eq (OrderObject phase order)
 deriving instance Show (OrderObject phase order)

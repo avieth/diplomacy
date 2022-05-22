@@ -12,6 +12,7 @@ Portability : non-portable (GHC only)
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Diplomacy.Order (
 
@@ -27,6 +28,13 @@ module Diplomacy.Order (
   , movingTo
   , supportsOrder
 
+  , printSomeOrder
+  , parseSomeOrder
+  , printSubject
+  , parseSubject
+  , printObject
+  , parseObject
+
   ) where
 
 import Data.Coerce (coerce)
@@ -37,6 +45,10 @@ import Diplomacy.Subject
 import Diplomacy.OrderType
 import Diplomacy.OrderObject
 import Diplomacy.Province
+import Diplomacy.Unit
+import Data.Text as T
+import Text.Parsec
+import Text.Parsec.Text
 
 newtype Order (phase :: Phase) (order :: OrderType) = Order {
     outOrder :: (Subject, OrderObject phase order)
@@ -92,3 +104,174 @@ supportsOrder supportOrderObject (SomeOrder order) =
     orderDestination order = case orderObject order of
         MoveObject pt -> pt
         SupportObject _ _ -> subjectProvinceTarget (orderSubject order)
+
+-- |
+-- = Printing/parsing
+--
+-- Aims to be the typical board-game text representation of an order.
+
+printSomeOrder :: SomeOrder phase -> T.Text
+printSomeOrder (SomeOrder order) = T.concat [
+      printSubject (orderSubject order)
+    , " "
+    , printObject (SomeOrderObject (orderObject order))
+    ]
+
+parseSomeOrder :: IsPhase phase -> Parser (SomeOrder phase)
+parseSomeOrder IsTypicalPhase = parseSomeOrderTypical
+parseSomeOrder IsRetreatPhase = parseSomeOrderRetreat
+parseSomeOrder IsAdjustPhase = parseSomeOrderAdjust
+
+parseSomeOrderTypical :: Parser (SomeOrder Typical)
+parseSomeOrderTypical = do
+    subject <- parseSubject
+    spaces
+    SomeOrderObject object <- parseObjectTypical
+    return $ SomeOrder (Order (subject, object))
+
+parseSomeOrderRetreat :: Parser (SomeOrder Retreat)
+parseSomeOrderRetreat = do
+    subject <- parseSubject
+    spaces
+    SomeOrderObject object <- parseObjectRetreat
+    return $ SomeOrder (Order (subject, object))
+
+parseSomeOrderAdjust :: Parser (SomeOrder Adjust)
+parseSomeOrderAdjust = do
+    subject <- parseSubject
+    spaces
+    SomeOrderObject object <- parseObjectAdjust
+    return $ SomeOrder (Order (subject, object))
+
+printSubject :: Subject -> T.Text
+printSubject (unit, pt) = T.concat [
+      printUnit unit
+    , " "
+    , printProvinceTarget pt
+    ]
+
+parseSubject :: Parser Subject
+parseSubject = do
+    unit <- parseUnit
+    spaces
+    pt <- parseProvinceTarget
+    return (unit, pt)
+
+printObject :: SomeOrderObject phase -> T.Text
+printObject (SomeOrderObject object) = case object of
+    MoveObject _ -> printMove object
+    SupportObject _ _ -> printSupport object
+    ConvoyObject _ _ -> printConvoy object
+    SurrenderObject -> printSurrender object
+    WithdrawObject _ -> printWithdraw object
+    DisbandObject -> printDisband object
+    BuildObject -> printBuild object
+    ContinueObject -> printContinue object
+
+parseObject :: IsPhase phase -> Parser (SomeOrderObject phase)
+parseObject IsTypicalPhase = parseObjectTypical
+parseObject IsRetreatPhase = parseObjectRetreat
+parseObject IsAdjustPhase = parseObjectAdjust
+
+parseObjectTypical :: Parser (SomeOrderObject Typical)
+parseObjectTypical =
+        (SomeOrderObject <$> try parseMove)
+    <|> (SomeOrderObject <$> try parseSupport)
+    <|> (SomeOrderObject <$> try parseConvoy)
+
+parseObjectRetreat :: Parser (SomeOrderObject Retreat)
+parseObjectRetreat =
+        (SomeOrderObject <$> try parseSurrender)
+    <|> (SomeOrderObject <$> try parseWithdraw)
+
+parseObjectAdjust :: Parser (SomeOrderObject Adjust)
+parseObjectAdjust =
+        (SomeOrderObject <$> try parseDisband)
+    <|> (SomeOrderObject <$> try parseBuild)
+    <|> (SomeOrderObject <$> try parseContinue)
+
+printMove :: OrderObject Typical Move -> T.Text
+printMove (MoveObject pt) = T.concat ["- ", printProvinceTarget pt]
+
+parseMove :: Parser (OrderObject Typical Move)
+parseMove = do
+    char '-'
+    spaces
+    pt <- parseProvinceTarget
+    return $ MoveObject pt
+
+printSupport :: OrderObject Typical Support -> T.Text
+printSupport (SupportObject subj pt) =
+  if subjectProvinceTarget subj == pt
+  then T.concat ["S ", printSubject subj]
+  else T.concat ["S ", printSubject subj, " - ", printProvinceTarget pt]
+
+parseSupport :: Parser (OrderObject Typical Support)
+parseSupport = do
+    (char 'S' <|> char 's')
+    spaces
+    subject <- parseSubject
+    target <- Text.Parsec.option (subjectProvinceTarget subject) (try rest)
+    return $ SupportObject subject target
+  where
+    rest = do
+        spaces
+        char '-'
+        spaces
+        parseProvinceTarget
+
+printConvoy :: OrderObject Typical Convoy -> T.Text
+printConvoy (ConvoyObject subj pt) = T.concat ["C ", printSubject subj, " - ", printProvinceTarget pt]
+
+parseConvoy :: Parser (OrderObject Typical Convoy)
+parseConvoy = do
+    (char 'C' <|> char 'c')
+    spaces
+    subject <- parseSubject
+    spaces
+    char '-'
+    spaces
+    target <- parseProvinceTarget
+    return $ ConvoyObject subject target
+
+printSurrender :: OrderObject Retreat Surrender -> T.Text
+printSurrender SurrenderObject = "Surrender"
+
+parseSurrender :: Parser (OrderObject Retreat Surrender)
+parseSurrender = do
+    string "Surrender"
+    return $ SurrenderObject
+
+printWithdraw :: OrderObject Retreat Withdraw -> T.Text
+printWithdraw (WithdrawObject pt) = T.concat ["- ", printProvinceTarget pt]
+
+parseWithdraw :: Parser (OrderObject Retreat Withdraw)
+parseWithdraw = do
+    char '-'
+    spaces
+    pt <- parseProvinceTarget
+    return $ WithdrawObject pt
+
+printDisband :: OrderObject Adjust Disband -> T.Text
+printDisband DisbandObject = "Disband"
+
+parseDisband :: Parser (OrderObject Adjust Disband)
+parseDisband = do
+    string "Disband"
+    return $ DisbandObject
+
+printBuild :: OrderObject Adjust Build -> T.Text
+printBuild BuildObject = "Build"
+
+parseBuild :: Parser (OrderObject Adjust Build)
+parseBuild = do
+    string "Build"
+    return $ BuildObject
+
+printContinue :: OrderObject Adjust Continue -> T.Text
+printContinue ContinueObject = "Continue"
+
+parseContinue :: Parser (OrderObject Adjust Continue)
+parseContinue = do
+    string "Continue"
+    return $ ContinueObject
