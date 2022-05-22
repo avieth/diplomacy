@@ -12,7 +12,7 @@ Portability : non-portable (GHC only)
 
 module Diplomacy.Turn (
 
-    Turn
+    Turn (..)
   , firstTurn
   , nextTurn
   , prevTurn
@@ -21,9 +21,9 @@ module Diplomacy.Turn (
 
   ) where
 
-import Data.TypeNat.Nat
+import Numeric.Natural
 
-newtype Turn = Turn Nat
+newtype Turn = Turn Natural
 
 deriving instance Eq Turn
 deriving instance Ord Turn
@@ -31,20 +31,18 @@ deriving instance Ord Turn
 instance Show Turn where
     show = show . turnToInt
 
-firstTurn = Turn Z
+firstTurn = Turn 0
 
 nextTurn :: Turn -> Turn
-nextTurn (Turn n) = Turn (S n)
+nextTurn (Turn n) = Turn (n + 1)
 
 prevTurn :: Turn -> Maybe Turn
-prevTurn (Turn Z) = Nothing
-prevTurn (Turn (S n)) = Just (Turn n)
+prevTurn (Turn 0) = Nothing
+prevTurn (Turn n) = Just (Turn (n - 1))
 
 turnToInt :: Turn -> Int
-turnToInt (Turn Z) = 0
-turnToInt (Turn (S n)) = 1 + turnToInt (Turn n)
+turnToInt (Turn n) = fromIntegral n
 
 turnFromInt :: Int -> Maybe Turn
 turnFromInt i | i < 0 = Nothing
-              | i == 0 = Just firstTurn
-              | otherwise = fmap nextTurn (turnFromInt (i-1))
+              | otherwise = Just (Turn (fromIntegral i))
