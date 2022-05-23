@@ -60,7 +60,7 @@ import Diplomacy.Season
 import Diplomacy.GreatPower
 import Diplomacy.Aligned
 import Diplomacy.Unit
-import Diplomacy.Order
+import Diplomacy.Order hiding (continue)
 import Diplomacy.OrderObject
 import Diplomacy.Phase
 import Diplomacy.Province

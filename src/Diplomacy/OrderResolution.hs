@@ -66,7 +66,7 @@ import Diplomacy.Phase
 import Diplomacy.Subject
 import Diplomacy.OrderType
 import Diplomacy.OrderObject
-import Diplomacy.Order
+import Diplomacy.Order hiding (support)
 import Diplomacy.Province
 import Diplomacy.Zone
 import Diplomacy.Subject

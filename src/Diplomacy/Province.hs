@@ -43,6 +43,8 @@ module Diplomacy.Province (
   , provinceCoasts
 
   , ProvinceTarget(..)
+  , region
+  , coast
 
   , isNormal
   , isSpecial
@@ -504,6 +506,12 @@ instance Enum ProvinceTarget where
 instance Bounded ProvinceTarget where
     minBound = Normal minBound
     maxBound = Special maxBound
+
+region :: Province -> ProvinceTarget
+region = Normal
+
+coast :: ProvinceCoast -> ProvinceTarget
+coast = Special
 
 isSpecial :: ProvinceTarget -> Bool
 isSpecial (Special _) = True

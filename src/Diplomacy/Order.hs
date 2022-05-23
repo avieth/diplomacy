@@ -19,6 +19,15 @@ module Diplomacy.Order (
     Order(..)
 
   , SomeOrder(..)
+  , move
+  , hold
+  , support
+  , convoy
+  , surrender
+  , retreat
+  , build
+  , disband
+  , continue
 
   , orderSubject
   , orderObject
@@ -82,6 +91,33 @@ instance Ord (SomeOrder phase) where
     SomeOrder o1 `compare` SomeOrder o2 = show o1 `compare` show o2
 
 deriving instance Show (SomeOrder phase)
+
+move :: Unit -> ProvinceTarget -> ProvinceTarget -> SomeOrder Typical
+move unit from target = SomeOrder (Order ((unit, from), MoveObject target))
+
+hold :: Unit -> ProvinceTarget -> SomeOrder Typical
+hold unit at = move unit at at
+
+support :: Unit -> ProvinceTarget -> Unit -> ProvinceTarget -> ProvinceTarget -> SomeOrder Typical
+support unit at unit' at' target = SomeOrder (Order ((unit, at), SupportObject (unit', at') target))
+
+convoy :: Unit -> ProvinceTarget -> Unit -> ProvinceTarget -> ProvinceTarget -> SomeOrder Typical
+convoy unit at unit' at' target = SomeOrder (Order ((unit, at), ConvoyObject (unit', at') target))
+
+surrender :: Unit -> ProvinceTarget -> SomeOrder Retreat
+surrender unit at = SomeOrder (Order ((unit, at), SurrenderObject))
+
+retreat :: Unit -> ProvinceTarget -> ProvinceTarget -> SomeOrder Retreat
+retreat unit at target = SomeOrder (Order ((unit, at), WithdrawObject target))
+
+build :: Unit -> ProvinceTarget -> SomeOrder Adjust
+build unit at = SomeOrder (Order ((unit, at), BuildObject))
+
+disband :: Unit -> ProvinceTarget -> SomeOrder Adjust
+disband unit at = SomeOrder (Order ((unit, at), DisbandObject))
+
+continue :: Unit -> ProvinceTarget -> SomeOrder Adjust
+continue unit at = SomeOrder (Order ((unit, at), ContinueObject))
 
 isHold :: Order Typical Move -> Bool
 isHold order = from == to
